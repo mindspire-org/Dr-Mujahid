@@ -51,14 +51,10 @@ function computeSlotStartEnd(startTime: string, slotMinutes: number, slotNo: num
 }
 
 async function nextMrn(){
-  const now = new Date()
-  const yy = String(now.getFullYear()).slice(-2)
-  const mm = String(now.getMonth()+1).padStart(2,'0')
-  const yymm = yy+mm
-  const key = `lab_mrn_${yymm}`
+  const key = 'lab_mrn_mr7553'
   const c = await LabCounter.findByIdAndUpdate(key, { $inc: { seq: 1 } }, { upsert: true, new: true, setDefaultsOnInsert: true })
-  const seq = String(c.seq || 1).padStart(6,'0')
-  return `MR-${yymm}-${seq}`
+  const seq = Number(c.seq || 1)
+  return `MR7553${seq}`
 }
 
 export async function createOpd(req: Request, res: Response){
@@ -410,6 +406,65 @@ export async function updateStatus(req: Request, res: Response){
     })
   } catch {}
   res.json({ token: tok })
+}
+
+export async function remove(req: Request, res: Response){
+  try {
+    const id = String(req.params.id || '')
+    if (!id) return res.status(400).json({ error: 'Invalid token id' })
+
+    const tok: any = await HospitalToken.findById(id)
+    if (!tok) return res.status(404).json({ error: 'Token not found' })
+
+    try { await reverseJournalByRef('opd_token', String(id), 'Permanent delete of token') } catch (e) { console.warn('Finance reversal failed', e) }
+    try {
+      const existing: any[] = await CorporateTransaction.find({ refType: 'opd_token', refId: String(id), status: { $ne: 'reversed' } }).lean()
+      for (const tx of existing){
+        try { await CorporateTransaction.findByIdAndUpdate(String(tx._id), { $set: { status: 'reversed' } }) } catch {}
+        try {
+          await CorporateTransaction.create({
+            companyId: tx.companyId,
+            patientMrn: tx.patientMrn,
+            patientName: tx.patientName,
+            serviceType: tx.serviceType,
+            refType: tx.refType,
+            refId: tx.refId,
+            encounterId: tok?.encounterId || undefined,
+            dateIso: tok?.dateIso || new Date().toISOString().slice(0,10),
+            departmentId: tx.departmentId,
+            doctorId: tx.doctorId,
+            description: `Reversal: ${tx.description || 'OPD Consultation'}`,
+            qty: tx.qty,
+            unitPrice: -Math.abs(Number(tx.unitPrice||0)),
+            corpUnitPrice: -Math.abs(Number(tx.corpUnitPrice||0)),
+            coPay: -Math.abs(Number(tx.coPay||0)),
+            netToCorporate: -Math.abs(Number(tx.netToCorporate||0)),
+            corpRuleId: tx.corpRuleId,
+            status: 'accrued',
+            reversalOf: String(tx._id),
+          })
+        } catch (e) { console.warn('Failed to create corporate reversal for OPD token', e) }
+      }
+    } catch (e) { console.warn('Corporate reversal lookup failed', e) }
+
+    try {
+      const actor = (req as any).user?.name || (req as any).user?.email || 'system'
+      await HospitalAuditLog.create({
+        actor,
+        action: 'token_delete',
+        label: 'TOKEN_DELETE',
+        method: req.method,
+        path: req.originalUrl,
+        at: new Date().toISOString(),
+        detail: `Token #${String(tok?.tokenNo || id)} — Permanently deleted`,
+      })
+    } catch {}
+
+    await HospitalToken.findByIdAndDelete(id)
+    res.json({ ok: true })
+  } catch {
+    res.status(500).json({ error: 'Internal Server Error' })
+  }
 }
 
 export async function pay(req: Request, res: Response){

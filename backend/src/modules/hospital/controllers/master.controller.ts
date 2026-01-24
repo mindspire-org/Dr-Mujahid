@@ -66,6 +66,14 @@ export async function listDoctors(_req: Request, res: Response){
   res.json({ doctors: rows })
 }
 
+export async function getDoctorById(req: Request, res: Response){
+  const id = req.params.id
+  const d: any = await HospitalDoctor.findById(id).lean()
+  if (!d) return res.status(404).json({ error: 'Doctor not found' })
+
+  res.json({ doctor: d })
+}
+
 async function normalizeDoctorDepartments(docData: any){
   const ids: string[] = Array.isArray(docData?.departmentIds) ? docData.departmentIds.map((x: any)=> String(x)).filter(Boolean) : []
   const primary = docData?.primaryDepartmentId ? String(docData.primaryDepartmentId) : ''

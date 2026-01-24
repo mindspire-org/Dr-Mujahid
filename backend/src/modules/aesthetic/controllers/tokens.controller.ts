@@ -22,14 +22,10 @@ async function allocNumber(dateIso?: string){
 function normDigits(s?: string){ return (s||'').replace(/\D+/g,'') }
 function normLower(s?: string){ return (s||'').trim().toLowerCase().replace(/\s+/g,' ') }
 async function nextMrn(){
-  const now = new Date()
-  const yy = String(now.getFullYear()).slice(-2)
-  const mm = String(now.getMonth()+1).padStart(2,'0')
-  const yymm = yy+mm
-  const key = `lab_mrn_${yymm}`
+  const key = 'lab_mrn_mr7553'
   const c = await LabCounter.findByIdAndUpdate(key, { $inc: { seq: 1 } }, { upsert: true, new: true, setDefaultsOnInsert: true })
-  const seq = String((c as any).seq || 1).padStart(6,'0')
-  return `MR-${yymm}-${seq}`
+  const seq = Number((c as any).seq || 1)
+  return `MR7553${seq}`
 }
 
 async function ensureLabPatient(body: any){

@@ -5,16 +5,15 @@ function resolveKey(name: string){
   if (n.includes('echocardio')) return 'Echocardiography'
   if (n.includes('colonoscopy')) return 'Colonoscopy'
   if (n.includes('uppergi')) return 'UpperGiEndoscopy'
+  if (n === 'stt' || n.includes('(stt)') || n.includes('stress tolerance')) return 'STT'
+  if (n === 'npt' || n.includes('(npt)') || n.includes('nocturnal penile tumescence')) return 'NPT'
   return name
 }
 import { useEffect, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { diagnosticApi } from '../../utils/api'
-import { printEchocardiographyReport } from '../../components/diagnostic/diagnostic_Echocardiography'
-import { printUltrasoundReport } from '../../components/diagnostic/diagnostic_UltrasoundGeneric'
-import { printCTScanReport } from '../../components/diagnostic/diagnostic_CTScan'
-import { printColonoscopyReport } from '../../components/diagnostic/diagnostic_Colonoscopy'
-import { printUpperGIEndoscopyReport } from '../../components/diagnostic/diagnostic_UpperGIEndoscopy'
+import { previewDiagnosticReportPdf } from '../../utils/printDiagnosticReport'
+import type { ReportRow } from '../../utils/printDiagnosticReport'
 
 type Result = { id: string; tokenNo?: string; testName: string; patient?: any; status: 'draft'|'final'; reportedAt?: string; formData?: any; images?: string[]; createdAt?: string; orderId?: string; testId?: string }
 
@@ -24,8 +23,48 @@ function normalizeFormDataText(formData: any): string {
   try { return JSON.stringify(formData) } catch { return String(formData) }
 }
 
+function parseSttFormData(text: string): { rows: Array<{ parameter: string; normalRange: string; result: string; flag: string }>; clinicalNote: string } | null {
+  try {
+    const v = JSON.parse(text)
+    if (!v || typeof v !== 'object') return null
+    const rows = Array.isArray((v as any).rows) ? (v as any).rows : []
+    const clinicalNote = typeof (v as any).clinicalNote === 'string' ? (v as any).clinicalNote : ''
+    return {
+      rows: rows.map((r: any) => ({
+        parameter: String(r?.parameter || ''),
+        normalRange: String(r?.normalRange || ''),
+        result: String(r?.result || ''),
+        flag: String(r?.flag || ''),
+      })),
+      clinicalNote,
+    }
+  } catch {
+    return null
+  }
+}
+
+function parseNptFormData(text: string): { rows: Array<{ parameter: string; result: string; flag: string }>; clinicalNote: string } | null {
+  try {
+    const v = JSON.parse(text)
+    if (!v || typeof v !== 'object') return null
+    const rows = Array.isArray((v as any).rows) ? (v as any).rows : []
+    const clinicalNote = typeof (v as any).clinicalNote === 'string' ? (v as any).clinicalNote : ''
+    return {
+      rows: rows.map((r: any) => ({
+        parameter: String(r?.parameter || ''),
+        result: String(r?.result || ''),
+        flag: String(r?.flag || ''),
+      })),
+      clinicalNote,
+    }
+  } catch {
+    return null
+  }
+}
+
 export default function Diagnostic_ReportGenerator(){
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
   const [q, setQ] = useState('')
   const [from, setFrom] = useState('')
   const [to, setTo] = useState('')
@@ -36,6 +75,8 @@ export default function Diagnostic_ReportGenerator(){
   const [items, setItems] = useState<Result[]>([])
   const [total, setTotal] = useState(0)
   const [totalPages, setTotalPages] = useState(1)
+
+  const [highlightId, setHighlightId] = useState<string>('')
 
   useEffect(()=>{ let mounted = true; (async()=>{
     try {
@@ -57,6 +98,31 @@ export default function Diagnostic_ReportGenerator(){
     } catch { if (mounted){ setItems([]); setTotal(0); setTotalPages(1) } }
   })(); return ()=>{ mounted=false } }, [q, from, to, status, page, rows])
 
+  // Support deep-linking: /diagnostic/report-generator?resultId=...
+  useEffect(()=>{ let mounted = true; (async()=>{
+    const rid = searchParams.get('resultId') || ''
+    if (!rid) { if (mounted) setHighlightId(''); return }
+    try {
+      const r: any = await diagnosticApi.getResult(rid)
+      if (!mounted || !r) return
+      setHighlightId(String(rid))
+      const injected: Result = {
+        id: String(r._id||rid),
+        tokenNo: r.tokenNo,
+        testName: r.testName,
+        patient: r.patient,
+        status: r.status||'draft',
+        reportedAt: r.reportedAt,
+        formData: r.formData,
+        images: Array.isArray(r.images) ? r.images : (Array.isArray(r.formData?.images) ? r.formData.images : undefined),
+        createdAt: r.createdAt,
+        orderId: String(r.orderId||''),
+        testId: String(r.testId||''),
+      }
+      setItems(prev => prev.some(x => x.id === injected.id) ? prev : [injected, ...prev])
+    } catch { if (mounted) setHighlightId('') }
+  })(); return ()=>{ mounted=false } }, [searchParams])
+
   const pageCount = Math.max(1, totalPages)
   const curPage = Math.min(page, pageCount)
   const start = Math.min((curPage - 1) * rows + 1, total)
@@ -64,26 +130,89 @@ export default function Diagnostic_ReportGenerator(){
 
   async function printItem(r: Result){
     const key = resolveKey(r.testName)
-    if (key === 'Echocardiography'){
-      await printEchocardiographyReport({ tokenNo: r.tokenNo, createdAt: r.createdAt, reportedAt: r.reportedAt||r.createdAt, patient: r.patient as any, value: normalizeFormDataText(r.formData), referringConsultant: (r as any)?.patient?.referringConsultant })
-      return
+    const text = normalizeFormDataText(r.formData)
+    let rows: ReportRow[] = []
+    let interpretation = ''
+    let layout: any = undefined
+
+    if (key === 'STT'){
+      const parsed = parseSttFormData(text)
+      if (parsed){
+        rows = (parsed.rows||[]).map(x => ({
+          test: x.parameter,
+          normal: x.normalRange,
+          unit: '',
+          value: x.result,
+          flag: (String(x.flag||'').toLowerCase()==='high' || String(x.flag||'').toLowerCase()==='low') ? 'abnormal' : (String(x.flag||'').toLowerCase()==='normal' ? 'normal' : undefined),
+          comment: String(x.flag||'').trim() || undefined,
+        }))
+        interpretation = parsed.clinicalNote || ''
+      } else {
+        rows = [{ test: r.testName, normal: '', unit: '', value: '' }]
+        interpretation = text
+      }
+      layout = {
+        hideSampleNoLabNo: true,
+        hideCollectionDateTime: true,
+        table: {
+          hideUnit: true,
+          hideFlag: true,
+          commentHeader: 'Flag',
+        },
+      }
+    } else if (key === 'NPT'){
+      const parsed = parseNptFormData(text)
+      if (parsed){
+        rows = (parsed.rows||[]).map(x => ({
+          test: x.parameter,
+          normal: '',
+          unit: '',
+          value: x.result,
+          flag: (String(x.flag||'').toLowerCase()==='severe' || String(x.flag||'').toLowerCase()==='moderate' || String(x.flag||'').toLowerCase()==='mild')
+            ? 'abnormal'
+            : (String(x.flag||'').toLowerCase()==='normal' ? 'normal' : undefined),
+          comment: String(x.flag||'').trim() || undefined,
+        }))
+        interpretation = parsed.clinicalNote || ''
+      } else {
+        rows = [{ test: r.testName, normal: '', unit: '', value: '' }]
+        interpretation = text
+      }
+      layout = {
+        hideSampleNoLabNo: true,
+        hideCollectionDateTime: true,
+        table: {
+          hideNormal: true,
+          hideUnit: true,
+          hideFlag: true,
+          commentHeader: 'Flag',
+        },
+      }
+    } else {
+      // For narrative-style diagnostics, keep lab-style layout but place the full text in Interpretation.
+      rows = [{ test: r.testName, normal: '', unit: '', value: '' }]
+      interpretation = text
     }
-    if (key === 'Ultrasound'){
-      await printUltrasoundReport({ tokenNo: r.tokenNo, createdAt: r.createdAt, reportedAt: r.reportedAt||r.createdAt, patient: r.patient as any, value: normalizeFormDataText(r.formData), images: r.images, referringConsultant: (r as any)?.patient?.referringConsultant } as any)
-      return
-    }
-    if (key === 'CTScan'){
-      await printCTScanReport({ tokenNo: r.tokenNo, createdAt: r.createdAt, reportedAt: r.reportedAt||r.createdAt, patient: r.patient as any, value: normalizeFormDataText(r.formData), images: r.images, referringConsultant: (r as any)?.patient?.referringConsultant } as any)
-      return
-    }
-    if (key === 'Colonoscopy'){
-      await printColonoscopyReport({ tokenNo: r.tokenNo, createdAt: r.createdAt, reportedAt: r.reportedAt||r.createdAt, patient: r.patient as any, value: normalizeFormDataText(r.formData), referringConsultant: (r as any)?.patient?.referringConsultant })
-      return
-    }
-    if (key === 'UpperGiEndoscopy'){
-      await printUpperGIEndoscopyReport({ tokenNo: r.tokenNo, createdAt: r.createdAt, reportedAt: r.reportedAt||r.createdAt, patient: r.patient as any, value: normalizeFormDataText(r.formData), referringConsultant: (r as any)?.patient?.referringConsultant })
-      return
-    }
+
+    await previewDiagnosticReportPdf({
+      tokenNo: r.tokenNo || '-',
+      createdAt: r.createdAt || r.reportedAt || new Date().toISOString(),
+      sampleTime: r.createdAt || undefined,
+      reportingTime: r.reportedAt || r.createdAt || undefined,
+      patient: {
+        fullName: r.patient?.fullName || '-',
+        phone: r.patient?.phone || '',
+        mrn: r.patient?.mrn || '',
+        age: r.patient?.age || '',
+        gender: r.patient?.gender || '',
+        address: r.patient?.address || '',
+      },
+      rows,
+      interpretation,
+      referringConsultant: (r as any)?.patient?.referringConsultant,
+      profileLabel: r.testName,
+      layout,
+    })
   }
 
   function editItem(r: Result){
@@ -145,7 +274,7 @@ export default function Diagnostic_ReportGenerator(){
           </thead>
           <tbody>
             {items.map(r => (
-              <tr key={r.id} className="border-b border-slate-100">
+              <tr key={r.id} className={`border-b border-slate-100 ${highlightId && r.id===highlightId ? 'bg-violet-50' : ''}`}>
                 <td className="px-4 py-2 whitespace-nowrap">{new Date(r.createdAt || '').toLocaleDateString()} {new Date(r.createdAt || '').toLocaleTimeString()}</td>
                 <td className="px-4 py-2 whitespace-nowrap">{r.patient?.fullName || '-'}</td>
                 <td className="px-4 py-2 whitespace-nowrap">{r.tokenNo || '-'}</td>

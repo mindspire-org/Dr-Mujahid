@@ -11,12 +11,14 @@ export default function Lab_Login() {
   const [theme] = useState<'light'|'dark'>(()=>{
     try { return (localStorage.getItem('lab.theme') as 'light'|'dark') || 'light' } catch { return 'light' }
   })
-  // Mirror theme to <html> so Tailwind dark: variants work on login too
   useEffect(()=>{
-    const html = document.documentElement
-    try { html.classList.toggle('dark', theme === 'dark') } catch {}
-    return () => { try { html.classList.remove('dark') } catch {} }
-  }, [theme])
+    try { document.documentElement.classList.remove('dark') } catch {}
+    try { document.body.classList.remove('dark') } catch {}
+    return () => {
+      try { document.documentElement.classList.remove('dark') } catch {}
+      try { document.body.classList.remove('dark') } catch {}
+    }
+  }, [])
 
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

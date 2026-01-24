@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import Hospital_AddDoctorDialog, { type HospitalDoctorInput } from '../../components/hospital/Hospital_AddDoctorDialog'
 import { hospitalApi } from '../../utils/api'
+import { Eye, EyeOff } from 'lucide-react'
 
 type Doctor = {
   id: string
@@ -26,6 +27,7 @@ export default function Hospital_Doctors() {
   // moved to dialog component
   const [editId, setEditId] = useState<string | null>(null)
   const [editForm, setEditForm] = useState({ name: '', cnic: '', specialization: '', qualification: '', primaryDepartmentId: '', phone: '', fee: '0', shares: '0', username: '', password: '' })
+  const [showEditPassword, setShowEditPassword] = useState(false)
   const [deleteId, setDeleteId] = useState<string | null>(null)
   const [departments, setDepartments] = useState<Array<{ id: string; name: string }>>([])
 
@@ -101,11 +103,28 @@ export default function Hospital_Doctors() {
     }
   }
 
-  const openEdit = (id: string) => {
+  const openEdit = async (id: string) => {
     const d = list.find(x => x.id === id)
     if (!d) return
     setEditId(id)
-    setEditForm({ name: d.name, cnic: d.cnic, specialization: d.specialization, qualification: d.qualification || '', primaryDepartmentId: d.primaryDepartmentId || '', phone: d.phone, fee: String(d.fee), shares: String(d.shares), username: d.username, password: d.password })
+    setShowEditPassword(false)
+    setEditForm({ name: d.name, cnic: d.cnic, specialization: d.specialization, qualification: d.qualification || '', primaryDepartmentId: d.primaryDepartmentId || '', phone: d.phone, fee: String(d.fee), shares: String(d.shares), username: d.username, password: '' })
+    try {
+      const res: any = await hospitalApi.getDoctor(id)
+      const doc = res?.doctor || {}
+      setEditForm({
+        name: String(doc.name || d.name || ''),
+        cnic: String(doc.cnic || d.cnic || ''),
+        specialization: String(doc.specialization || d.specialization || ''),
+        qualification: String(doc.qualification || d.qualification || ''),
+        primaryDepartmentId: String(doc.primaryDepartmentId || d.primaryDepartmentId || ''),
+        phone: String(doc.phone || d.phone || ''),
+        fee: String(doc.opdBaseFee ?? d.fee ?? 0),
+        shares: String(doc.shares ?? d.shares ?? 0),
+        username: String(doc.username || d.username || ''),
+        password: '',
+      })
+    } catch {}
   }
   const saveEdit = async () => {
     if (!editId) return
@@ -195,8 +214,11 @@ export default function Hospital_Doctors() {
 
       {editId && (
         <div className="fixed inset-0 z-20 flex items-center justify-center bg-black/30 p-4">
-          <div className="w-full max-w-2xl rounded-xl border border-slate-200 bg-white p-5 shadow-lg">
-            <h3 className="text-base font-semibold text-slate-800">Edit Doctor</h3>
+          <div className="w-full max-w-2xl max-h-[90vh] overflow-hidden rounded-xl border border-slate-200 bg-white shadow-lg">
+            <div className="border-b border-slate-200 px-4 sm:px-5 py-3">
+              <h3 className="text-base font-semibold text-slate-800">Edit Doctor</h3>
+            </div>
+            <div className="max-h-[80vh] overflow-y-auto px-4 sm:px-5 pb-4">
             <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
               <div>
                 <label className="mb-1 block text-sm text-slate-700">Doctor Name</label>
@@ -205,10 +227,6 @@ export default function Hospital_Doctors() {
               <div>
                 <label className="mb-1 block text-sm text-slate-700">CNIC</label>
                 <input value={editForm.cnic} onChange={e=>setEditForm(f=>({ ...f, cnic: e.target.value }))} className="w-full rounded-md border border-slate-300 px-3 py-2 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-200" />
-              </div>
-              <div>
-                <label className="mb-1 block text-sm text-slate-700">Password</label>
-                <input type="password" value={editForm.password} onChange={e=>setEditForm(f=>({ ...f, password: e.target.value }))} className="w-full rounded-md border border-slate-300 px-3 py-2 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-200" />
               </div>
               <div>
                 <label className="mb-1 block text-sm text-slate-700">Specialization</label>
@@ -243,8 +261,29 @@ export default function Hospital_Doctors() {
                 <label className="mb-1 block text-sm text-slate-700">Username</label>
                 <input value={editForm.username} onChange={e=>setEditForm(f=>({ ...f, username: e.target.value }))} className="w-full rounded-md border border-slate-300 px-3 py-2 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-200" />
               </div>
+
+              <div>
+                <label className="mb-1 block text-sm text-slate-700">Password</label>
+                <div className="relative">
+                  <input
+                    type={showEditPassword ? 'text' : 'password'}
+                    value={editForm.password}
+                    onChange={e=>setEditForm(f=>({ ...f, password: e.target.value }))}
+                    className="w-full rounded-md border border-slate-300 px-3 py-2 pr-10 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-200"
+                  />
+                  <button
+                    type="button"
+                    onClick={()=>setShowEditPassword(s=>!s)}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1 text-slate-500 hover:text-slate-800"
+                    aria-label={showEditPassword ? 'Hide password' : 'Show password'}
+                  >
+                    {showEditPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                  </button>
+                </div>
+              </div>
             </div>
-            <div className="mt-5 flex justify-end gap-2">
+            </div>
+            <div className="flex justify-end gap-2 border-t border-slate-200 px-4 sm:px-5 py-3">
               <button onClick={()=>setEditId(null)} className="rounded-md border border-slate-300 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50">Cancel</button>
               <button onClick={saveEdit} className="rounded-md bg-violet-700 px-3 py-1.5 text-sm font-medium text-white hover:bg-violet-800">Save</button>
             </div>

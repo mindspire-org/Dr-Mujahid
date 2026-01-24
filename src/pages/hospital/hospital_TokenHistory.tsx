@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import Hospital_TokenSlip, { type TokenSlipData } from '../../components/hospital/Hospital_TokenSlip'
 import { hospitalApi } from '../../utils/api'
-import { CheckCircle, Eye } from 'lucide-react'
+import { CheckCircle, Eye, X } from 'lucide-react'
 
 interface TokenRow {
   _id: string
@@ -91,7 +91,7 @@ export default function Hospital_TokenHistory() {
       status: t.status,
       raw: t,
     }))
-    setRows(items)
+    setRows(items.filter(r => r.status !== 'cancelled'))
     setPage(1)
   }
 
@@ -403,18 +403,16 @@ function TokenDetailsDialog({ open, onClose, row }: { open: boolean; onClose: ()
   const payable = Number(t.payable ?? t.pricing?.finalFee ?? t.finalFee ?? row.fee ?? 0)
   const fee = Number(t.fee ?? t.pricing?.feeResolved ?? row.fee ?? 0)
   const paymentStatus = String(t.paymentStatus || row.paymentStatus || 'paid')
+  const isPaid = paymentStatus.toLowerCase() === 'paid'
 
   const receptionistName = String(t.receptionistName || row.receptionistName || '')
   const paymentMethod = String(t.paymentMethod || row.paymentMethod || t.billingType || '')
   const accountNumberIban = String(t.accountNumberIban || '')
 
-  const corporateId = t.corporateId || '-'
-  const corporatePreAuthNo = t.corporatePreAuthNo || '-'
-  const corporateCoPayPercent = t.corporateCoPayPercent ?? '-'
-  const corporateCoverageCap = t.corporateCoverageCap ?? '-'
-
-  const scheduleId = t.scheduleId || '-'
-  const apptStart = t.apptStart || '-'
+  const slotStart = t.slotStart || ''
+  const slotEnd = t.slotEnd || ''
+  const slotNo = t.slotNo != null ? String(t.slotNo) : ''
+  const appointmentSlot = slotStart && slotEnd ? `${slotStart} - ${slotEnd}` : (slotNo ? `Slot #${slotNo}` : '-')
 
   const guardianCombined = `${guardianRel !== '-' ? guardianRel : ''}${guardianRel !== '-' && guardianName !== '-' ? ' ' : ''}${guardianName !== '-' ? guardianName : ''}`.trim() || '-'
 
@@ -426,7 +424,9 @@ function TokenDetailsDialog({ open, onClose, row }: { open: boolean; onClose: ()
             <h3 className="text-lg font-semibold text-slate-800">Token Details</h3>
             <div className="mt-0.5 text-xs text-slate-500">Token #{row.tokenNo} • {createdAt}</div>
           </div>
-          <button onClick={onClose} className="btn-outline-navy">Close</button>
+          <button onClick={onClose} className="rounded-md border border-slate-200 p-2 text-slate-600 hover:bg-slate-50 hover:text-slate-900" aria-label="Close">
+            <X size={18} />
+          </button>
         </div>
 
         <div className="max-h-[75vh] overflow-y-auto px-6 py-5 space-y-6">
@@ -462,14 +462,9 @@ function TokenDetailsDialog({ open, onClose, row }: { open: boolean; onClose: ()
               <Info label="Payable" value={`Rs. ${payable.toLocaleString()}`} />
               <Info label="Payment Status" value={paymentStatus.toUpperCase()} />
               <Info label="Payed to(Receptionist)" value={receptionistName || '-'} />
-              <Info label="Payment Method" value={paymentMethod || '-'} />
-              {paymentMethod === 'Card' && <Info label="Account Number/IBAN" value={accountNumberIban || '-'} />}
-              <Info label="Schedule ID" value={String(scheduleId)} />
-              <Info label="Appointment Start" value={String(apptStart)} />
-              <Info label="Corporate ID" value={String(corporateId)} />
-              <Info label="Corporate Pre-Auth No" value={String(corporatePreAuthNo)} />
-              <Info label="Corporate Co-Pay %" value={String(corporateCoPayPercent)} />
-              <Info label="Corporate Coverage Cap" value={String(corporateCoverageCap)} />
+              {isPaid && <Info label="Payment Method" value={paymentMethod || '-'} />}
+              {isPaid && paymentMethod === 'Card' && <Info label="Account Number/IBAN" value={accountNumberIban || '-'} />}
+              <Info label="Appointment Slot" value={String(appointmentSlot)} />
             </div>
           </section>
         </div>

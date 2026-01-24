@@ -21,7 +21,7 @@ const UpperGIEndoscopy: React.FC<Props> = ({ value: _value, onChange }) => {
   const [impression, setImpression] = React.useState('');
   const [recommendations, setRecommendations] = React.useState('');
   const [referredBy, setReferredBy] = React.useState('');
-  const [ready, setReady] = React.useState(false)
+  const [ready, _setReady] = React.useState(false)
   const initialRef = React.useRef<Record<string,string>>({})
 
   // Prefill from existing value (Edit flow)

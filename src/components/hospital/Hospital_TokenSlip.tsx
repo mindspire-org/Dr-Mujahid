@@ -149,7 +149,7 @@ export default function Hospital_TokenSlip({ open, onClose, data, autoPrint = fa
           #hospital-receipt .text-sm{ font-size: 14px !important }
           #hospital-receipt .text-lg{ font-size: 18px !important }
           #hospital-receipt .text-xl{ font-size: 20px !important }
-          #hospital-receipt .row-value{ max-width: 62% !important; word-break: break-word !important; white-space: normal !important; text-align: right !important }
+          #hospital-receipt .row-value{ word-break: break-word !important; white-space: normal !important; text-align: right !important; place-self: start end !important }
           hr { border-color: #000 !important }
         }
       `}</style>
@@ -159,9 +159,9 @@ export default function Hospital_TokenSlip({ open, onClose, data, autoPrint = fa
 
 function Row({ label, value, boldValue }: { label: string; value: string; boldValue?: boolean }){
   return (
-    <div className="grid grid-cols-[110px_1fr] gap-2">
+    <div className="grid w-full grid-cols-[110px_1fr] gap-2">
       <div className="text-slate-700">{label}</div>
-      <div className={`${boldValue ? 'font-semibold ' : ''}row-value min-w-0 break-words text-right`}>{value}</div>
+      <div className={`${boldValue ? 'font-semibold ' : ''}row-value min-w-0 break-words text-right justify-self-end`}>{value}</div>
     </div>
   )
 }

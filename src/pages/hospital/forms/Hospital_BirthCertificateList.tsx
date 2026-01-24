@@ -1,10 +1,8 @@
 import { useEffect, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
 import { hospitalApi } from '../../../utils/api'
 import Hospital_BirthCertificateForm from '../../../components/hospital/hospital_BirthCertificateForm'
 
 export default function Hospital_BirthCertificateList(){
-  const navigate = useNavigate()
   const [q, setQ] = useState('')
   const [page, setPage] = useState(1)
   const [limit, setLimit] = useState(20)

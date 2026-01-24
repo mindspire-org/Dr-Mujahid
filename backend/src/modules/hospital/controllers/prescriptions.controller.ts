@@ -39,7 +39,7 @@ export async function create(req: Request, res: Response){
 export async function list(req: Request, res: Response){
   const q = req.query as any
   const doctorId = q.doctorId ? String(q.doctorId) : ''
-  const patientMrn = q.patientMrn ? String(q.patientMrn) : ''
+  const patientMrn = q.patientMrn ? String(q.patientMrn).trim() : ''
   const from = q.from ? new Date(String(q.from)) : null
   const to = q.to ? new Date(String(q.to)) : null
   if (to) to.setHours(23,59,59,999)
@@ -49,7 +49,7 @@ export async function list(req: Request, res: Response){
   let encCrit: any = { type: 'OPD' }
   if (doctorId) encCrit.doctorId = doctorId
   if (patientMrn) {
-    const pDoc = await LabPatient.findOne({ mrn: patientMrn }).select('_id').lean()
+    const pDoc = await LabPatient.findOne({ mrn: new RegExp(`^${patientMrn}$`, 'i') }).select('_id').lean()
     if (!pDoc) return res.json({ prescriptions: [], total: 0, page, limit })
     encCrit.patientId = (pDoc as any)._id
   }

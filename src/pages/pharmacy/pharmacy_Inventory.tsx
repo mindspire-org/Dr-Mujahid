@@ -176,7 +176,7 @@ export default function Pharmacy_Inventory() {
 
   function handleExport(){
     const csvRows: string[] = []
-    const headers = ['Invoice #','Medicine','Company','Category','Packs','Units/Pack','Unit Sale','Total Items','Min Stock','Expiry','Supplier']
+    const headers = ['Invoice #','Medicine','Brand','Category','Packs','Units/Pack','Unit Sale','Total Items','Min Stock','Expiry','Supplier']
     csvRows.push(headers.join(','))
     rows.forEach((r: any)=>{
       const vals = [r.invoice, r.medicine, r.company || '-', r.category, r.packs, r.unitsPerPack, r.unitSale, r.totalItems, r.minStock, r.expiry, r.supplier]
@@ -253,7 +253,7 @@ return (
       <div className="flex flex-wrap items-center gap-2">
         <input value={search} onChange={e=>{ setSearch(e.target.value); setPage(1) }} placeholder="Search inventory..." className="w-full max-w-md rounded-md border border-slate-300 px-3 py-2 text-sm" />
         <select value={company} onChange={e=>{ setCompany(e.target.value); setPage(1) }} className="w-full max-w-xs rounded-md border border-slate-300 px-3 py-2 text-sm">
-          <option value="">All Companies</option>
+          <option value="">All Brands</option>
           {companyOptions.map(c => <option key={c} value={c}>{c}</option>)}
         </select>
         <button onClick={()=>setRefreshTick(t=>t+1)} className="btn-outline-navy inline-flex items-center gap-2"><RotateCw className="h-4 w-4" /> Refresh</button>

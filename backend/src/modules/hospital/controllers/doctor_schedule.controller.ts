@@ -36,7 +36,40 @@ export async function list(req: Request, res: Response){
     const crit: any = {}
     if (q.doctorId) crit.doctorId = q.doctorId
     if (q.departmentId) crit.departmentId = q.departmentId
-    if (q.date) crit.dateIso = q.date
+    if (q.date){
+      const date = String(q.date)
+      const exact = await HospitalDoctorSchedule.find({ ...crit, dateIso: date }).sort({ startTime: 1 }).lean()
+      if (exact.length) return res.json({ schedules: exact })
+
+      const baseCrit = { ...crit, dateIso: { $lte: date } }
+      const latest: any = await HospitalDoctorSchedule.findOne(baseCrit).sort({ dateIso: -1 }).select('dateIso').lean()
+      if (!latest?.dateIso) return res.json({ schedules: [] })
+
+      const src = await HospitalDoctorSchedule.find({ ...crit, dateIso: String(latest.dateIso) }).sort({ startTime: 1 }).lean()
+      if (!src.length) return res.json({ schedules: [] })
+
+      const toCreate = src.map((s: any) => ({
+        doctorId: s.doctorId,
+        departmentId: s.departmentId,
+        dateIso: date,
+        startTime: s.startTime,
+        endTime: s.endTime,
+        slotMinutes: s.slotMinutes,
+        fee: s.fee,
+        followupFee: s.followupFee,
+        notes: s.notes,
+      }))
+
+      try {
+        await HospitalDoctorSchedule.insertMany(toCreate, { ordered: false })
+      } catch (e: any) {
+        if (e?.code !== 11000) throw e
+      }
+
+      const materialized = await HospitalDoctorSchedule.find({ ...crit, dateIso: date }).sort({ startTime: 1 }).lean()
+      return res.json({ schedules: materialized })
+    }
+
     const rows = await HospitalDoctorSchedule.find(crit).sort({ dateIso: 1, startTime: 1 }).lean()
     res.json({ schedules: rows })
   }catch{ res.status(500).json({ error: 'Internal Server Error' }) }

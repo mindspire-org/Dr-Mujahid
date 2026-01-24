@@ -11,7 +11,14 @@ import * as Attendance from '../controllers/attendance.controller'
 import * as Audit from '../controllers/audit.controller'
 import * as Settings from '../controllers/settings.controller'
 import * as FinanceCtl from '../controllers/finance.controller'
+import * as FinanceStatementCtl from '../controllers/finance_statement.controller'
+import * as FinanceOpeningCtl from '../controllers/finance_opening_balance.controller'
+import * as BankAccountsCtl from '../controllers/bank_accounts.controller'
+import * as PettyCashCtl from '../controllers/petty_cash_accounts.controller'
 import * as Referrals from '../controllers/referrals.controller'
+import * as PettyRefill from '../controllers/petty_cash_refill.controller'
+import * as FinanceBalance from '../controllers/finance_balance.controller'
+import * as FinanceHistory from '../controllers/finance_history.controller'
 import * as Patients from '../controllers/patients.controller'
 import * as IPDRec from '../controllers/ipd_records.controller'
 import * as Notifications from '../controllers/notifications.controller'
@@ -20,6 +27,10 @@ import * as Users from '../controllers/users.controller'
 import * as IpdReferrals from '../controllers/ipd_referrals.controller'
 import * as IpdDocs from '../controllers/ipd_docs.controller'
 import * as DocSchedules from '../controllers/doctor_schedule.controller'
+import * as HospitalPettyExpense from '../controllers/hospital_petty_expense.controller'
+import * as HistoryTaking from '../controllers/history_taking.controller'
+import * as LabReportsEntry from '../controllers/lab_reports_entry.controller'
+import * as Appointments from '../controllers/appointments.controller'
 
 const r = Router()
 
@@ -30,6 +41,7 @@ r.put('/departments/:id', Master.updateDepartment)
 r.delete('/departments/:id', Master.removeDepartment)
 
 r.get('/doctors', Master.listDoctors)
+r.get('/doctors/:id', Master.getDoctorById)
 r.post('/doctors', Master.createDoctor)
 r.put('/doctors/:id', Master.updateDoctor)
 r.delete('/doctors/:id', Master.removeDoctor)
@@ -44,6 +56,21 @@ r.delete('/doctor-schedules/:id', DocSchedules.remove)
 r.post('/opd/encounters', OPD.createEncounter)
 r.get('/opd/quote-price', OPD.quotePrice)
 
+// OPD - History Taking
+r.get('/opd/encounters/:encounterId/history-taking', HistoryTaking.getByEncounter)
+r.put('/opd/encounters/:encounterId/history-taking', HistoryTaking.upsertByEncounter)
+
+// OPD - Lab Reports Entry
+r.get('/opd/encounters/:encounterId/lab-reports-entry', LabReportsEntry.getByEncounter)
+r.put('/opd/encounters/:encounterId/lab-reports-entry', LabReportsEntry.upsertByEncounter)
+
+// Appointments
+r.get('/appointments', Appointments.list)
+r.post('/appointments', Appointments.create)
+r.get('/appointments/:id', Appointments.getById)
+r.put('/appointments/:id', Appointments.update)
+r.delete('/appointments/:id', Appointments.remove)
+
 // Prescriptions (OPD)
 r.post('/opd/prescriptions', Prescriptions.create)
 r.get('/opd/prescriptions', Prescriptions.list)
@@ -56,6 +83,9 @@ r.post('/opd/referrals', Referrals.create)
 r.get('/opd/referrals', Referrals.list)
 r.patch('/opd/referrals/:id/status', Referrals.updateStatus)
 r.delete('/opd/referrals/:id', Referrals.remove)
+
+// Patients
+r.get('/patients/profile', Patients.profile)
 
 // IPD
 r.post('/ipd/admissions', IPD.admit)
@@ -183,6 +213,7 @@ r.post('/tokens/opd', Tokens.createOpd)
 r.get('/tokens', Tokens.list)
 r.patch('/tokens/:id/status', Tokens.updateStatus)
 r.patch('/tokens/:id/pay', Tokens.pay)
+r.delete('/tokens/:id', Tokens.remove)
 
 // Staff
 r.get('/staff', Staff.list)
@@ -221,6 +252,34 @@ r.get('/finance/doctor/:id/payouts', FinanceCtl.listDoctorPayouts)
 r.get('/finance/doctor/:id/accruals', FinanceCtl.doctorAccruals)
 r.get('/finance/earnings', FinanceCtl.listDoctorEarnings)
 r.post('/finance/journal/:id/reverse', FinanceCtl.reverseJournal)
+
+// Finance Balances
+r.get('/finance/account-balance', FinanceBalance.getAccountBalance)
+// Finance History
+r.get('/finance/opening-balances', FinanceHistory.listOpeningBalances)
+r.get('/finance/petty-cash/refills', FinanceHistory.listPettyRefills)
+
+r.get('/finance/patient-statement', FinanceStatementCtl.patientStatement)
+// Opening Balances
+r.post('/finance/opening-balance', FinanceOpeningCtl.postOpeningBalance)
+// Bank Accounts
+r.get('/finance/bank-accounts', BankAccountsCtl.list)
+r.post('/finance/bank-accounts', BankAccountsCtl.create)
+r.put('/finance/bank-accounts/:id', BankAccountsCtl.update)
+r.delete('/finance/bank-accounts/:id', BankAccountsCtl.remove)
+// Petty Cash Accounts
+r.get('/finance/petty-cash-accounts', PettyCashCtl.list)
+r.post('/finance/petty-cash-accounts', PettyCashCtl.create)
+r.put('/finance/petty-cash-accounts/:id', PettyCashCtl.update)
+r.delete('/finance/petty-cash-accounts/:id', PettyCashCtl.remove)
+// Petty Cash Refill
+r.get('/finance/petty-cash/status', PettyRefill.pettyCashStatus)
+r.post('/finance/petty-cash/refill', PettyRefill.refillPettyCash)
+
+// Hospital Petty Cash Expense
+r.get('/finance/petty-cash/expenses', HospitalPettyExpense.list)
+r.post('/finance/petty-cash/expenses', HospitalPettyExpense.create)
+r.delete('/finance/petty-cash/expenses/:id', HospitalPettyExpense.remove)
 
 // Audit Logs
 r.get('/audit-logs', Audit.list)

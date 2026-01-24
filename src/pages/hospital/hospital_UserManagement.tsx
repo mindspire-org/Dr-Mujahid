@@ -72,8 +72,7 @@ export default function Hospital_UserManagement() {
     <div>
       <h2 className="text-xl font-semibold text-slate-800">User Management</h2>
 
-      <div className="mt-6 rounded-2xl bg-gradient-to-br from-violet-100/60 via-pink-100/50 to-cyan-100/60 p-6">
-        <div className="mx-auto max-w-3xl rounded-xl border border-white/60 bg-white p-4 shadow-sm">
+      <div className="mt-6 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
           <div className="text-sm font-semibold text-slate-700">All Users</div>
 
           <div className="mt-3 overflow-hidden rounded-lg border border-slate-200">
@@ -129,7 +128,6 @@ export default function Hospital_UserManagement() {
             />
             <button onClick={addUser} className="rounded-md bg-navy px-4 py-2 text-sm font-medium text-white hover:opacity-90">Add User</button>
           </div>
-        </div>
       </div>
 
       {/* Edit Modal */}

@@ -17,7 +17,7 @@ type Row = {
 const headers = [
   'Invoice #',
   'Medicine',
-  'Company',
+  'Brand',
   'Generic',
   'Category',
   'Packs',

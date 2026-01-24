@@ -7,6 +7,8 @@ import CTScan from './diagnostic_CTScan'
 import Echocardiography from './diagnostic_Echocardiography'
 import Colonoscopy from './diagnostic_Colonoscopy'
 import UpperGIEndoscopy from './diagnostic_UpperGIEndoscopy'
+import STT from './diagnostic_STT'
+import NPT from './diagnostic_NPT'
 
 export const DiagnosticFormRegistry: Record<string, React.ComponentType<ReportRendererProps>> = {
   Ultrasound: UltrasoundGeneric,
@@ -14,4 +16,6 @@ export const DiagnosticFormRegistry: Record<string, React.ComponentType<ReportRe
   Echocardiography: Echocardiography,
   Colonoscopy: Colonoscopy,
   UpperGiEndoscopy: UpperGIEndoscopy,
+  STT,
+  NPT,
 }

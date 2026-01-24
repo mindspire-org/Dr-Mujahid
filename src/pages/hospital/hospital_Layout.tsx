@@ -8,6 +8,7 @@ export default function Hospital_Layout() {
     if (typeof window === 'undefined') return false
     return localStorage.getItem('hospital.sidebar_collapsed') === '1'
   })
+  const [collapseSignal, setCollapseSignal] = useState(0)
   const [theme, setTheme] = useState<'light'|'dark'>(()=>{
     try { return (localStorage.getItem('hospital.theme') as 'light'|'dark') || 'light' } catch { return 'light' }
   })
@@ -25,17 +26,28 @@ export default function Hospital_Layout() {
     } catch (_) {}
   }, [sidebarCollapsed])
 
-  const shell = theme === 'dark' ? 'min-h-dvh bg-slate-900 text-slate-100' : 'min-h-dvh bg-slate-50 text-slate-900'
+  const shell = theme === 'dark' ? 'h-dvh overflow-hidden bg-slate-900 text-slate-100' : 'h-dvh overflow-hidden bg-slate-50 text-slate-900'
+
+  const handleToggleSidebar = () => {
+    // If currently collapsed, expand immediately
+    if (sidebarCollapsed) { setSidebarCollapsed(false); return }
+    // If expanding -> collapsing, close submenu first then collapse
+    setCollapseSignal(s => s + 1)
+    window.setTimeout(() => { setSidebarCollapsed(true) }, 200)
+  }
+
   return (
     <div className={theme === 'dark' ? 'hospital-scope dark' : 'hospital-scope'}>
       <div className={shell}>
-        <div className="flex">
-          <Hospital_Sidebar collapsed={sidebarCollapsed} />
-          <div className="flex min-h-dvh flex-1 flex-col">
-            <Hospital_Header onToggleSidebar={() => setSidebarCollapsed(v => !v)} collapsed={sidebarCollapsed} onToggleTheme={() => setTheme(t=>t==='dark'?'light':'dark')} theme={theme} />
-            <main className="w-full flex-1 px-4 py-6 sm:px-6">
-              <Outlet />
-            </main>
+        <div className="flex h-full flex-col">
+          <Hospital_Header onToggleSidebar={handleToggleSidebar} collapsed={sidebarCollapsed} onToggleTheme={() => setTheme(t=>t==='dark'?'light':'dark')} theme={theme} />
+          <div className="flex flex-1 min-h-0">
+            <Hospital_Sidebar collapsed={sidebarCollapsed} onExpand={() => setSidebarCollapsed(false)} collapseSignal={collapseSignal} />
+            <div className="flex-1 min-h-0 overflow-y-auto">
+              <main className="w-full px-4 py-6 sm:px-6">
+                <Outlet />
+              </main>
+            </div>
           </div>
         </div>
       </div>

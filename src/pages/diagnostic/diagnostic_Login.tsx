@@ -23,11 +23,16 @@ export default function Diagnostic_Login() {
     e.preventDefault();
     setError("");
 
+    try { localStorage.removeItem('diagnostic.token') } catch {}
+
     try {
       const res = await diagnosticApi.login(username.trim(), password);
 
       try {
-        localStorage.setItem("token", res.token);
+        if (res?.token) {
+          localStorage.setItem('diagnostic.token', String(res.token))
+          localStorage.setItem("token", String(res.token));
+        }
         localStorage.setItem("diagnostic.user", JSON.stringify(res.user));
       } catch {}
 

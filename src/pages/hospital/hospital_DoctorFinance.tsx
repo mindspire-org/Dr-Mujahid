@@ -358,7 +358,7 @@ export default function Hospital_DoctorFinance() {
     </div>
   )
 
-  function startEdit(id: string){
+  function startEdit(_id: string){
     // Placeholder for future edit flow; opens add dialog prefilled if needed
     setAddOpen(true)
   }

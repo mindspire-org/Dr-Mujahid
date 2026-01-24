@@ -38,12 +38,6 @@ export default function Hospital_Departments() {
         })) as Department[]
         const docRes = await hospitalApi.listDoctors() as any
         let docs = (docRes.doctors || docRes || []).map((r: any) => ({ id: String(r._id || r.id), name: r.name }))
-        if (!docs.length){
-          try {
-            const raw = localStorage.getItem('hospital_doctors')
-            if (raw){ const parsed = JSON.parse(raw) as Array<any>; docs = parsed.map(r => ({ id: String(r.id), name: r.name })) }
-          } catch {}
-        }
         if (!cancelled){ setItems(departments); setDoctors(docs) }
       } catch {}
     }
@@ -187,7 +181,7 @@ export default function Hospital_Departments() {
       {/* Add Modal */}
       {showAdd && (
         <div className="fixed inset-0 z-20 flex items-center justify-center bg-black/30 p-4">
-          <div className="w-full max-w-md rounded-xl border border-slate-200 bg-white p-5 shadow-lg">
+          <div className="w-full max-w-md max-h-[90vh] overflow-y-auto rounded-xl border border-slate-200 bg-white p-4 sm:p-5 shadow-lg">
             <div className="flex items-start justify-between">
               <div>
                 <h3 className="text-base font-semibold text-slate-800">Add Department</h3>
@@ -236,7 +230,7 @@ export default function Hospital_Departments() {
       {/* Edit Modal */}
       {editId && (
         <div className="fixed inset-0 z-20 flex items-center justify-center bg-black/30 p-4">
-          <div className="w-full max-w-md rounded-xl border border-slate-200 bg-white p-5 shadow-lg">
+          <div className="w-full max-w-md max-h-[90vh] overflow-y-auto rounded-xl border border-slate-200 bg-white p-4 sm:p-5 shadow-lg">
             <h3 className="text-base font-semibold text-slate-800">Edit Department</h3>
             <div className="mt-4 space-y-3">
               <div>

@@ -19,6 +19,7 @@ import {
   Users2,
   ClipboardCheck,
   Bell,
+  LogOut,
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { pharmacyApi } from '../../utils/api'
@@ -54,13 +55,14 @@ const nav = [
 
 export const pharmacySidebarNav = nav
 
-type Props = { collapsed?: boolean }
+type Props = { collapsed?: boolean; onExpand?: () => void; collapseSignal?: number }
 
-export default function Pharmacy_Sidebar({ collapsed }: Props) {
+export default function Pharmacy_Sidebar({ collapsed = false, onExpand, collapseSignal: _collapseSignal }: Props) {
   const navigate = useNavigate()
   const [role, setRole] = useState<string>('admin')
   const [username, setUsername] = useState<string>('')
   const [items, setItems] = useState(nav)
+  const [logoutConfirmOpen, setLogoutConfirmOpen] = useState(false)
   async function handleLogout(){
     try { await pharmacyApi.logoutUser(username || undefined) } catch {}
     try {
@@ -114,33 +116,76 @@ export default function Pharmacy_Sidebar({ collapsed }: Props) {
     })()
     return () => { mounted = false }
   }, [role])
+  const width = collapsed ? 'md:w-16' : 'md:w-64'
   return (
     <aside
-      className={`hidden md:flex ${collapsed ? 'md:w-16' : 'md:w-64'} md:flex-col md:border-r md:text-white`}
+      className={`hidden md:flex ${width} md:flex-col md:border-r md:text-white min-h-0 overflow-hidden transition-[width] duration-200 ease-in-out`}
       style={{ background: 'linear-gradient(180deg, var(--navy) 0%, var(--navy-700) 100%)', borderColor: 'rgba(255,255,255,0.12)' }}>
-      <div className="h-16 px-4 flex items-center border-b" style={{ borderColor: 'rgba(255,255,255,0.12)' }}>
-        <div className="font-semibold">{collapsed ? 'PB' : 'Pharmacy'}</div>
-        {!collapsed && <div className="ml-auto text-xs opacity-80">admin</div>}
-      </div>
-      <nav className="flex-1 overflow-y-auto p-3 space-y-1">
+      <nav className="hospital-sidebar-scroll flex-1 min-h-0 overflow-y-auto p-3 space-y-1">
         {items.map(item => {
           const Icon = item.Icon
           return (
             <NavLink
               key={item.to}
               to={item.to}
+              title={collapsed ? item.label : undefined}
               className={({ isActive }) => `flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium ${isActive ? 'bg-white/10 text-white' : 'text-white/80 hover:bg-white/5'}`}
               end={item.end}
+              onClick={() => {
+                if (collapsed) onExpand?.()
+              }}
             >
               <Icon className="h-4 w-4 shrink-0" />
               {!collapsed && <span className="truncate">{item.label}</span>}
             </NavLink>
           )
         })}
+
+        <div className="pt-2">
+          <div className="mx-2 border-t" style={{ borderColor: 'rgba(255,255,255,0.12)' }} />
+          <button
+            onClick={() => setLogoutConfirmOpen(true)}
+            className="mt-2 w-full inline-flex items-center justify-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors duration-150 hover:bg-rose-600/80 hover:text-white"
+            style={{ backgroundColor: 'rgba(255,255,255,0.08)', color: '#ffffff', border: '1px solid rgba(255,255,255,0.14)' }}
+            aria-label="Logout"
+            title="Logout"
+          >
+            <LogOut className="h-4 w-4" />
+            {!collapsed && <span>Logout</span>}
+          </button>
+        </div>
+
       </nav>
-      <div className="p-3">
-        <button onClick={handleLogout} className="w-full inline-flex items-center justify-center gap-2 rounded-md px-3 py-2 text-sm font-medium" style={{ backgroundColor: 'rgba(255,255,255,0.08)', color: '#ffffff', border: '1px solid rgba(255,255,255,0.14)' }}>Logout</button>
-      </div>
+
+      {logoutConfirmOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setLogoutConfirmOpen(false)}>
+          <div className="w-full max-w-sm overflow-hidden rounded-xl bg-white shadow-2xl ring-1 ring-black/5" onClick={(e) => e.stopPropagation()}>
+            <div className="border-b border-slate-200 px-5 py-4">
+              <div className="text-base font-semibold text-slate-900">Confirm Logout</div>
+              <div className="mt-1 text-sm text-slate-600">Are you sure you want to logout?</div>
+            </div>
+            <div className="flex justify-end gap-2 px-5 py-4">
+              <button
+                type="button"
+                onClick={() => setLogoutConfirmOpen(false)}
+                className="rounded-md border border-slate-300 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={async () => {
+                  setLogoutConfirmOpen(false)
+                  await handleLogout()
+                }}
+                className="rounded-md bg-rose-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-rose-700"
+              >
+                Logout
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </aside>
   )
 }

@@ -1,4 +1,5 @@
 import { Router } from 'express'
+import { labAuth } from '../../../common/middleware/lab_auth'
 import * as Drafts from '../controllers/drafts.controller'
 import * as Purchases from '../controllers/purchases.controller'
 import * as InventoryItems from '../controllers/inventory_items.controller'
@@ -24,6 +25,16 @@ import * as CashMovements from '../controllers/cash_movement.controller'
 import * as CashCounts from '../controllers/cash_count.controller'
 
 const r = Router()
+
+// Auth (public)
+r.post('/users/login', Users.login)
+r.post('/users/logout', Users.logout)
+// Legacy compatibility
+r.post('/login', Users.login)
+r.post('/logout', Users.logout)
+
+// All other Lab routes require JWT
+r.use(labAuth)
 
 // Purchase Drafts (Pending Review)
 r.get('/purchase-drafts', Drafts.list)
@@ -95,12 +106,6 @@ r.get('/users', Users.list)
 r.post('/users', Users.create)
 r.put('/users/:id', Users.update)
 r.delete('/users/:id', Users.remove)
-// Auth (Lab Users)
-r.post('/users/login', Users.login)
-r.post('/users/logout', Users.logout)
-// Legacy compatibility
-r.post('/login', Users.login)
-r.post('/logout', Users.logout)
 
 // Audit Logs
 r.get('/audit-logs', Audit.list)

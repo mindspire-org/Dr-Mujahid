@@ -1,13 +1,15 @@
 import { useEffect, useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
-import { hospitalApi, labApi, diagnosticApi, api as coreApi } from '../../utils/api'
+import { hospitalApi, labApi, diagnosticApi } from '../../utils/api'
 import { previewPrescriptionPdf } from '../../utils/prescriptionPdf'
+import type { PrescriptionPdfTemplate } from '../../utils/prescriptionPdf'
 import { printUltrasoundReport } from '../../components/diagnostic/diagnostic_UltrasoundGeneric'
 import { printCTScanReport } from '../../components/diagnostic/diagnostic_CTScan'
 import { printEchocardiographyReport } from '../../components/diagnostic/diagnostic_Echocardiography'
 import { printColonoscopyReport } from '../../components/diagnostic/diagnostic_Colonoscopy'
 import { printUpperGIEndoscopyReport } from '../../components/diagnostic/diagnostic_UpperGIEndoscopy'
 import { previewLabReportPdf } from '../../utils/printLabReport'
+import { Eye, X } from 'lucide-react'
 
 export default function Hospital_SearchPatients() {
   const location = useLocation()
@@ -21,8 +23,10 @@ export default function Hospital_SearchPatients() {
   const [loading, setLoading] = useState(false)
   const [patients, setPatients] = useState<any[]>([])
   const [expanded, setExpanded] = useState<Record<string, boolean>>({})
-  const [details, setDetails] = useState<Record<string, { pres?: any[]; lab?: any[]; diag?: any[]; ipd?: any[]; loading?: boolean }>>({})
+  const [details, setDetails] = useState<Record<string, { patient?: any; pres?: any[]; lab?: any[]; diag?: any[]; ipd?: any[]; loading?: boolean }>>({})
   const [busy, setBusy] = useState<{ pres?: string; lab?: string; diag?: string }>({})
+  const [patientDetailsOpen, setPatientDetailsOpen] = useState(false)
+  const [patientDetailsRow, setPatientDetailsRow] = useState<any | null>(null)
 
   const update = (k: keyof typeof form, v: string) => setForm(prev => ({ ...prev, [k]: v }))
 
@@ -105,23 +109,73 @@ export default function Hospital_SearchPatients() {
   async function onPrescriptionPdf(presId: string, mrn: string){
     try {
       setBusy(prev => ({ ...prev, pres: presId }))
-      const [detail, settings, labPat] = await Promise.all([
+      const [detail, settings] = await Promise.all([
         hospitalApi.getPrescription(presId) as any,
         hospitalApi.getSettings() as any,
-        labApi.getPatientByMrn(mrn) as any,
       ])
       const pres = detail?.prescription
-      const p = labPat?.patient
-      const doctor = { name: pres?.encounterId?.doctorId?.name || '-' }
-      const patient = { name: p?.fullName || '-', mrn: p?.mrn || mrn, gender: p?.gender || '-', fatherName: p?.fatherName || '-', phone: p?.phoneNormalized || '-', address: p?.address || '-' }
+
+      // Try to enrich doctor info (same behavior as prescription history)
+      let doctor: any = { name: pres?.encounterId?.doctorId?.name || '-', specialization: '', qualification: '', departmentName: '', phone: '' }
+      try {
+        const drList: any = await hospitalApi.listDoctors()
+        const doctors: any[] = drList?.doctors || []
+        const drId = String(pres?.encounterId?.doctorId?._id || pres?.encounterId?.doctorId || '')
+        const d = doctors.find(x => String(x._id || x.id) === drId)
+        if (d) doctor = { name: d.name || doctor.name, specialization: d.specialization || '', qualification: d.qualification || '', departmentName: '', phone: d.phone || '' }
+        try {
+          const depRes: any = await hospitalApi.listDepartments()
+          const depArray: any[] = (depRes?.departments || depRes || []) as any[]
+          const deptName = d?.primaryDepartmentId ? (depArray.find((z: any)=> String(z._id||z.id) === String(d.primaryDepartmentId))?.name || '') : ''
+          if (deptName) doctor.departmentName = deptName
+        } catch {}
+      } catch {}
+
+      let p: any = null
+      try {
+        const labPat: any = await labApi.getPatientByMrn(mrn)
+        p = labPat?.patient || null
+      } catch {}
+      if (!p) {
+        try {
+          const prof: any = await hospitalApi.getPatientProfile(mrn)
+          p = prof?.patient || null
+        } catch {}
+      }
+      if (!p) {
+        try {
+          const resp: any = await hospitalApi.searchPatients({ mrn, limit: 1 })
+          p = Array.isArray(resp?.patients) ? resp.patients[0] : null
+        } catch {}
+      }
+      let ageTxt = ''
+      try {
+        if (p?.age != null && String(p.age).trim()) ageTxt = String(p.age).trim()
+        else if (p?.dob) {
+          const dob = new Date(p.dob)
+          if (!isNaN(dob.getTime())) ageTxt = String(Math.max(0, Math.floor((Date.now()-dob.getTime())/31557600000)))
+        }
+      } catch {}
+      const patient = { name: p?.fullName || pres?.encounterId?.patientId?.fullName || '-', mrn: p?.mrn || p?.mrNo || pres?.encounterId?.patientId?.mrn || mrn, gender: p?.gender || p?.sex || '-', fatherName: p?.fatherName || p?.guardianName || '-', age: ageTxt || '-', phone: p?.phoneNormalized || p?.phone || '-', address: p?.address || '-' }
+
+      let tpl: PrescriptionPdfTemplate = 'default'
+      try {
+        const rawSess = localStorage.getItem('doctor.session')
+        const sess = rawSess ? JSON.parse(rawSess) : null
+        const raw = localStorage.getItem(`doctor.rx.template.${sess?.id || 'anon'}`) as PrescriptionPdfTemplate | null
+        if (raw === 'default' || raw === 'rx-vitals-left') tpl = raw
+      } catch {}
+
       await previewPrescriptionPdf({
         doctor,
         settings,
         patient,
         items: pres?.items || [],
+        vitals: pres?.vitals,
         primaryComplaint: pres?.primaryComplaint || pres?.complaints,
         primaryComplaintHistory: pres?.primaryComplaintHistory,
         familyHistory: pres?.familyHistory,
+        allergyHistory: pres?.allergyHistory,
         treatmentHistory: pres?.treatmentHistory,
         history: pres?.history,
         examFindings: pres?.examFindings,
@@ -129,10 +183,14 @@ export default function Hospital_SearchPatients() {
         advice: pres?.advice,
         labTests: pres?.labTests || [],
         labNotes: pres?.labNotes || '',
+        diagnosticTests: pres?.diagnosticTests || [],
+        diagnosticNotes: pres?.diagnosticNotes || '',
+        therapyTests: pres?.therapyTests || [],
+        therapyNotes: pres?.therapyNotes || '',
         createdAt: pres?.createdAt,
-      })
-    } catch (e) {
-      alert('Failed to generate prescription PDF')
+      }, tpl)
+    } catch (e: any) {
+      alert(e?.message || 'Failed to generate prescription PDF')
     } finally {
       setBusy(prev => ({ ...prev, pres: undefined }))
     }
@@ -209,9 +267,25 @@ export default function Hospital_SearchPatients() {
     try{ sessionStorage.removeItem('hospital.searchPatients.v1') } catch {}
   }
 
-  async function loadDetails(mrn: string, patientId?: string){
+  async function loadDetails(mrn: string){
     setDetails(prev => ({ ...prev, [mrn]: { ...(prev[mrn]||{}), loading: true } }))
     try {
+      // Prefer single backend-driven endpoint for both portals (more consistent + fewer calls)
+      try {
+        const res: any = await hospitalApi.getPatientProfile(mrn)
+        const pres: any[] = (res?.pres || []).map((p: any) => ({ id: p.id || p._id, createdAt: p.createdAt, diagnosis: p.diagnosis, doctor: p.doctor || '-', items: p.items || [] }))
+        const lab: any[] = (res?.lab || [])
+        const diag: any[] = (res?.diag || [])
+        const patient = res?.patient || null
+        setDetails(prev => ({ ...prev, [mrn]: { patient, pres, lab, diag, ipd: [], loading: false } }))
+        return
+      } catch {}
+
+      let patient: any = null
+      try {
+        const resp: any = await labApi.getPatientByMrn(mrn)
+        patient = resp?.patient || null
+      } catch {}
       const [presRes, ordersRes, diagOrdersRes] = await Promise.all([
         hospitalApi.listPrescriptions({ patientMrn: mrn, page: 1, limit: 50 }) as any,
         labApi.listOrders({ q: mrn, limit: 50 }) as any,
@@ -238,68 +312,10 @@ export default function Hospital_SearchPatients() {
         } catch {}
         diag.push({ id: String(o._id || o.id), tokenNo: o.tokenNo, createdAt: o.createdAt, status: o.status, tests: o.tests || [], hasResult })
       }
-      setDetails(prev => ({ ...prev, [mrn]: { pres, lab, diag, ipd: [], loading: false } }))
+      setDetails(prev => ({ ...prev, [mrn]: { patient, pres, lab, diag, ipd: [], loading: false } }))
     } catch {
-      setDetails(prev => ({ ...prev, [mrn]: { pres: [], lab: [], diag: [], ipd: [], loading: false } }))
+      setDetails(prev => ({ ...prev, [mrn]: { patient: null, pres: [], lab: [], diag: [], ipd: [], loading: false } }))
     }
-  }
-
-  async function previewHtml(path: string){
-    try{
-      const html = await coreApi(path) as any
-      const w = window.open('', '_blank'); if (!w) return
-      w.document.open(); w.document.write(String(html)); w.document.close(); w.focus()
-    } catch {
-      // Fallback to absolute URL
-      const isFile = typeof window !== 'undefined' && window.location?.protocol === 'file:'
-      const isElectronUA = typeof navigator !== 'undefined' && /Electron/i.test(navigator.userAgent || '')
-      const apiBase = (import.meta as any).env?.VITE_API_URL || ((isFile || isElectronUA) ? 'http://127.0.0.1:4000/api' : 'http://localhost:4000/api')
-      const url = `${apiBase}${path}`
-      window.open(url, '_blank')
-    }
-  }
-
-  const onPreviewDischarge = (encounterId: string)=> previewHtml(`/hospital/ipd/admissions/${encodeURIComponent(encounterId)}/discharge-summary/print`)
-  const onPreviewReceivedDeath = (encounterId: string)=> previewHtml(`/hospital/ipd/admissions/${encodeURIComponent(encounterId)}/received-death/print`)
-  const onPreviewDeathCertificate = (encounterId: string)=> previewHtml(`/hospital/ipd/admissions/${encodeURIComponent(encounterId)}/death-certificate/print`)
-  const onPreviewBirthCertificate = (encounterId: string)=> previewHtml(`/hospital/ipd/admissions/${encodeURIComponent(encounterId)}/birth-certificate/print`)
-  const onPreviewFinalInvoice = (encounterId: string)=> previewHtml(`/hospital/ipd/admissions/${encodeURIComponent(encounterId)}/final-invoice/print`)
-  async function onPreviewShortStay(encounterId: string){
-    try{
-      const [encRes, ssRes, settings] = await Promise.all([
-        hospitalApi.getIPDAdmissionById(encounterId) as any,
-        hospitalApi.getIpdShortStay(encounterId) as any,
-        hospitalApi.getSettings() as any,
-      ])
-      const enc = encRes?.encounter || {}
-      const p = enc?.patientId || {}
-      const data = ssRes?.shortStay?.data || {}
-      const s = settings || {}
-      const esc = (x:any)=> String(x==null?'':x).replace(/[&<>"']/g, c=> ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;','\'':'&#39;'} as any)[c])
-      const fmt = (d?:string,t?:string)=>{ try{ const dt = (d||'') + (t? ('T'+t):''); const x = new Date(dt||enc.startAt); if(!x||isNaN(x.getTime())) return ''; return x.toLocaleDateString()+', '+x.toLocaleTimeString() }catch{return ''} }
-      const logo = s?.logoDataUrl ? `<img src="${esc(s.logoDataUrl)}" style="height:60px;object-fit:contain"/>` : ''
-      const html = `<!doctype html><html><head><meta charset=\"utf-8\"/><style>@page{size:A4;margin:12mm}body{font-family:ui-sans-serif,system-ui,Segoe UI,Roboto,Arial;color:#111}.wrap{padding:0 4mm}.hdr{display:grid;grid-template-columns:96px 1fr 96px;align-items:center}.title{font-size:22px;font-weight:800;text-align:center}.muted{color:#475569;font-size:12px;text-align:center}.hr{border-bottom:2px solid #0f172a;margin:6px 0}.box{border:1px solid #e2e8f0;border-radius:10px;padding:6px;margin:8px 0}.kv{display:grid;grid-template-columns: 130px minmax(0,1fr) 130px minmax(0,1fr) 130px minmax(0,1fr);gap:4px 10px;font-size:12px;align-items:start}.kv>div:nth-child(2n){word-break:break-word}.sec{margin-top:6px}.sec .lbl{font-weight:700;margin-bottom:2px}</style></head><body><div class=wrap>
-      <div class=hdr><div>${logo}</div><div><div class=title>${esc(s.name||'Hospital')}</div><div class=muted>${esc(s.address||'-')}</div><div class=muted>Ph: ${esc(s.phone||'')} ${s.email? ' • '+esc(s.email):''}</div></div><div></div></div>
-      <div class=hr></div>
-      <div class=box><div class=kv>
-        <div>Medical Record No :</div><div>${esc(p.mrn||'-')}</div>
-        <div>Admission No :</div><div>${esc(enc.admissionNo||'-')}</div>
-        <div>Patient Name :</div><div>${esc(p.fullName||'-')}</div>
-        <div>Age / Gender :</div><div>${esc(p.age||'')} / ${esc(p.gender||'')}</div>
-        <div>Reg. & Sample Time :</div><div>${fmt(p.admitted||data.dateIn,data.timeIn)}</div>
-        <div>Discharge Time :</div><div>${fmt(data.dateOut,data.timeOut)}</div>
-        <div>Address :</div><div>${esc(p.address||'-')}</div>
-      </div></div>
-      <div class=sec><div class=lbl>Final Diagnosis</div><div>${esc(data.finalDiagnosis||'')}</div></div>
-      <div class=sec><div class=lbl>Presenting Complaints</div><div>${esc(data.presentingComplaints||'')}</div></div>
-      <div class=sec><div class=lbl>Brief History</div><div>${esc(data.briefHistory||'')}</div></div>
-      <div class=sec><div class=lbl>Treatment Given at Hospital</div><div>${esc(data.treatmentGiven||'')}</div></div>
-      <div class=sec><div class=lbl>Treatment at Discharge</div><div>${esc(data.treatmentAtDischarge||'')}</div></div>
-      <div class=sec><div class=lbl>Follow up Instructions</div><div>${esc(data.followUpInstructions||'')}</div></div>
-      <script>window.print && setTimeout(()=>window.print(),200)</script>
-      </div></body></html>`
-      const w = window.open('', '_blank'); if(!w) return; w.document.open(); w.document.write(html); w.document.close(); w.focus()
-    } catch { alert('Failed to open short-stay preview') }
   }
 
   return (
@@ -352,9 +368,18 @@ export default function Hospital_SearchPatients() {
                     onClick={()=>{
                       const mrn = String(p.mrn||'')
                       setExpanded(prev => ({ ...prev, [mrn]: !prev[mrn] }))
-                      if (!details[mrn]) loadDetails(mrn, String(p._id||''))
+                      if (!details[mrn]) loadDetails(mrn)
                     }}
                   >{expanded[String(p.mrn||'')] ? 'Hide Data' : 'View Data'}</button>
+                  <button
+                    type="button"
+                    className="rounded-md border border-slate-300 p-1 text-slate-700 hover:bg-slate-50"
+                    onClick={()=>{ setPatientDetailsRow(p); setPatientDetailsOpen(true) }}
+                    aria-label="View Details"
+                    title="View Details"
+                  >
+                    <Eye size={16} />
+                  </button>
                 </div>
                 {expanded[String(p.mrn||'')] && (
                   (()=>{
@@ -362,173 +387,273 @@ export default function Hospital_SearchPatients() {
                     const mrnKey = String(p.mrn||'')
                     const d = details[mrnKey] || {}
 
+                    const pdet = d.patient || null
+                    const patientCard = pdet ? (
+                      <div className="rounded-lg border border-slate-200 bg-white p-3 text-xs">
+                        <div className="text-[10px] font-bold text-slate-900">PATIENT DETAILS</div>
+                        <div className="mt-1 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                          <div><span className="font-semibold">Name:</span> {pdet.fullName || '-'}</div>
+                          <div><span className="font-semibold">MR:</span> {pdet.mrn || mrnKey || '-'}</div>
+                          <div><span className="font-semibold">Phone:</span> {pdet.phoneNormalized || '-'}</div>
+                          <div><span className="font-semibold">CNIC:</span> {pdet.cnicNormalized || pdet.cnic || '-'}</div>
+                          <div><span className="font-semibold">Gender:</span> {pdet.gender || '-'}</div>
+                          <div><span className="font-semibold">Age:</span> {pdet.age || '-'}</div>
+                          <div className="sm:col-span-2"><span className="font-semibold">Address:</span> {pdet.address || '-'}</div>
+                        </div>
+                      </div>
+                    ) : null
+
                     if (isDoctorPortal){
-                      const presCards = (d.pres||[]).map((pr: any) => (
-                        <div key={`pres_${String(pr.id)}`} className="rounded-lg border border-slate-200 bg-white p-3 text-xs">
-                          <div className="text-[10px] font-bold text-slate-900">PRESCRIPTION</div>
-                          <div className="mt-1 font-semibold text-slate-800">{new Date(pr.createdAt).toLocaleString()}</div>
-                          <div className="mt-0.5 text-slate-600">Doctor: {pr.doctor || '-'}</div>
-                          <div className="mt-2 text-slate-700">{pr.diagnosis || '-'}</div>
-                          <div className="mt-2">
-                            <button
-                              className="rounded-md border border-blue-800 px-2 py-1 text-xs text-blue-800 hover:bg-blue-50"
-                              onClick={()=>onPrescriptionPdf(String(pr.id), String(p.mrn||''))}
-                              disabled={busy.pres===String(pr.id)}
-                            >{busy.pres===String(pr.id)?'Generating...':'Prescription PDF'}</button>
-                          </div>
-                        </div>
-                      ))
-                      const labCards = (d.lab||[]).map((lr: any) => (
-                        <div key={`lab_${String(lr.id)}`} className="rounded-lg border border-slate-200 bg-white p-3 text-xs">
-                          <div className="text-[10px] font-bold text-slate-900">LAB REPORT</div>
-                          <div className="mt-1 font-semibold text-slate-800">{new Date(lr.createdAt).toLocaleString()}</div>
-                          <div className="mt-0.5 text-slate-600">Token: {lr.tokenNo || '-'}</div>
-                          <div className="mt-2 flex items-center justify-between gap-2">
-                            <div className="text-slate-700">Status: {lr.status || '-'}</div>
-                            <div className="flex items-center gap-2">
-                              {lr.hasResult && <>
-                                <Link to={`/lab/results?orderId=${encodeURIComponent(lr.id)}&token=${encodeURIComponent(lr.tokenNo||'')}`} className="text-sky-700 hover:underline">Open Report</Link>
-                                <button className="rounded-md border border-slate-300 px-2 py-1 text-xs" onClick={()=>onLabPdf(String(lr.id), String(p.mrn||''))} disabled={busy.lab===String(lr.id)}>{busy.lab===String(lr.id)?'Opening...':'Lab Report PDF'}</button>
-                              </>}
-                            </div>
-                          </div>
-                        </div>
-                      ))
-                      const diagCards = (d.diag||[]).map((dr: any) => (
-                        <div key={`diag_${String(dr.id)}`} className="rounded-lg border border-slate-200 bg-white p-3 text-xs">
-                          <div className="text-[10px] font-bold text-slate-900">DIAGNOSTIC REPORT</div>
-                          <div className="mt-1 font-semibold text-slate-800">{new Date(dr.createdAt).toLocaleString()}</div>
-                          <div className="mt-0.5 text-slate-600">Token: {dr.tokenNo || '-'}</div>
-                          <div className="mt-2 flex items-center justify-between gap-2">
-                            <div className="text-slate-700">Status: {dr.status || '-'}</div>
-                            <div className="flex items-center gap-2">
-                              {dr.hasResult && <button onClick={()=>onDiagnosticPrint(String(dr.id), String(p.mrn||''))} className="rounded-md border border-slate-300 px-2 py-1 text-xs" disabled={busy.diag===String(dr.id)}>{busy.diag===String(dr.id)?'Opening...':'Open Report'}</button>}
-                            </div>
-                          </div>
-                        </div>
-                      ))
+                      const toDay = (v: any) => {
+                        try {
+                          const dt = new Date(v)
+                          if (isNaN(dt.getTime())) return 'Unknown'
+                          const y = dt.getFullYear()
+                          const m = String(dt.getMonth() + 1).padStart(2, '0')
+                          const d2 = String(dt.getDate()).padStart(2, '0')
+                          return `${y}-${m}-${d2}`
+                        } catch {
+                          return 'Unknown'
+                        }
+                      }
+                      const presAll: any[] = Array.isArray(d.pres) ? d.pres : []
+                      const labAll: any[] = Array.isArray(d.lab) ? (d.lab.filter((lr: any)=>!!lr?.hasResult)) : []
+                      const diagAll: any[] = Array.isArray(d.diag) ? (d.diag.filter((dr: any)=>!!dr?.hasResult)) : []
+                      const visitKeys = Array.from(new Set([
+                        ...presAll.map((x:any)=>toDay(x.createdAt)),
+                        ...labAll.map((x:any)=>toDay(x.createdAt)),
+                        ...diagAll.map((x:any)=>toDay(x.createdAt)),
+                      ].filter((x: any) => x != null && String(x).trim() !== '')))
+                        .sort((a,b)=> (a>b?-1:a<b?1:0))
 
                       const presEmpty = (
-                        <div key="pres_empty" className="rounded-lg border border-slate-200 bg-white p-3 text-xs">
+                        <div className="rounded-lg border border-slate-200 bg-white p-3 text-xs">
                           <div className="text-[10px] font-bold text-slate-900">PRESCRIPTION</div>
                           <div className="mt-2 text-slate-600">No prescriptions found</div>
                         </div>
                       )
                       const labEmpty = (
-                        <div key="lab_empty" className="rounded-lg border border-slate-200 bg-white p-3 text-xs">
+                        <div className="rounded-lg border border-slate-200 bg-white p-3 text-xs">
                           <div className="text-[10px] font-bold text-slate-900">LAB REPORT</div>
                           <div className="mt-2 text-slate-600">No lab reports found</div>
                         </div>
                       )
                       const diagEmpty = (
-                        <div key="diag_empty" className="rounded-lg border border-slate-200 bg-white p-3 text-xs">
+                        <div className="rounded-lg border border-slate-200 bg-white p-3 text-xs">
                           <div className="text-[10px] font-bold text-slate-900">DIAGNOSTIC REPORT</div>
                           <div className="mt-2 text-slate-600">No diagnostic reports found</div>
                         </div>
                       )
 
                       return (
-                        <div className="mt-3 rounded-lg border border-blue-800 bg-white p-3">
-                          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-                            {(d.loading) && <div className="p-3 text-xs text-slate-500">Loading...</div>}
-                            {(!d.loading) && (
-                              <>
-                                {presCards.length ? presCards : presEmpty}
-                                {labCards.length ? labCards : labEmpty}
-                                {diagCards.length ? diagCards : diagEmpty}
-                                {(presCards.length + labCards.length + diagCards.length)===0 && (
-                                  <div className="rounded-lg border border-slate-200 bg-white p-4 text-sm text-slate-500">No records found</div>
-                                )}
-                              </>
-                            )}
-                          </div>
+                        <div className="mt-3 space-y-3">
+                          {(d.loading) && <div className="p-3 text-xs text-slate-500">Loading...</div>}
+                          {(!d.loading) && (
+                            <>
+                              {visitKeys.length===0 && (
+                                <div className="rounded-lg border border-blue-800 bg-white p-3">
+                                  <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                                    {presEmpty}
+                                    {labEmpty}
+                                    {diagEmpty}
+                                  </div>
+                                </div>
+                              )}
+                              {visitKeys.map((vk: string) => {
+                                const presFor = presAll.filter((x:any)=>toDay(x.createdAt)===vk)
+                                const labFor = labAll.filter((x:any)=>toDay(x.createdAt)===vk)
+                                const diagFor = diagAll.filter((x:any)=>toDay(x.createdAt)===vk)
+
+                                return (
+                                  <div key={`visit_${vk}`} className="rounded-lg border border-blue-800 bg-white p-3">
+                                    <div className="mb-2 text-xs font-semibold text-slate-800">Visit: {vk}</div>
+                                    <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                                      <div className="space-y-3">
+                                        {presFor.length ? presFor.map((pr: any) => (
+                                          <div key={`pres_${String(pr.id)}`} className="rounded-lg border border-slate-200 bg-white p-3 text-xs">
+                                            <div className="text-[10px] font-bold text-slate-900">PRESCRIPTION</div>
+                                            <div className="mt-1 font-semibold text-slate-800">{new Date(pr.createdAt).toLocaleString()}</div>
+                                            <div className="mt-0.5 text-slate-600">Doctor: {pr.doctor || '-'}</div>
+                                            <div className="mt-2 text-slate-700"><span className="font-semibold">Diagnosis / Disease:</span> {pr.diagnosis || '-'}</div>
+                                            <div className="mt-2">
+                                              <button
+                                                className="rounded-md border border-blue-800 px-2 py-1 text-xs text-blue-800 hover:bg-blue-50"
+                                                onClick={()=>onPrescriptionPdf(String(pr.id), String(p.mrn||''))}
+                                                disabled={busy.pres===String(pr.id)}
+                                              >{busy.pres===String(pr.id)?'Generating...':'Prescription PDF'}</button>
+                                            </div>
+                                          </div>
+                                        )) : presEmpty}
+                                      </div>
+
+                                      <div className="space-y-3">
+                                        {labFor.length ? labFor.map((lr: any) => (
+                                          <div key={`lab_${String(lr.id)}`} className="rounded-lg border border-slate-200 bg-white p-3 text-xs">
+                                            <div className="text-[10px] font-bold text-slate-900">LAB REPORT</div>
+                                            <div className="mt-1 font-semibold text-slate-800">{new Date(lr.createdAt).toLocaleString()}</div>
+                                            <div className="mt-0.5 text-slate-600">Token: {lr.tokenNo || '-'}</div>
+                                            <div className="mt-2 flex items-center justify-between gap-2">
+                                              <div className="text-slate-700">Status: {lr.status || '-'}</div>
+                                              <div className="flex items-center gap-2">
+                                                <>
+                                                  <Link to={`/lab/results?orderId=${encodeURIComponent(lr.id)}&token=${encodeURIComponent(lr.tokenNo||'')}`} className="text-sky-700 hover:underline">Open Report</Link>
+                                                  <button className="rounded-md border border-slate-300 px-2 py-1 text-xs" onClick={()=>onLabPdf(String(lr.id), String(p.mrn||''))} disabled={busy.lab===String(lr.id)}>{busy.lab===String(lr.id)?'Opening...':'Lab Report PDF'}</button>
+                                                </>
+                                              </div>
+                                            </div>
+                                          </div>
+                                        )) : labEmpty}
+                                      </div>
+
+                                      <div className="space-y-3">
+                                        {diagFor.length ? diagFor.map((dr: any) => (
+                                          <div key={`diag_${String(dr.id)}`} className="rounded-lg border border-slate-200 bg-white p-3 text-xs">
+                                            <div className="text-[10px] font-bold text-slate-900">DIAGNOSTIC REPORT</div>
+                                            <div className="mt-1 font-semibold text-slate-800">{new Date(dr.createdAt).toLocaleString()}</div>
+                                            <div className="mt-0.5 text-slate-600">Token: {dr.tokenNo || '-'}</div>
+                                            <div className="mt-2 flex items-center justify-between gap-2">
+                                              <div className="text-slate-700">Status: {dr.status || '-'}</div>
+                                              <div className="flex items-center gap-2">
+                                                <button onClick={()=>onDiagnosticPrint(String(dr.id), String(p.mrn||''))} className="rounded-md border border-slate-300 px-2 py-1 text-xs" disabled={busy.diag===String(dr.id)}>{busy.diag===String(dr.id)?'Opening...':'Open Report'}</button>
+                                              </div>
+                                            </div>
+                                          </div>
+                                        )) : diagEmpty}
+                                      </div>
+                                    </div>
+                                  </div>
+                                )
+                              })}
+                            </>
+                          )}
                         </div>
                       )
                     }
 
-                    // Hospital portal (default) layout stays as before
+                    // Hospital portal layout: match doctor portal "Visit" grouping UI
+                    const toDay = (v: any) => {
+                      try {
+                        const dt = new Date(v)
+                        if (isNaN(dt.getTime())) return 'Unknown'
+                        const y = dt.getFullYear()
+                        const m = String(dt.getMonth() + 1).padStart(2, '0')
+                        const d2 = String(dt.getDate()).padStart(2, '0')
+                        return `${y}-${m}-${d2}`
+                      } catch {
+                        return 'Unknown'
+                      }
+                    }
+
+                    const presAll: any[] = Array.isArray(d.pres) ? d.pres : []
+                    const labAll: any[] = Array.isArray(d.lab) ? (d.lab.filter((lr: any)=>!!lr?.hasResult)) : []
+                    const diagAll: any[] = Array.isArray(d.diag) ? (d.diag.filter((dr: any)=>!!dr?.hasResult)) : []
+                    const visitKeys = Array.from(new Set([
+                      ...presAll.map((x:any)=>toDay(x.createdAt)),
+                      ...labAll.map((x:any)=>toDay(x.createdAt)),
+                      ...diagAll.map((x:any)=>toDay(x.createdAt)),
+                    ].filter((x: any) => x != null && String(x).trim() !== '')))
+                      .sort((a,b)=> (a>b?-1:a<b?1:0))
+
+                    const presEmpty = (
+                      <div className="rounded-lg border border-slate-200 bg-white p-3 text-xs">
+                        <div className="text-[10px] font-bold text-slate-900">PRESCRIPTION</div>
+                        <div className="mt-2 text-slate-600">No prescriptions found</div>
+                      </div>
+                    )
+                    const labEmpty = (
+                      <div className="rounded-lg border border-slate-200 bg-white p-3 text-xs">
+                        <div className="text-[10px] font-bold text-slate-900">LAB REPORT</div>
+                        <div className="mt-2 text-slate-600">No lab reports found</div>
+                      </div>
+                    )
+                    const diagEmpty = (
+                      <div className="rounded-lg border border-slate-200 bg-white p-3 text-xs">
+                        <div className="text-[10px] font-bold text-slate-900">DIAGNOSTIC REPORT</div>
+                        <div className="mt-2 text-slate-600">No diagnostic reports found</div>
+                      </div>
+                    )
+
                     return (
-                      <div className="mt-3 grid gap-3 md:grid-cols-3">
-                        <div className="rounded-lg border border-blue-800">
-                          <div className="border-b border-blue-800 px-3 py-2 text-sm font-medium">Prescriptions</div>
-                          <div className="space-y-3 p-3">
-                            {(details[String(p.mrn||'')]?.loading) && <div className="p-3 text-xs text-slate-500">Loading...</div>}
-                            {(!details[String(p.mrn||'')]?.loading) && (details[String(p.mrn||'')]?.pres||[]).map((pr: any) => (
-                              <div key={String(pr.id)} className="rounded-lg bg-white p-3 text-xs">
-                                <div className="flex items-start justify-between gap-2">
-                                  <div>
-                                    <div className="font-semibold text-slate-800">{new Date(pr.createdAt).toLocaleString()}</div>
-                                    <div className="mt-0.5 text-slate-600">Doctor: {pr.doctor || '-'}</div>
-                                  </div>
-                                </div>
-                                <div className="mt-2 text-slate-700">{pr.diagnosis || '-'}</div>
-                                <div className="mt-2">
-                                  <button
-                                    className="rounded-md border border-blue-800 px-2 py-1 text-xs text-blue-800 hover:bg-blue-50"
-                                    onClick={()=>onPrescriptionPdf(String(pr.id), String(p.mrn||''))}
-                                    disabled={busy.pres===String(pr.id)}
-                                  >{busy.pres===String(pr.id)?'Generating...':'Prescription PDF'}</button>
+                      <div className="mt-3 space-y-3">
+                        {(details[String(p.mrn||'')]?.loading) && <div className="p-3 text-xs text-slate-500">Loading...</div>}
+                        {(!details[String(p.mrn||'')]?.loading) && (
+                          <>
+                            {visitKeys.length===0 && (
+                              <div className="rounded-lg border border-blue-800 bg-white p-3">
+                                <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                                  {presEmpty}
+                                  {labEmpty}
+                                  {diagEmpty}
                                 </div>
                               </div>
-                            ))}
-                            {(!details[String(p.mrn||'')]?.loading) && (details[String(p.mrn||'')]?.pres||[]).length===0 && (
-                              <div className="p-3 text-xs text-slate-500">No prescriptions found</div>
                             )}
-                          </div>
-                        </div>
-                        <div className="rounded-lg border border-blue-800">
-                          <div className="border-b border-blue-800 px-3 py-2 text-sm font-medium">Lab Reports</div>
-                          <div className="space-y-3 p-3">
-                            {(details[String(p.mrn||'')]?.loading) && <div className="p-3 text-xs text-slate-500">Loading...</div>}
-                            {(!details[String(p.mrn||'')]?.loading) && (details[String(p.mrn||'')]?.lab||[]).map((lr: any) => (
-                              <div key={String(lr.id)} className="rounded-lg border border-blue-800 bg-white p-3 text-xs">
-                                <div className="flex items-start justify-between gap-2">
-                                  <div>
-                                    <div className="font-semibold text-slate-800">{new Date(lr.createdAt).toLocaleString()}</div>
-                                    <div className="mt-0.5 text-slate-600">Token: {lr.tokenNo || '-'}</div>
+                            {visitKeys.map((vk: string) => {
+                              const presFor = presAll.filter((x:any)=>toDay(x.createdAt)===vk)
+                              const labFor = labAll.filter((x:any)=>toDay(x.createdAt)===vk)
+                              const diagFor = diagAll.filter((x:any)=>toDay(x.createdAt)===vk)
+
+                              return (
+                                <div key={`visit_${vk}`} className="rounded-lg border border-blue-800 bg-white p-3">
+                                  <div className="mb-2 text-xs font-semibold text-slate-800">Visit: {vk}</div>
+                                  <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                                    <div className="space-y-3">
+                                      {presFor.length ? presFor.map((pr: any) => (
+                                        <div key={`pres_${String(pr.id)}`} className="rounded-lg border border-slate-200 bg-white p-3 text-xs">
+                                          <div className="text-[10px] font-bold text-slate-900">PRESCRIPTION</div>
+                                          <div className="mt-1 font-semibold text-slate-800">{new Date(pr.createdAt).toLocaleString()}</div>
+                                          <div className="mt-0.5 text-slate-600">Doctor: {pr.doctor || '-'}</div>
+                                          <div className="mt-2 text-slate-700"><span className="font-semibold">Diagnosis / Disease:</span> {pr.diagnosis || '-'}</div>
+                                          <div className="mt-2">
+                                            <button
+                                              className="rounded-md border border-blue-800 px-2 py-1 text-xs text-blue-800 hover:bg-blue-50"
+                                              onClick={()=>onPrescriptionPdf(String(pr.id), String(p.mrn||''))}
+                                              disabled={busy.pres===String(pr.id)}
+                                            >{busy.pres===String(pr.id)?'Generating...':'Prescription PDF'}</button>
+                                          </div>
+                                        </div>
+                                      )) : presEmpty}
+                                    </div>
+
+                                    <div className="space-y-3">
+                                      {labFor.length ? labFor.map((lr: any) => (
+                                        <div key={`lab_${String(lr.id)}`} className="rounded-lg border border-slate-200 bg-white p-3 text-xs">
+                                          <div className="text-[10px] font-bold text-slate-900">LAB REPORT</div>
+                                          <div className="mt-1 font-semibold text-slate-800">{new Date(lr.createdAt).toLocaleString()}</div>
+                                          <div className="mt-0.5 text-slate-600">Token: {lr.tokenNo || '-'}</div>
+                                          <div className="mt-2 flex items-center justify-between gap-2">
+                                            <div className="text-slate-700">Status: {lr.status || '-'}</div>
+                                            <div className="flex items-center gap-2">
+                                              <>
+                                                <Link to={`/lab/results?orderId=${encodeURIComponent(lr.id)}&token=${encodeURIComponent(lr.tokenNo||'')}`} className="text-sky-700 hover:underline">Open Report</Link>
+                                                <button className="rounded-md border border-slate-300 px-2 py-1 text-xs" onClick={()=>onLabPdf(String(lr.id), String(p.mrn||''))} disabled={busy.lab===String(lr.id)}>{busy.lab===String(lr.id)?'Opening...':'Lab Report PDF'}</button>
+                                              </>
+                                            </div>
+                                          </div>
+                                        </div>
+                                      )) : labEmpty}
+                                    </div>
+
+                                    <div className="space-y-3">
+                                      {diagFor.length ? diagFor.map((dr: any) => (
+                                        <div key={`diag_${String(dr.id)}`} className="rounded-lg border border-slate-200 bg-white p-3 text-xs">
+                                          <div className="text-[10px] font-bold text-slate-900">DIAGNOSTIC REPORT</div>
+                                          <div className="mt-1 font-semibold text-slate-800">{new Date(dr.createdAt).toLocaleString()}</div>
+                                          <div className="mt-0.5 text-slate-600">Token: {dr.tokenNo || '-'}</div>
+                                          <div className="mt-2 flex items-center justify-between gap-2">
+                                            <div className="text-slate-700">Status: {dr.status || '-'}</div>
+                                            <div className="flex items-center gap-2">
+                                              <button onClick={()=>onDiagnosticPrint(String(dr.id), String(p.mrn||''))} className="rounded-md border border-slate-300 px-2 py-1 text-xs" disabled={busy.diag===String(dr.id)}>{busy.diag===String(dr.id)?'Opening...':'Open Report'}</button>
+                                            </div>
+                                          </div>
+                                        </div>
+                                      )) : diagEmpty}
+                                    </div>
                                   </div>
                                 </div>
-                                <div className="mt-2 flex items-center justify-between gap-2">
-                                  <div className="text-slate-700">Status: {lr.status || '-'}</div>
-                                  <div className="flex items-center gap-2">
-                                    {lr.hasResult && <>
-                                      <Link to={`/lab/results?orderId=${encodeURIComponent(lr.id)}&token=${encodeURIComponent(lr.tokenNo||'')}`} className="text-sky-700 hover:underline">Open Report</Link>
-                                      <button className="rounded-md border border-slate-300 px-2 py-1 text-xs" onClick={()=>onLabPdf(String(lr.id), String(p.mrn||''))} disabled={busy.lab===String(lr.id)}>{busy.lab===String(lr.id)?'Opening...':'Lab Report PDF'}</button>
-                                    </>}
-                                  </div>
-                                </div>
-                              </div>
-                            ))}
-                            {(!details[String(p.mrn||'')]?.loading) && (details[String(p.mrn||'')]?.lab||[]).length===0 && (
-                              <div className="p-3 text-xs text-slate-500">No lab records found</div>
-                            )}
-                          </div>
-                        </div>
-                        <div className="rounded-lg border border-blue-800">
-                          <div className="border-b border-blue-800 px-3 py-2 text-sm font-medium">Diagnostic Reports</div>
-                          <div className="space-y-3 p-3">
-                            {(details[String(p.mrn||'')]?.loading) && <div className="p-3 text-xs text-slate-500">Loading...</div>}
-                            {(!details[String(p.mrn||'')]?.loading) && (details[String(p.mrn||'')]?.diag||[]).map((dr: any) => (
-                              <div key={String(dr.id)} className="rounded-lg border border-blue-800 bg-white p-3 text-xs">
-                                <div className="flex items-start justify-between gap-2">
-                                  <div>
-                                    <div className="font-semibold text-slate-800">{new Date(dr.createdAt).toLocaleString()}</div>
-                                    <div className="mt-0.5 text-slate-600">Token: {dr.tokenNo || '-'}</div>
-                                  </div>
-                                </div>
-                                <div className="mt-2 flex items-center justify-between gap-2">
-                                  <div className="text-slate-700">Status: {dr.status || '-'}</div>
-                                  <div className="flex items-center gap-2">
-                                    {dr.hasResult && <button onClick={()=>onDiagnosticPrint(String(dr.id), String(p.mrn||''))} className="rounded-md border border-slate-300 px-2 py-1 text-xs" disabled={busy.diag===String(dr.id)}>{busy.diag===String(dr.id)?'Opening...':'Open Report'}</button>}
-                                  </div>
-                                </div>
-                              </div>
-                            ))}
-                            {(!details[String(p.mrn||'')]?.loading) && (details[String(p.mrn||'')]?.diag||[]).length===0 && (
-                              <div className="p-3 text-xs text-slate-500">No diagnostic records found</div>
-                            )}
-                          </div>
-                        </div>
+                              )
+                            })}
+                          </>
+                        )}
                       </div>
                     )
                   })()
@@ -538,6 +663,69 @@ export default function Hospital_SearchPatients() {
           </div>
         </div>
       )}
+
+      {patientDetailsOpen && (
+        <PatientDetailsDialog
+          open={patientDetailsOpen}
+          onClose={()=>{ setPatientDetailsOpen(false); setPatientDetailsRow(null) }}
+          patient={patientDetailsRow}
+        />
+      )}
+    </div>
+  )
+}
+
+function PatientDetailsDialog({ open, onClose, patient }: { open: boolean; onClose: ()=>void; patient: any }){
+  if (!open) return null
+  const p = patient || {}
+  const fullName = String(p.fullName || '-')
+  const mrn = String(p.mrn || '-')
+  const visitCount = p.visitCount != null ? String(p.visitCount) : '-'
+  const phone = String(p.phoneNormalized || p.phone || '-')
+  const fatherName = String(p.fatherName || '-')
+  const guardianRel = String(p.guardianRel || '-')
+  const age = String(p.age || '-')
+  const gender = String(p.gender || '-')
+  const cnic = String(p.cnicNormalized || '-')
+  const address = String(p.address || '-')
+  const guardianCombined = `${guardianRel !== '-' ? guardianRel : ''}${guardianRel !== '-' && fatherName !== '-' ? ' ' : ''}${fatherName !== '-' ? fatherName : ''}`.trim() || '-'
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 px-4 py-8">
+      <div className="w-full max-w-2xl overflow-hidden rounded-xl bg-white shadow-2xl ring-1 ring-black/5">
+        <div className="flex items-center justify-between border-b border-slate-200 px-5 py-3">
+          <div>
+            <h3 className="text-base font-semibold text-slate-800">Patient Details</h3>
+            <div className="mt-0.5 text-xs text-slate-500">{fullName} • {mrn}</div>
+          </div>
+          <button onClick={onClose} className="rounded-md border border-slate-200 p-2 text-slate-600 hover:bg-slate-50 hover:text-slate-900" aria-label="Close">
+            <X size={18} />
+          </button>
+        </div>
+
+        <div className="max-h-[75vh] overflow-y-auto px-5 py-4">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <Info label="Number of visits" value={visitCount} full />
+            <Info label="Patient Name" value={fullName} />
+            <Info label="MR Number" value={mrn} />
+            <Info label="Phone" value={phone} />
+            <Info label="Gender" value={gender} />
+            <Info label="Age" value={age} />
+            <Info label="Guardian" value={guardianCombined} />
+            <Info label="CNIC" value={cnic} />
+            <Info label="Address" value={address} full />
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function Info({ label, value, full }: { label: string; value: string; full?: boolean }){
+  return (
+    <div className={`${full ? 'sm:col-span-2' : ''} rounded-lg border border-slate-200 bg-slate-50 px-3 py-2`}>
+      <div className="text-xs font-medium text-slate-500">{label}</div>
+      <div className="mt-0.5 text-sm text-slate-800 break-words">{value || '-'}</div>
     </div>
   )
 }

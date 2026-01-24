@@ -7,6 +7,7 @@ export default function Lab_Layout() {
   const [collapsed, setCollapsed] = useState<boolean>(()=>{
     try { return localStorage.getItem('lab.sidebar.collapsed') === '1' } catch { return false }
   })
+  const [collapseSignal, setCollapseSignal] = useState(0)
   const toggle = () => {
     setCollapsed(v=>{
       const nv = !v
@@ -24,13 +25,15 @@ export default function Lab_Layout() {
   useEffect(()=>{
     try { localStorage.setItem('lab.theme', theme) } catch {}
   }, [theme])
-  // Also mirror Lab theme to <html> while Lab is mounted so Tailwind dark: variants apply
+  // Keep dark mode scoped to Lab only (do not set global html/body dark class)
   useEffect(()=>{
-    const html = document.documentElement
-    const enable = theme === 'dark'
-    try { html.classList.toggle('dark', enable) } catch {}
-    return () => { try { html.classList.remove('dark') } catch {} }
-  }, [theme])
+    try { document.documentElement.classList.remove('dark') } catch {}
+    try { document.body.classList.remove('dark') } catch {}
+    return () => {
+      try { document.documentElement.classList.remove('dark') } catch {}
+      try { document.body.classList.remove('dark') } catch {}
+    }
+  }, [])
   const toggleTheme = () => setTheme(t => t === 'dark' ? 'light' : 'dark')
   const navigate = useNavigate()
   useEffect(() => {
@@ -41,17 +44,26 @@ export default function Lab_Layout() {
       navigate('/lab/login')
     }
   }, [navigate])
-  const shell = theme === 'dark' ? 'min-h-dvh bg-slate-900 text-slate-100' : 'min-h-dvh bg-slate-50 text-slate-900'
+
+  const handleToggleSidebar = () => {
+    if (collapsed) { setCollapsed(false); return }
+    setCollapseSignal(s => s + 1)
+    window.setTimeout(() => { toggle() }, 200)
+  }
+
+  const shell = theme === 'dark' ? 'h-dvh overflow-hidden bg-slate-900 text-slate-100' : 'h-dvh overflow-hidden bg-slate-50 text-slate-900'
   return (
     <div className={theme === 'dark' ? 'lab-scope dark' : 'lab-scope'}>
       <div className={shell}>
-        <div className="flex">
-          <Lab_Sidebar collapsed={collapsed} />
-          <div className="flex min-h-dvh flex-1 flex-col">
-            <Lab_Header onToggleSidebar={toggle} onToggleTheme={toggleTheme} theme={theme} />
-            <main className="w-full flex-1 px-2 py-4">
-              <Outlet />
-            </main>
+        <div className="flex h-full flex-col">
+          <Lab_Header onToggleSidebar={handleToggleSidebar} collapsed={collapsed} onToggleTheme={toggleTheme} theme={theme} />
+          <div className="flex flex-1 min-h-0">
+            <Lab_Sidebar collapsed={collapsed} onExpand={() => setCollapsed(false)} collapseSignal={collapseSignal} />
+            <div className="flex-1 min-h-0 overflow-y-auto">
+              <main className="w-full px-2 py-4">
+                <Outlet />
+              </main>
+            </div>
           </div>
         </div>
       </div>

@@ -1,5 +1,6 @@
 import { Request, Response } from 'express'
 import { z } from 'zod'
+import bcrypt from 'bcryptjs'
 import { HospitalUser } from '../models/User'
 import { HospitalAuditLog } from '../models/AuditLog'
 
@@ -39,6 +40,7 @@ export async function create(req: Request, res: Response){
   const username = data.username.trim().toLowerCase()
   const existing = await HospitalUser.findOne({ username }).lean()
   if (existing) return res.status(409).json({ error: 'Username already exists' })
+  const passwordHash = await bcrypt.hash(data.password || '123', 10)
   const doc: any = await HospitalUser.create({
     username,
     role: data.role,
@@ -46,7 +48,7 @@ export async function create(req: Request, res: Response){
     phone: data.phone,
     email: data.email,
     active: data.active ?? true,
-    passwordHash: data.password || '123',
+    passwordHash,
     phoneNormalized: data.phone ? data.phone.replace(/\D+/g,'') : undefined,
   })
   try {
@@ -74,7 +76,7 @@ export async function update(req: Request, res: Response){
   if (data.phone != null) { patch.phone = data.phone; patch.phoneNormalized = data.phone ? data.phone.replace(/\D+/g,'') : undefined }
   if (data.email != null) patch.email = data.email
   if (data.active != null) patch.active = data.active
-  if (data.password) patch.passwordHash = data.password
+  if (data.password) patch.passwordHash = await bcrypt.hash(data.password, 10)
   const u: any = await HospitalUser.findByIdAndUpdate(id, patch, { new: true })
   if (!u) return res.status(404).json({ error: 'User not found' })
   try {
@@ -114,11 +116,22 @@ export async function remove(req: Request, res: Response){
 export async function login(req: Request, res: Response){
   const data = loginSchema.parse(req.body)
   const username = data.username.trim().toLowerCase()
-  const u: any = await HospitalUser.findOne({ username }).lean()
+  const u: any = await HospitalUser.findOne({ username })
   if (!u || u.active === false) return res.status(401).json({ error: 'Invalid credentials' })
   const pass = data.password || ''
-  const ok = (u.passwordHash && pass && u.passwordHash === pass) || (!u.passwordHash && pass === '123') || (!pass && u.passwordHash === '123')
+  const stored = String(u.passwordHash || '')
+  const isBcrypt = stored.startsWith('$2a$') || stored.startsWith('$2b$') || stored.startsWith('$2y$')
+  const ok = isBcrypt
+    ? await bcrypt.compare(pass, stored)
+    : ((stored && pass && stored === pass) || (!stored && pass === '123') || (!pass && stored === '123'))
   if (!ok) return res.status(401).json({ error: 'Invalid credentials' })
+
+  if (!isBcrypt) {
+    try {
+      u.passwordHash = await bcrypt.hash(pass || stored || '123', 10)
+      await u.save()
+    } catch {}
+  }
   try {
     const actor = u.fullName || u.username || 'system'
     await HospitalAuditLog.create({

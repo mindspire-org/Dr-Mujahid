@@ -95,6 +95,12 @@ export async function buildRxDefault(data: PrescriptionPdfData){
   pdf.text(`Address: ${data.patient?.address || '-'}`, 14, y)
   y += 5
   pdf.text(`Date: ${createdAt.toLocaleString()}`, 14, y)
+  y += 5
+
+  // Divider after patient info
+  pdf.setDrawColor(203, 213, 225)
+  pdf.setLineWidth(0.4)
+  pdf.line(14, y, pageWidth - 14, y)
   y += 6
   // Sections in simple blocks matching target layout
   const section = (label: string, value?: string) => {

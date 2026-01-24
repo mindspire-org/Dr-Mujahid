@@ -2,7 +2,7 @@ import { useMemo, useState, useEffect, useRef } from 'react'
 import { useLocation } from 'react-router-dom'
 import Diagnostic_TokenSlip from '../../components/diagnostic/Diagnostic_TokenSlip'
 import type { DiagnosticTokenSlipData } from '../../components/diagnostic/Diagnostic_TokenSlip'
-import { labApi, diagnosticApi, corporateApi, hospitalApi } from '../../utils/api'
+import { diagnosticApi, corporateApi, hospitalApi } from '../../utils/api'
 
 export default function Diagnostic_TokenGenerator(){
   const location = useLocation() as any
@@ -157,7 +157,7 @@ export default function Diagnostic_TokenGenerator(){
     let cancelled = false
     ;(async()=>{
       try{
-        const r: any = await labApi.getPatientByMrn(mrn)
+        const r: any = await diagnosticApi.getPatientByMrn(mrn)
         if (cancelled) return
         const p = r?.patient || r
         if (!p) return
@@ -193,7 +193,7 @@ export default function Diagnostic_TokenGenerator(){
       const norm = (s: string)=> String(s||'').trim().toLowerCase().replace(/\s+/g,' ')
       const key = `${digits}|${norm(nameEntered)}`
       if (skipLookupKeyRef.current === key || lastPromptKeyRef.current === key) return
-      const r: any = await labApi.searchPatients({ phone: digits, limit: 10 })
+      const r: any = await diagnosticApi.searchPatients({ phone: digits, limit: 10 })
       const list: any[] = Array.isArray(r?.patients) ? r.patients : []
       if (!list.length) return
       const p = list.find(x => norm(x.fullName) === norm(nameEntered))
@@ -220,7 +220,7 @@ export default function Diagnostic_TokenGenerator(){
     const code = (mrn || '').trim()
     if (!code) return
     try{
-      const r: any = await labApi.getPatientByMrn(code)
+      const r: any = await diagnosticApi.getPatientByMrn(code)
       const p = r?.patient || r
       if (!p){ alert('No patient found for this MR number'); return }
       setSelectedPatient(p)
@@ -256,11 +256,11 @@ export default function Diagnostic_TokenGenerator(){
         if ((phone||'') !== (patient.phoneNormalized||'')) patch.phone = phone
         if ((cnic||'') !== (patient.cnicNormalized||'')) patch.cnic = cnic
         if (Object.keys(patch).length){
-          const upd = await labApi.updatePatient(String(patient._id), patch) as any
+          const upd = await diagnosticApi.updatePatient(String(patient._id), patch) as any
           patient = upd?.patient || patient
         }
       } else {
-        const fr = await labApi.findOrCreatePatient({ fullName: fullName.trim(), guardianName: guardianName || undefined, phone: phone || undefined, cnic: cnic || undefined, gender: gender || undefined, address: address || undefined, age: age || undefined, guardianRel: guardianRel || undefined }) as any
+        const fr = await diagnosticApi.findOrCreatePatient({ fullName: fullName.trim(), guardianName: guardianName || undefined, phone: phone || undefined, cnic: cnic || undefined, gender: gender || undefined, address: address || undefined, age: age || undefined, guardianRel: guardianRel || undefined }) as any
         patient = fr?.patient
       }
       if (!patient?._id) throw new Error('Failed to resolve patient')
@@ -443,37 +443,36 @@ export default function Diagnostic_TokenGenerator(){
         </div>
       </div>
 
-      {/* Corporate Billing */}
-      <div className="rounded-xl border border-slate-200 bg-white p-4">
-        <div className="text-base font-semibold text-slate-800">Corporate Billing</div>
-        <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-4">
-          <div>
-            <label className="mb-1 block text-xs font-medium text-slate-600">Corporate Company</label>
-            <select value={corpCompanyId} onChange={e=>setCorpCompanyId(e.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-2">
-              <option value="">None</option>
-              {companies.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-            </select>
+      {false && (
+        <div className="rounded-xl border border-slate-200 bg-white p-4">
+          <div className="text-base font-semibold text-slate-800">Corporate Billing</div>
+          <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-4">
+            <div>
+              <label className="mb-1 block text-xs font-medium text-slate-600">Corporate Company</label>
+              <select value={corpCompanyId} onChange={e=>setCorpCompanyId(e.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-2">
+                <option value="">None</option>
+                {companies.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </select>
+            </div>
+            {corpCompanyId && (
+              <>
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-slate-600">Pre-Auth No</label>
+                  <input value={corpPreAuthNo} onChange={e=>setCorpPreAuthNo(e.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-2" placeholder="Optional" />
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-slate-600">Co-Pay %</label>
+                  <input value={corpCoPayPercent} onChange={e=>setCorpCoPayPercent(e.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-2" placeholder="0-100" />
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-slate-600">Coverage Cap</label>
+                  <input value={corpCoverageCap} onChange={e=>setCorpCoverageCap(e.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-2" placeholder="e.g., 5000" />
+                </div>
+              </>
+            )}
           </div>
-          {corpCompanyId && (
-            <>
-              <div>
-                <label className="mb-1 block text-xs font-medium text-slate-600">Pre-Auth No</label>
-                <input value={corpPreAuthNo} onChange={e=>setCorpPreAuthNo(e.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-2" placeholder="Optional" />
-              </div>
-              <div>
-                <label className="mb-1 block text-xs font-medium text-slate-600">Co-Pay %</label>
-                <input value={corpCoPayPercent} onChange={e=>setCorpCoPayPercent(e.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-2" placeholder="0-100" />
-              </div>
-              <div>
-                <label className="mb-1 block text-xs font-medium text-slate-600">Coverage Cap</label>
-                <input value={corpCoverageCap} onChange={e=>setCorpCoverageCap(e.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-2" placeholder="e.g., 5000" />
-              </div>
-            </>
-          )}
         </div>
-      </div>
-
-      
+      )}
 
       {/* Slip modal */}
       {slipOpen && slipData && (

@@ -1,12 +1,13 @@
 import { useEffect, useState } from 'react'
 import { diagnosticApi } from '../../utils/api'
+import SuggestField from '../../components/SuggestField'
 
 type Test = { id: string; name: string; price: number }
 
 const OPTIONS = [
-  'Ultrasound',
-  'CTScan',
-  'EchocardioGraphy',
+  'Stress Tolerance Test (STT)',
+  'Nocturnal Penile Tumescence (NPT)',
+  'Penile Doppler Study (PDS)',
 ]
 
 export default function Diagnostic_Tests(){
@@ -28,6 +29,18 @@ export default function Diagnostic_Tests(){
   const [editId, setEditId] = useState<string | null>(null)
   const [formName, setFormName] = useState('')
   const [formPrice, setFormPrice] = useState('')
+
+  const optionsForDialog = (() => {
+    const existing = new Set(items.map(i => String(i.name || '').trim().toLowerCase()))
+    // When editing, allow current name to remain selectable.
+    const current = editId ? String(formName || '').trim().toLowerCase() : ''
+    return OPTIONS.filter(o => {
+      const key = String(o || '').trim().toLowerCase()
+      if (!key) return false
+      if (editId && key === current) return true
+      return !existing.has(key)
+    })
+  })()
 
   const openAdd = () => { setEditId(null); setFormName(''); setFormPrice(''); setShowModal(true) }
   const openEdit = (id: string) => {
@@ -99,10 +112,14 @@ export default function Diagnostic_Tests(){
             <div className="mt-4 space-y-3">
               <div>
                 <label className="mb-1 block text-sm text-slate-700">Test Name</label>
-                <select value={formName} onChange={e=>setFormName(e.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-2 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-200">
-                  <option value="">Select Test</option>
-                  {OPTIONS.map(o=> (<option key={o} value={o}>{o}</option>))}
-                </select>
+                <SuggestField
+                  value={formName}
+                  onChange={setFormName}
+                  suggestions={optionsForDialog}
+                  placeholder="Start typing to search"
+                  as="input"
+                  className="w-full rounded-md border border-slate-300 px-3 py-2 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-200"
+                />
               </div>
               <div>
                 <label className="mb-1 block text-sm text-slate-700">Price</label>

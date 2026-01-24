@@ -7,7 +7,7 @@ function getToken(path?: string){
   try {
     if (path) {
       if (path.startsWith('/hospital')) return localStorage.getItem('hospital.token') || localStorage.getItem('token') || ''
-      if (path.startsWith('/diagnostic')) return localStorage.getItem('diagnostic.token') || localStorage.getItem('token') || ''
+      if (path.startsWith('/diagnostic')) return localStorage.getItem('diagnostic.token') || ''
       if (path.startsWith('/lab')) return localStorage.getItem('lab.token') || localStorage.getItem('aesthetic.token') || localStorage.getItem('token') || ''
       if (path.startsWith('/aesthetic')) return localStorage.getItem('aesthetic.token') || localStorage.getItem('token') || ''
       if (path.startsWith('/pharmacy')) return localStorage.getItem('pharmacy.token') || localStorage.getItem('token') || ''
@@ -170,6 +170,25 @@ export const diagnosticApi = {
   createUser: (data: any)=> api('/diagnostic/users', { method: 'POST', body: JSON.stringify(data) }),
   updateUser: (id: string, data: any)=> api(`/diagnostic/users/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   deleteUser: (id: string)=> api(`/diagnostic/users/${id}`, { method: 'DELETE' }),
+
+  // Patients (shared Lab_Patient; diagnostic-scoped access)
+  searchPatients: (params?: { phone?: string; name?: string; limit?: number }) => {
+    const qs = new URLSearchParams()
+    if (params?.phone) qs.set('phone', params.phone)
+    if (params?.name) qs.set('name', params.name)
+    if (params?.limit != null) qs.set('limit', String(params.limit))
+    const s = qs.toString()
+    return api(`/diagnostic/patients/search${s?`?${s}`:''}`)
+  },
+  findOrCreatePatient: (data: { fullName: string; guardianName?: string; phone?: string; cnic?: string; gender?: string; address?: string; age?: string; guardianRel?: string; selectId?: string }) =>
+    api('/diagnostic/patients/find-or-create', { method: 'POST', body: JSON.stringify(data) }),
+  getPatientByMrn: (mrn: string) => {
+    const qs = new URLSearchParams()
+    qs.set('mrn', mrn)
+    return api(`/diagnostic/patients/by-mrn?${qs.toString()}`)
+  },
+  updatePatient: (id: string, data: { fullName?: string; fatherName?: string; gender?: string; address?: string; phone?: string; cnic?: string; guardianRel?: string }) =>
+    api(`/diagnostic/patients/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
 }
 
 export const corporateApi = {
@@ -1252,8 +1271,39 @@ export const hospitalApi = {
   // Settings
   getSettings: () => api('/hospital/settings'),
   updateSettings: (data: any) => api('/hospital/settings', { method: 'PUT', body: JSON.stringify(data) }),
+
+  // Appointments
+  listAppointments: (params?: { from?: string; to?: string; appointmentType?: 'OPD'|'Diagnostic'|'Therapy'|'Counselling'; status?: 'Scheduled'|'Checked-In'|'Completed'|'Cancelled'; doctorId?: string; departmentId?: string; q?: string }) => {
+    const qs = new URLSearchParams()
+    if (params?.from) qs.set('from', params.from)
+    if (params?.to) qs.set('to', params.to)
+    if (params?.appointmentType) qs.set('appointmentType', params.appointmentType)
+    if (params?.status) qs.set('status', params.status)
+    if (params?.doctorId) qs.set('doctorId', params.doctorId)
+    if (params?.departmentId) qs.set('departmentId', params.departmentId)
+    if (params?.q) qs.set('q', params.q)
+    const s = qs.toString()
+    return api(`/hospital/appointments${s?`?${s}`:''}`)
+  },
+  getAppointment: (id: string) => api(`/hospital/appointments/${encodeURIComponent(id)}`),
+  createAppointment: (data: any) => api('/hospital/appointments', { method: 'POST', body: JSON.stringify(data) }),
+  updateAppointment: (id: string, data: any) => api(`/hospital/appointments/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify(data) }),
+  deleteAppointment: (id: string) => api(`/hospital/appointments/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+
+  // History Taking (OPD)
+  getHistoryTaking: (encounterId: string) =>
+    api(`/hospital/opd/encounters/${encodeURIComponent(encounterId)}/history-taking`),
+  upsertHistoryTaking: (encounterId: string, data: { tokenId?: string; hxBy?: string; hxDate?: string; data?: any; submittedBy?: string }) =>
+    api(`/hospital/opd/encounters/${encodeURIComponent(encounterId)}/history-taking`, { method: 'PUT', body: JSON.stringify(data) }),
+
+  // Lab Reports Entry (OPD)
+  getLabReportsEntry: (encounterId: string) =>
+    api(`/hospital/opd/encounters/${encodeURIComponent(encounterId)}/lab-reports-entry`),
+  upsertLabReportsEntry: (encounterId: string, data: { tokenId?: string; hxBy?: string; hxDate?: string; labInformation?: any; semenAnalysis?: any; tests?: any[]; submittedBy?: string }) =>
+    api(`/hospital/opd/encounters/${encodeURIComponent(encounterId)}/lab-reports-entry`, { method: 'PUT', body: JSON.stringify(data) }),
   // Patients lookup
   searchPatientsByPhone: (phone: string) => api(`/hospital/patients/search?phone=${encodeURIComponent(phone||'')}`),
+  getPatientProfile: (mrn: string) => api(`/hospital/patients/profile?mrn=${encodeURIComponent(mrn||'')}`),
   searchPatients: (params?: { mrn?: string; name?: string; fatherName?: string; phone?: string; limit?: number; doctorId?: string }) => {
     const qs = new URLSearchParams()
     if (params?.mrn) qs.set('mrn', params.mrn)
@@ -1273,6 +1323,7 @@ export const hospitalApi = {
     api(`/hospital/departments/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
 
   listDoctors: () => api('/hospital/doctors'),
+  getDoctor: (id: string) => api(`/hospital/doctors/${id}`),
   createDoctor: (data: { name: string; departmentIds?: string[]; primaryDepartmentId?: string; opdBaseFee?: number; opdFollowupFee?: number; followupWindowDays?: number; username?: string; password?: string; phone?: string; specialization?: string; qualification?: string; cnic?: string; shares?: number; active?: boolean }) =>
     api('/hospital/doctors', { method: 'POST', body: JSON.stringify(data) }),
   updateDoctor: (id: string, data: { name: string; departmentIds?: string[]; primaryDepartmentId?: string; opdBaseFee?: number; opdFollowupFee?: number; followupWindowDays?: number; username?: string; password?: string; phone?: string; specialization?: string; qualification?: string; cnic?: string; shares?: number; active?: boolean }) =>
@@ -1336,6 +1387,9 @@ export const hospitalApi = {
   updateTokenStatus: (id: string, status: 'queued'|'in-progress'|'completed'|'returned'|'cancelled') =>
     api(`/hospital/tokens/${id}/status`, { method: 'PATCH', body: JSON.stringify({ status }) }),
 
+  deleteToken: (id: string) =>
+    api(`/hospital/tokens/${id}`, { method: 'DELETE' }),
+
   payToken: (id: string, data: { receptionistName?: string; paymentMethod: 'Cash'|'Card'|'Insurance'; accountNumberIban?: string }) =>
     api(`/hospital/tokens/${id}/pay`, { method: 'PATCH', body: JSON.stringify(data) }),
 
@@ -1369,6 +1423,108 @@ export const hospitalApi = {
   createExpense: (data: { dateIso: string; departmentId?: string; category: string; amount: number; note?: string; method?: string; ref?: string }) =>
     api('/hospital/expenses', { method: 'POST', body: JSON.stringify(data) }),
   deleteExpense: (id: string) => api(`/hospital/expenses/${id}`, { method: 'DELETE' }),
+
+  // Finance & Accounts
+  listFinanceAccounts: (params?: { q?: string; category?: 'PettyCash'|'Other'; active?: boolean; context?: string }) => {
+    const qs = new URLSearchParams()
+    if (params?.q) qs.set('q', params.q)
+    if (params?.category) qs.set('category', params.category)
+    if (params?.active != null) qs.set('active', String(!!params.active))
+    if (params?.context) qs.set('context', params.context)
+    const s = qs.toString()
+    return api(`/hospital/finance/accounts${s?`?${s}`:''}`)
+  },
+  createFinanceAccount: (data: { code: string; name: string; type: 'Asset'|'Liability'|'Equity'|'Income'|'Expense'; category?: 'PettyCash'|'Other'; active?: boolean; department?: string; responsibleStaff?: string }) =>
+    api('/hospital/finance/accounts', { method: 'POST', body: JSON.stringify(data) }),
+  updateFinanceAccount: (id: string, data: Partial<{ name: string; type: 'Asset'|'Liability'|'Equity'|'Income'|'Expense'; category: 'PettyCash'|'Other'; active: boolean }>) =>
+    api(`/hospital/finance/accounts/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  deleteFinanceAccount: (id: string) =>
+    api(`/hospital/finance/accounts/${id}`, { method: 'DELETE' }),
+  // Opening Balance
+  postOpeningBalance: (data: { dateIso: string; account: string; amount: number; memo?: string }) =>
+    api('/hospital/finance/opening-balance', { method: 'POST', body: JSON.stringify(data) }),
+  // Bank Accounts
+  listBankAccounts: (params?: { q?: string; status?: 'Active'|'Inactive' }) => {
+    const qs = new URLSearchParams()
+    if (params?.q) qs.set('q', params.q)
+    if (params?.status) qs.set('status', params.status)
+    const s = qs.toString()
+    return api(`/hospital/finance/bank-accounts${s?`?${s}`:''}`)
+  },
+  createBankAccount: (data: { bankName: string; accountTitle: string; accountNumber: string; branchName?: string; branchCode?: string; iban?: string; swift?: string; openingBalance?: number; status?: 'Active'|'Inactive' }) =>
+    api('/hospital/finance/bank-accounts', { method: 'POST', body: JSON.stringify(data) }),
+  updateBankAccount: (id: string, data: Partial<{ bankName: string; accountTitle: string; branchName: string; branchCode: string; iban: string; swift: string; status: 'Active'|'Inactive' }>) =>
+    api(`/hospital/finance/bank-accounts/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  deleteBankAccount: (id: string) =>
+    api(`/hospital/finance/bank-accounts/${id}`, { method: 'DELETE' }),
+  // Petty Cash Accounts (dedicated collection)
+  listPettyCashAccounts: (params?: { q?: string; status?: 'Active'|'Inactive' }) => {
+    const qs = new URLSearchParams()
+    if (params?.q) qs.set('q', params.q)
+    if (params?.status) qs.set('status', params.status)
+    const s = qs.toString()
+    return api(`/hospital/finance/petty-cash-accounts${s?`?${s}`:''}`)
+  },
+  createPettyCashAccount: (data: { code: string; name: string; department?: string; responsibleStaff?: string; status?: 'Active'|'Inactive' }) =>
+    api('/hospital/finance/petty-cash-accounts', { method: 'POST', body: JSON.stringify(data) }),
+  updatePettyCashAccount: (id: string, data: Partial<{ name: string; department: string; responsibleStaff: string; status: 'Active'|'Inactive' }>) =>
+    api(`/hospital/finance/petty-cash-accounts/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  deletePettyCashAccount: (id: string) =>
+    api(`/hospital/finance/petty-cash-accounts/${id}`, { method: 'DELETE' }),
+  getPettyCashStatus: (code: string) => {
+    const qs = new URLSearchParams();
+    if (code) qs.set('code', code);
+    return api(`/hospital/finance/petty-cash/status?${qs.toString()}`)
+  },
+  refillPettyCash: (data: { pettyCode: string; bankId: string; amount: number; dateIso?: string; memo?: string }) =>
+    api('/hospital/finance/petty-cash/refill', { method: 'POST', body: JSON.stringify(data) }),
+  getFinanceAccountBalance: (code: string) => {
+    const qs = new URLSearchParams();
+    if (code) qs.set('code', code);
+    return api(`/hospital/finance/account-balance?${qs.toString()}`)
+  },
+  listOpeningBalanceEntries: (params?: { code?: string }) => {
+    const qs = new URLSearchParams();
+    if (params?.code) qs.set('code', params.code)
+    const s = qs.toString()
+    return api(`/hospital/finance/opening-balances${s?`?${s}`:''}`)
+  },
+  listPettyRefillEntries: (params?: { code?: string }) => {
+    const qs = new URLSearchParams();
+    if (params?.code) qs.set('code', params.code)
+    const s = qs.toString()
+    return api(`/hospital/finance/petty-cash/refills${s?`?${s}`:''}`)
+  },
+  // Hospital Petty Cash Expenses (backend-driven)
+  listPettyCashExpenses: (params?: { from?: string; to?: string }) => {
+    const qs = new URLSearchParams()
+    if (params?.from) qs.set('from', params.from)
+    if (params?.to) qs.set('to', params.to)
+    const s = qs.toString()
+    return api(`/hospital/finance/petty-cash/expenses${s?`?${s}`:''}`)
+  },
+  createPettyCashExpense: (data: { dateIso: string; type: string; amount: number; usedBy?: string }) =>
+    api('/hospital/finance/petty-cash/expenses', { method: 'POST', body: JSON.stringify(data) }),
+  deletePettyCashExpense: (id: string) =>
+    api(`/hospital/finance/petty-cash/expenses/${id}`, { method: 'DELETE' }),
+  getPatientStatement: (params: { mrn: string; from?: string; to?: string }) => {
+    const qs = new URLSearchParams()
+    qs.set('mrn', params.mrn)
+    if (params?.from) qs.set('from', params.from)
+    if (params?.to) qs.set('to', params.to)
+    return api(`/hospital/finance/patient-statement?${qs.toString()}`)
+  },
+  // List statements across patients (MRN optional) — requires backend support
+  listPatientStatements: (params?: { from?: string; to?: string; q?: string; page?: number; limit?: number }) => {
+    const qs = new URLSearchParams()
+    if (params?.from) qs.set('from', params.from)
+    if (params?.to) qs.set('to', params.to)
+    if (params?.q) qs.set('q', params.q)
+    if (params?.page != null) qs.set('page', String(params.page))
+    if (params?.limit != null) qs.set('limit', String(params.limit))
+    const s = qs.toString()
+    return api(`/hospital/finance/patient-statements${s?`?${s}`:''}`)
+  },
 
   // Bed Management
   listFloors: () => api('/hospital/floors'),

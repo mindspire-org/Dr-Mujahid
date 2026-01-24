@@ -21,11 +21,12 @@ export default function Pharmacy_Login() {
     e.preventDefault()
     try {
       setError('')
+      try { localStorage.removeItem('pharmacy.token') } catch {}
       const res: any = await pharmacyApi.loginUser(username.trim(), password)
       try {
         localStorage.setItem('pharmacy.user', JSON.stringify(res?.user || { username }))
         localStorage.setItem('pharma_user', username.trim())
-        localStorage.setItem('pharmacy.token', 'ok')
+        if (res?.token) localStorage.setItem('pharmacy.token', String(res.token))
       } catch {}
       try {
         await pharmacyApi.createAuditLog({

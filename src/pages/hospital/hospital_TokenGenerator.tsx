@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { useLocation } from 'react-router-dom'
 import { logAudit } from '../../utils/hospital_audit'
 import { hospitalApi } from '../../utils/api'
 import Hospital_TokenSlip, { type TokenSlipData } from '../../components/hospital/Hospital_TokenSlip'
 
 export default function Hospital_TokenGenerator() {
+  const location = useLocation()
   const [departments, setDepartments] = useState<Array<{ id: string; name: string; fee?: number }>>([])
   const [doctors, setDoctors] = useState<Array<{ id: string; name: string; fee?: number; primaryDepartmentId?: string; departmentIds?: string[] }>>([])
   useEffect(() => {
@@ -47,6 +49,29 @@ export default function Hospital_TokenGenerator() {
     discount: '0',
   })
 
+  // Auto-fill when coming from Appointments page
+  useEffect(() => {
+    const st: any = (location as any)?.state
+    if (!st || st.from !== 'appointments') return
+    const p = st.patient || {}
+    const doctorId = String(st.doctorId || '')
+    const departmentId = String(st.departmentId || '')
+    setForm(prev => ({
+      ...prev,
+      phone: String(p.phone || prev.phone || ''),
+      patientName: String(p.name || prev.patientName || ''),
+      age: String(p.age || prev.age || ''),
+      gender: String(p.gender || prev.gender || ''),
+      guardianRel: String(p.guardianRel || prev.guardianRel || ''),
+      guardianName: String(p.guardianName || prev.guardianName || ''),
+      cnic: String(p.cnic || prev.cnic || ''),
+      address: String(p.address || prev.address || ''),
+      doctor: doctorId || prev.doctor,
+      departmentId: departmentId || prev.departmentId,
+    }))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   // Scheduling (OPD appointments)
   const [apptDate, setApptDate] = useState<string>(()=> new Date().toISOString().slice(0,10))
   const [schedules, setSchedules] = useState<Array<{ _id: string; doctorId: string; dateIso: string; startTime: string; endTime: string; slotMinutes: number; fee?: number; followupFee?: number }>>([])
@@ -60,6 +85,16 @@ export default function Hospital_TokenGenerator() {
   }, [form.consultationFee, form.discount])
 
   const update = (key: keyof typeof form, value: string) => setForm(prev => ({ ...prev, [key]: value }))
+
+  const paymentStatus = String(form.paymentStatus || 'paid')
+
+  useEffect(() => {
+    if (paymentStatus !== 'unpaid') return
+    setForm(prev => {
+      if (!prev.billingType && !(prev as any).accountNumberIban) return prev
+      return { ...prev, billingType: '', accountNumberIban: '' }
+    })
+  }, [paymentStatus])
 
   const reset = () => {
     setForm({
@@ -120,16 +155,6 @@ export default function Hospital_TokenGenerator() {
     let cancelled = false
     async function run(){
       if (!form.departmentId) return
-      const getBaseFromQuote = async (): Promise<number> => {
-        try {
-          const res = await hospitalApi.quoteOPDPrice({ departmentId: form.departmentId, doctorId: form.doctor || undefined, visitType: undefined }) as any
-          const feeCandidate = [res?.fee, res?.feeResolved, res?.pricing?.feeResolved, res?.amount, res?.price, res?.data?.fee]
-            .map((x:any)=> Number(x))
-            .find(n => Number.isFinite(n) && n >= 0)
-          return feeCandidate ?? 0
-        } catch { return 0 }
-      }
-
       try {
         const res = await hospitalApi.quoteOPDPrice({ departmentId: form.departmentId, doctorId: form.doctor || undefined, visitType: undefined }) as any
         if (!cancelled){
@@ -151,7 +176,7 @@ export default function Hospital_TokenGenerator() {
     async function loadSchedules(){
       try {
         if (!form.doctor) { setSchedules([]); setScheduleId(''); return }
-        const res = await hospitalApi.listDoctorSchedules({ doctorId: form.doctor, date: apptDate }) as any
+        const res = await hospitalApi.listDoctorSchedules({ doctorId: form.doctor, departmentId: form.departmentId || undefined, date: apptDate }) as any
         const items = (res?.schedules || []) as any[]
         if (cancelled) return
         setSchedules(items)
@@ -161,7 +186,7 @@ export default function Hospital_TokenGenerator() {
     }
     if (!isIPD) loadSchedules()
     return () => { cancelled = true }
-  }, [form.doctor, apptDate, isIPD])
+  }, [form.doctor, form.departmentId, apptDate, isIPD])
 
   const [confirmPatient, setConfirmPatient] = useState<null | { summary: string; patient: any; key: string }>(null)
   const [focusAfterConfirm, setFocusAfterConfirm] = useState<null | 'phone' | 'name'>(null)
@@ -503,25 +528,29 @@ export default function Hospital_TokenGenerator() {
                   </div>
                 </div>
               )}
-              <div>
-                <label className="mb-1 block text-sm font-medium text-slate-700">Payment Method</label>
-                <select className="w-full rounded-md border border-slate-300 px-3 py-2 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-200" value={form.billingType} onChange={e=>update('billingType', e.target.value)}>
-                  <option>Cash</option>
-                  <option>Card</option>
-                  <option>Insurance</option>
-                </select>
-              </div>
+              {paymentStatus !== 'unpaid' && (
+                <>
+                  <div>
+                    <label className="mb-1 block text-sm font-medium text-slate-700">Payment Method</label>
+                    <select className="w-full rounded-md border border-slate-300 px-3 py-2 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-200" value={form.billingType} onChange={e=>update('billingType', e.target.value)}>
+                      <option>Cash</option>
+                      <option>Card</option>
+                      <option>Insurance</option>
+                    </select>
+                  </div>
 
-              {String(form.billingType||'') === 'Card' && (
-                <div>
-                  <label className="mb-1 block text-sm font-medium text-slate-700">Account Number/IBAN</label>
-                  <input
-                    className="w-full rounded-md border border-slate-300 px-3 py-2 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-200"
-                    placeholder="Enter account number or IBAN"
-                    value={(form as any).accountNumberIban || ''}
-                    onChange={e=>update('accountNumberIban' as any, e.target.value)}
-                  />
-                </div>
+                  {String(form.billingType||'') === 'Card' && (
+                    <div>
+                      <label className="mb-1 block text-sm font-medium text-slate-700">Account Number/IBAN</label>
+                      <input
+                        className="w-full rounded-md border border-slate-300 px-3 py-2 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-200"
+                        placeholder="Enter account number or IBAN"
+                        value={(form as any).accountNumberIban || ''}
+                        onChange={e=>update('accountNumberIban' as any, e.target.value)}
+                      />
+                    </div>
+                  )}
+                </>
               )}
               {isIPD && (
                 <>

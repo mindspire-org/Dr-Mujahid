@@ -1,8 +1,7 @@
-﻿import { Route, Routes } from 'react-router-dom'
+import { Route, Routes } from 'react-router-dom'
 import Home from './pages/Home'
 import Hospital_Login from './pages/hospital/hospital_Login'
 import Hospital_Layout from './pages/hospital/hospital_Layout'
-import Hospital_IPDDashboard from './pages/hospital/hospital_ipddashboard'
 import Hospital_BedManagement from './pages/hospital/hospital_BedManagement'
 import Hospital_TokenGenerator from './pages/hospital/hospital_TokenGenerator'
 import Hospital_TodayTokens from './pages/hospital/hospital_TodayTokens'
@@ -28,6 +27,9 @@ import Hospital_DoctorFinance from './pages/hospital/hospital_DoctorFinance.tsx'
 import Hospital_IpdPrintReport from './pages/hospital/hospital_IpdPrintReport.tsx'
 import Hospital_IPDReferrals from './pages/hospital/hospital_IPDReferrals.tsx'
 import Hospital_DoctorSchedules from './pages/hospital/hospital_DoctorSchedules'
+import Hospital_HistoryTaking from './pages/hospital/hospital_HistoryTaking'
+import Hospital_LabReportsEntry from './pages/hospital/hospital_LabReportsEntry'
+import Hospital_Appointments from './pages/hospital/hospital_Appointments'
 import Hospital_ReceivedDeathList from './pages/hospital/forms/Hospital_ReceivedDeathList.tsx'
 import Hospital_DeathCertificateList from './pages/hospital/forms/Hospital_DeathCertificateList.tsx'
 import Hospital_BirthCertificateList from './pages/hospital/forms/Hospital_BirthCertificateList.tsx'
@@ -93,7 +95,13 @@ import Finance_Transactions from './pages/hospital/hospital_Transactions.tsx'
 import Finance_ExpenseHistory from './pages/hospital/hospital_ExpenseHistory.tsx'
 import Finance_Login from './pages/finance/finance_Login.tsx'
 import Finance_Layout from './pages/finance/finance_Layout.tsx'
+import Finance_PatientStatement from './pages/finance/finance_PatientStatement'
+import Finance_OpeningBalances from './pages/finance/finance_OpeningBalances'
+import Finance_ManagePettyCash from './pages/finance/finance_ManagePettyCash'
+import Finance_PettyCashAccounts from './pages/finance/finance_PettyCashAccounts'
+import Finance_BankAccounts from './pages/finance/finance_BankAccounts'
 import Hospital_DoctorPayouts from './pages/hospital/hospital_DoctorPayouts'
+import Hospital_PettyCashBalance from './pages/hospital/hospital_PettyCashBalance'
 import Pharmacy_Login from './pages/pharmacy/pharmacy_Login'
 import Pharmacy_Layout from './pages/pharmacy/pharmacy_Layout'
 import Pharmacy_Dashboard from './pages/pharmacy/pharmacy_Dashboard'
@@ -176,9 +184,11 @@ export default function App() {
         <Route path="today-tokens" element={<Hospital_TodayTokens />} />
         <Route path="token-history" element={<Hospital_TokenHistory />} />
         <Route path="token-generator" element={<Hospital_TokenGenerator />} />
+        <Route path="appointments" element={<Hospital_Appointments />} />
         <Route path="departments" element={<Hospital_Departments />} />
-        <Route path="ipd" element={<Hospital_IPDDashboard />} />
         <Route path="bed-management" element={<Hospital_BedManagement />} />
+        <Route path="history-taking" element={<Hospital_HistoryTaking />} />
+        <Route path="lab-reports-entry" element={<Hospital_LabReportsEntry />} />
         <Route path="patient-list" element={<Hospital_PatientList />} />
         <Route path="patient/:id" element={<Hospital_PatientProfile />} />
         <Route path="patient/:id/print" element={<Hospital_IpdPrintReport />} />
@@ -193,6 +203,7 @@ export default function App() {
         <Route path="finance/add-expense" element={<Finance_AddExpense />} />
         <Route path="finance/transactions" element={<Finance_Transactions />} />
         <Route path="finance/expenses" element={<Finance_ExpenseHistory />} />
+        <Route path="finance/petty-cash-balance" element={<Hospital_PettyCashBalance />} />
         <Route path="finance/doctors" element={<Hospital_DoctorFinance />} />
         <Route path="finance/doctor-payouts" element={<Hospital_DoctorPayouts />} />
         <Route path="search-patients" element={<Hospital_SearchPatients />} />
@@ -338,6 +349,11 @@ export default function App() {
       <Route path="/finance/login" element={<Finance_Login />} />
       <Route path="/finance" element={<Finance_Layout />}>
         <Route index element={<Finance />} />
+        <Route path="patient-statement" element={<Finance_PatientStatement />} />
+        <Route path="opening-balances" element={<Finance_OpeningBalances />} />
+        <Route path="manage-petty-cash" element={<Finance_ManagePettyCash />} />
+        <Route path="petty-cash" element={<Finance_PettyCashAccounts />} />
+        <Route path="bank-accounts" element={<Finance_BankAccounts />} />
         <Route path="add-expense" element={<Finance_AddExpense />} />
         <Route path="transactions" element={<Finance_Transactions />} />
         <Route path="expenses" element={<Finance_ExpenseHistory />} />
@@ -352,6 +368,7 @@ export default function App() {
       <Route path="/reception" element={<Reception_Layout />}>
         <Route path="token-generator" element={<Hospital_TokenGenerator />} />
         <Route path="today-tokens" element={<Hospital_TodayTokens />} />
+        <Route path="search-patients" element={<Hospital_SearchPatients />} />
         <Route path="ipd-billing" element={<Reception_IPDBilling />} />
         <Route path="ipd-transactions" element={<Reception_IPDTransactions />} />
         <Route path="diagnostic/token-generator" element={<Diagnostic_TokenGenerator />} />

@@ -1,4 +1,5 @@
 import { Router } from 'express'
+import { diagnosticAuth } from '../../../common/middleware/diagnostic_auth'
 import * as Tests from '../controllers/tests.controller'
 import * as Settings from '../controllers/settings.controller'
 import * as Orders from '../controllers/orders.controller'
@@ -6,12 +7,16 @@ import * as Results from '../controllers/results.controller'
 import * as Users from '../controllers/users.controller'
 import * as Audit from '../controllers/audit.controller'
 import * as Auth from '../controllers/auth.controller'
+import * as Patients from '../controllers/patients.controller'
 
 const r = Router()
 
 // Auth
 r.post('/login', Auth.login)
 r.post('/logout', Auth.logout)
+
+// All other Diagnostic routes require JWT
+r.use(diagnosticAuth)
 
 // Tests (Catalog for Diagnostics)
 r.get('/tests', Tests.list)
@@ -22,6 +27,12 @@ r.delete('/tests/:id', Tests.remove)
 // Settings
 r.get('/settings', Settings.get)
 r.put('/settings', Settings.update)
+
+// Patients (shared Lab_Patient; diagnostic-scoped access)
+r.get('/patients/search', Patients.search)
+r.post('/patients/find-or-create', Patients.findOrCreate)
+r.get('/patients/by-mrn', Patients.getByMrn)
+r.put('/patients/:id', Patients.update)
 
 // Orders (Sample Intake for Diagnostics)
 r.get('/orders', Orders.list)

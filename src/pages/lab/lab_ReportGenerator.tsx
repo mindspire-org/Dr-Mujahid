@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Search, FileDown, Printer, Pencil } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { labApi } from '../../utils/api'
-import { previewLabReportPdf, downloadLabReportPdf } from '../../utils/printLabReport'
+import { previewLabReportPdf } from '../../utils/printLabReport'
 
 type ResultRow = { id: string; test: string; normal?: string; unit?: string; value?: string; comment?: string; flag?: 'normal'|'abnormal'|'critical' }
 
@@ -133,33 +133,6 @@ export default function Lab_ReportGenerator() {
   const printRow = async (e: Enriched) => {
     const o = e.order; if (!o) return
     await previewLabReportPdf({
-      tokenNo: e.track?.tokenNo || '-',
-      createdAt: o.createdAt,
-      sampleTime: e.track?.sampleTime,
-      reportingTime: e.track?.reportingTime,
-      patient: {
-        fullName: o.patient.fullName,
-        phone: o.patient.phone,
-        mrn: o.patient.mrn,
-      },
-      rows: (e.r.rows||[]).map((row: ResultRow)=>({
-        test: row.test,
-        normal: row.normal,
-        unit: row.unit,
-        value: row.value,
-        prevValue: (row as any).prevValue,
-        flag: row.flag,
-        comment: row.comment,
-      })),
-      interpretation: e.r.interpretation,
-      referringConsultant: o.referringConsultant,
-      profileLabel: (e.testsStr || '').trim() || undefined,
-    })
-  }
-
-  const downloadRowPdf = async (e: Enriched) => {
-    const o = e.order; if (!o) return
-    await downloadLabReportPdf({
       tokenNo: e.track?.tokenNo || '-',
       createdAt: o.createdAt,
       sampleTime: e.track?.sampleTime,

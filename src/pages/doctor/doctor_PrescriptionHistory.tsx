@@ -695,15 +695,30 @@ async function fetchPrintData(id: string){
   let patient: any = { name: pres?.encounterId?.patientId?.fullName || '-', mrn: pres?.encounterId?.patientId?.mrn || '-' }
   try {
     if (patient?.mrn) {
-      const resp: any = await labApi.getPatientByMrn(patient.mrn)
-      const p = resp?.patient
+      let p: any = null
+      try {
+        const resp: any = await labApi.getPatientByMrn(patient.mrn)
+        p = resp?.patient || null
+      } catch {}
+      // Fallback: doctor portal may not have access to /lab routes; use hospital patient search (DB-backed)
+      if (!p) {
+        try {
+          const resp: any = await hospitalApi.searchPatients({ mrn: String(patient.mrn), limit: 1 })
+          const first = Array.isArray(resp?.patients) ? resp.patients[0] : null
+          p = first || null
+        } catch {}
+      }
       if (p) {
         let ageTxt = ''
         try {
           if (p.age != null) ageTxt = String(p.age)
           else if (p.dob) { const dob = new Date(p.dob); if (!isNaN(dob.getTime())) ageTxt = String(Math.max(0, Math.floor((Date.now()-dob.getTime())/31557600000))) }
         } catch {}
-        patient = { name: p.fullName || patient.name, mrn: p.mrn || patient.mrn, gender: p.gender || '-', fatherName: p.fatherName || '-', phone: p.phoneNormalized || '-', address: p.address || '-', age: ageTxt }
+        const gender = p.gender || p.sex || p.Gender || '-'
+        const fatherName = p.fatherName || p.guardianName || p.guardian || p.father || p.father_name || '-'
+        const phone = p.phoneNormalized || p.phone || p.phoneNumber || p.mobile || p.mobileNo || '-'
+        const address = p.address || p.homeAddress || p.currentAddress || p.addressLine || '-'
+        patient = { name: p.fullName || p.name || patient.name, mrn: p.mrn || p.mrNo || patient.mrn, gender, fatherName, phone, address, age: ageTxt }
       }
     }
   } catch {}

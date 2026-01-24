@@ -1,8 +1,7 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { hospitalApi } from '../../utils/api'
 
 export default function Hospital_IPDDashboard() {
-  const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [totalBeds, setTotalBeds] = useState(0)
   const [occupiedBeds, setOccupiedBeds] = useState(0)
@@ -12,7 +11,7 @@ export default function Hospital_IPDDashboard() {
   useEffect(() => { load() }, [])
 
   async function load(){
-    setLoading(true); setError(null)
+    setError(null)
     try {
       // Beds
       const [allBedsRes, occBedsRes] = await Promise.all([
@@ -47,7 +46,7 @@ export default function Hospital_IPDDashboard() {
       setWeeklyData(counts)
     } catch (e: any) {
       setError(e?.message || 'Failed to load dashboard')
-    } finally { setLoading(false) }
+    } finally { /* no-op */ }
   }
 
   const availableBeds = Math.max(0, totalBeds - occupiedBeds)

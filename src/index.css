@@ -39,6 +39,15 @@ body {
 .btn:hover { background: var(--navy-600); }
 .btn:focus-visible { outline: 2px solid #93c5fd; outline-offset: 2px; }
 
+.hospital-sidebar-scroll { scrollbar-width: none; }
+.hospital-sidebar-scroll:hover { scrollbar-width: thin; scrollbar-color: rgba(255,255,255,0.35) transparent; }
+.hospital-sidebar-scroll::-webkit-scrollbar { width: 0px; height: 0px; }
+.hospital-sidebar-scroll:hover::-webkit-scrollbar { width: 6px; }
+.hospital-sidebar-scroll::-webkit-scrollbar-track { background: transparent; }
+.hospital-sidebar-scroll::-webkit-scrollbar-thumb { background: transparent; border-radius: 999px; }
+.hospital-sidebar-scroll:hover::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.35); }
+.hospital-sidebar-scroll:hover::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.5); }
+
 /* Navy helpers */
 .bg-navy { background: var(--navy); }
 .text-navy { color: var(--navy); }

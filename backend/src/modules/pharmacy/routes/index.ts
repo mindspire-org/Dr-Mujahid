@@ -1,4 +1,5 @@
 import { Router } from 'express'
+import { pharmacyAuth } from '../../../common/middleware/pharmacy_auth'
 import * as Suppliers from '../controllers/suppliers.controller'
 import * as Customers from '../controllers/customers.controller'
 import * as Expenses from '../controllers/expenses.controller'
@@ -19,6 +20,18 @@ import * as Notifications from '../controllers/notifications.controller'
 import * as SidebarPerms from '../controllers/sidebarPermission.controller'
 
 const r = Router()
+
+function requirePharmacyAdmin(req: any, res: any, next: any){
+  const role = String(req?.user?.role || '').toLowerCase()
+  if (role === 'admin') return next()
+  return res.status(403).json({ error: 'Forbidden: admin access required' })
+}
+
+// Auth (public)
+r.post('/users/login', Users.login)
+
+// All other Pharmacy routes require JWT
+r.use(pharmacyAuth)
 
 // Suppliers
 r.get('/suppliers', Suppliers.list)
@@ -92,21 +105,20 @@ r.get('/audit-logs', Audit.list)
 r.post('/audit-logs', Audit.create)
 
 // Users (Pharmacy)
-r.get('/users', Users.list)
-r.post('/users', Users.create)
-r.put('/users/:id', Users.update)
-r.delete('/users/:id', Users.remove)
-r.post('/users/login', Users.login)
+r.get('/users', requirePharmacyAdmin, Users.list)
+r.post('/users', requirePharmacyAdmin, Users.create)
+r.put('/users/:id', requirePharmacyAdmin, Users.update)
+r.delete('/users/:id', requirePharmacyAdmin, Users.remove)
 r.post('/users/logout', Users.logout)
 
 // Sidebar Roles & Permissions
-r.get('/sidebar-roles', SidebarPerms.listRoles)
-r.post('/sidebar-roles', SidebarPerms.createRole)
-r.delete('/sidebar-roles/:role', SidebarPerms.deleteRole)
+r.get('/sidebar-roles', requirePharmacyAdmin, SidebarPerms.listRoles)
+r.post('/sidebar-roles', requirePharmacyAdmin, SidebarPerms.createRole)
+r.delete('/sidebar-roles/:role', requirePharmacyAdmin, SidebarPerms.deleteRole)
 
 r.get('/sidebar-permissions', SidebarPerms.getPermissions)
-r.put('/sidebar-permissions/:role', SidebarPerms.updatePermissions)
-r.post('/sidebar-permissions/:role/reset', SidebarPerms.resetToDefaults)
+r.put('/sidebar-permissions/:role', requirePharmacyAdmin, SidebarPerms.updatePermissions)
+r.post('/sidebar-permissions/:role/reset', requirePharmacyAdmin, SidebarPerms.resetToDefaults)
 
 // Purchase Drafts (Pending Review)
 r.get('/purchase-drafts', Drafts.list)

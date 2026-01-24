@@ -211,27 +211,23 @@ export default function Pharmacy_Reports() {
   const [comparison, setComparison] = useState<Array<{ label: string; value: number }>>([])
   const [pharmacyName, setPharmacyName] = useState('Pharmacy')
   // Chart theming that reacts to theme toggle
-  const [darkTheme, setDarkTheme] = useState<boolean>(
+  const [isDark, setIsDark] = useState<boolean>(
     typeof document !== 'undefined' ? document.documentElement.classList.contains('dark') : false
   )
   useEffect(() => {
     if (typeof document === 'undefined') return
     const el = document.documentElement
-    const update = () => setDarkTheme(el.classList.contains('dark'))
+    const update = () => setIsDark(el.classList.contains('dark'))
     update()
     const obs = new MutationObserver(update)
     obs.observe(el, { attributes: true, attributeFilter: ['class'] })
     return () => obs.disconnect()
   }, [])
-  const tickColor = darkTheme ? '#cbd5e1' : '#64748b'
-  const gridColor = darkTheme ? 'rgba(148,163,184,0.25)' : 'rgba(148,163,184,0.35)'
-  const dcsContainer = darkTheme
-    ? 'rounded-2xl border-2 border-slate-700 bg-gradient-to-br from-slate-900 to-slate-800 p-6 shadow-lg'
-    : 'rounded-2xl border-2 border-slate-200 bg-gradient-to-br from-white to-sky-50/30 p-6 shadow-lg'
-  const innerPanelClass = darkTheme
-    ? 'mt-6 rounded-2xl border-2 border-slate-700 bg-slate-800/70 backdrop-blur-sm p-6 shadow-inner'
-    : 'mt-6 rounded-2xl border-2 border-slate-200 bg-white/70 backdrop-blur-sm p-6 shadow-inner'
-  const rowBg = (light: string) => `rounded-xl ${darkTheme ? 'bg-slate-800' : light} p-4`
+  const tickColor = isDark ? '#cbd5e1' : '#64748b'
+  const gridColor = isDark ? 'rgba(148,163,184,0.25)' : 'rgba(148,163,184,0.35)'
+  const dcsContainer = 'rounded-2xl border-2 border-slate-200 bg-gradient-to-br from-white to-sky-50/30 p-6 shadow-lg dark:border-slate-700 dark:from-slate-900 dark:to-slate-800'
+  const innerPanelClass = 'mt-6 rounded-2xl border-2 border-slate-200 bg-white/70 backdrop-blur-sm p-6 shadow-inner dark:border-slate-700 dark:bg-slate-800/70'
+  const rowBg = (light: string) => `rounded-xl ${isDark ? 'bg-slate-800' : light} p-4`
 
   function fmt(d: Date){
     const y = d.getFullYear()

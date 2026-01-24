@@ -4,7 +4,11 @@ import Pharmacy_Header from '../../components/pharmacy/pharmacy_Header'
 import { useEffect, useState } from 'react'
 
 export default function Pharmacy_Layout() {
-  const [collapsed, setCollapsed] = useState(false)
+  const [collapsed, setCollapsed] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false
+    return localStorage.getItem('pharmacy.sidebar_collapsed') === '1'
+  })
+  const [collapseSignal, setCollapseSignal] = useState(0)
   const [theme, setTheme] = useState<'light'|'dark'>(()=>{
     try { return (localStorage.getItem('pharmacy.theme') as 'light'|'dark') || 'light' } catch { return 'light' }
   })
@@ -65,19 +69,32 @@ export default function Pharmacy_Layout() {
     window.addEventListener('keydown', onKeyDown as any)
     return () => window.removeEventListener('keydown', onKeyDown as any)
   }, [navigate, location.pathname])
-  const shell = theme === 'dark' ? 'min-h-dvh bg-slate-900 text-slate-100' : 'min-h-dvh bg-slate-50 text-slate-900'
+
+  useEffect(() => {
+    try { localStorage.setItem('pharmacy.sidebar_collapsed', collapsed ? '1' : '0') } catch {}
+  }, [collapsed])
+
+  const handleToggleSidebar = () => {
+    if (collapsed) { setCollapsed(false); return }
+    setCollapseSignal(s => s + 1)
+    window.setTimeout(() => { setCollapsed(true) }, 200)
+  }
+
+  const shell = theme === 'dark' ? 'h-dvh overflow-hidden bg-slate-900 text-slate-100' : 'h-dvh overflow-hidden bg-slate-50 text-slate-900'
   return (
     <div className={theme === 'dark' ? 'pharmacy-scope dark' : 'pharmacy-scope'}>
       <div className={shell}>
-        <div className="flex">
-          <Pharmacy_Sidebar collapsed={collapsed} />
-          <div className="flex min-h-dvh flex-1 flex-col">
-            <Pharmacy_Header onToggleSidebar={() => setCollapsed(c => !c)} onToggleTheme={() => setTheme(t=>t==='dark'?'light':'dark')} theme={theme} />
-            <main className="w-full flex-1 px-4 py-4 md:px-6 md:py-6">
-              <div className="mx-auto w-full max-w-[1600px]">
-                <Outlet />
-              </div>
-            </main>
+        <div className="flex h-full flex-col">
+          <Pharmacy_Header onToggleSidebar={handleToggleSidebar} collapsed={collapsed} onToggleTheme={() => setTheme(t=>t==='dark'?'light':'dark')} theme={theme} />
+          <div className="flex flex-1 min-h-0">
+            <Pharmacy_Sidebar collapsed={collapsed} onExpand={() => setCollapsed(false)} collapseSignal={collapseSignal} />
+            <div className="flex-1 min-h-0 overflow-y-auto">
+              <main className="w-full px-4 py-4 md:px-6 md:py-6">
+                <div className="mx-auto w-full max-w-[1600px]">
+                  <Outlet />
+                </div>
+              </main>
+            </div>
           </div>
         </div>
       </div>

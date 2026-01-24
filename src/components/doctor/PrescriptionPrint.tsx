@@ -76,7 +76,9 @@ export default function PrescriptionPrint({ printId = 'prescription-print', doct
           <div className="col-span-3 text-xs text-slate-600"><span className="font-semibold">Date:</span> {dt.toLocaleDateString()} {dt.toLocaleTimeString()}</div>
         </div>
 
-        <div className="grid grid-cols-12 gap-4">
+        <div className="mb-3 h-px w-full bg-black-700" />
+
+        <div className="grid grid-cols-12 gap-6">
           <div className="col-span-5 space-y-3">
             <div className="text-sm font-semibold">Prescription</div>
             <div>

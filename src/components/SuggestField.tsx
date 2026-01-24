@@ -10,6 +10,7 @@ export default function SuggestField({
   mode = 'default',
   as = 'textarea',
   onBlurValue,
+  maxSuggestions = 8,
 }: {
   value: string
   onChange: (v: string) => void
@@ -20,6 +21,7 @@ export default function SuggestField({
   mode?: 'default' | 'lab-tests'
   as?: 'textarea' | 'input'
   onBlurValue?: (v: string) => void
+  maxSuggestions?: number
 }) {
   const [open, setOpen] = useState(false)
   const [active, setActive] = useState(0)
@@ -36,10 +38,11 @@ export default function SuggestField({
 
   const list = useMemo(() => {
     const uniq = Array.from(new Set((suggestions || []).map(s => (s || '').trim()).filter(Boolean)))
-    if (!query) return uniq.slice(0, 8)
+    const lim = Math.max(1, maxSuggestions || 8)
+    if (!query) return uniq.slice(0, lim)
     const q = query.toLowerCase()
-    return uniq.filter(s => s.toLowerCase().includes(q)).slice(0, 8)
-  }, [suggestions, query])
+    return uniq.filter(s => s.toLowerCase().includes(q)).slice(0, lim)
+  }, [suggestions, query, maxSuggestions])
 
   useEffect(() => {
     const onDoc = (e: MouseEvent) => {

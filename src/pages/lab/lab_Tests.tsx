@@ -448,23 +448,23 @@ export default function Lab_Tests() {
       {notice && (
         <div className={`rounded-md border px-3 py-2 text-sm ${notice.kind==='success'? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-rose-200 bg-rose-50 text-rose-800'}`}>{notice.text}</div>
       )}
-      <div className="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-800">
+      <div className="rounded-xl border border-slate-200 bg-white p-4">
         <div className="flex flex-wrap items-center gap-3">
           <div className="relative flex-1 min-w-[220px]">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 dark:text-slate-500" />
-            <input value={q} onChange={e=>{ setQ(e.target.value); setPage(1) }} placeholder="Search tests.." className="w-full rounded-md border border-slate-300 pl-9 pr-3 py-2 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-200 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100" />
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+            <input value={q} onChange={e=>{ setQ(e.target.value); setPage(1) }} placeholder="Search tests.." className="w-full rounded-md border border-slate-300 pl-9 pr-3 py-2 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-200" />
           </div>
-          <select value={pageSize} onChange={e=>{ setPageSize(Number(e.target.value)); setPage(1) }} className="rounded-md border border-slate-300 px-2 py-2 text-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100">
+          <select value={pageSize} onChange={e=>{ setPageSize(Number(e.target.value)); setPage(1) }} className="rounded-md border border-slate-300 px-2 py-2 text-sm">
             <option value={12}>12</option>
             <option value={24}>24</option>
             <option value={48}>48</option>
           </select>
           <div className="ml-auto flex items-center gap-2">
-            <button onClick={exportCSV} className="rounded-md border border-slate-200 px-3 py-1.5 text-sm hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800">Download CSV</button>
+            <button onClick={exportCSV} className="rounded-md border border-slate-200 px-3 py-1.5 text-sm hover:bg-slate-50">Download CSV</button>
             <button
               type="button"
               onClick={()=> fileInputRef.current?.click()}
-              className="inline-flex items-center gap-2 rounded-md border border-slate-200 px-3 py-1.5 text-sm hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+              className="inline-flex items-center gap-2 rounded-md border border-slate-200 px-3 py-1.5 text-sm hover:bg-slate-50"
             >
               <Upload className="h-4 w-4" /> Import CSV/XLSX
             </button>
@@ -485,34 +485,34 @@ export default function Lab_Tests() {
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
         {pageItems.map(t => (
-          <div key={t.id} className="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-800">
+          <div key={t.id} className="rounded-xl border border-slate-200 bg-white p-4">
             <div className="flex items-start justify-between">
               <div>
-                <div className="text-base font-semibold text-slate-900 dark:text-slate-100">{t.name}</div>
-                <div className="text-xs text-slate-500 dark:text-slate-400">{t.parameter || '—'}</div>
+                <div className="text-base font-semibold text-slate-900">{t.name}</div>
+                <div className="text-xs text-slate-500">{t.parameter || '—'}</div>
               </div>
             </div>
 
-            <div className="mt-3 grid grid-cols-2 gap-3 text-sm text-slate-700 dark:text-slate-300">
+            <div className="mt-3 grid grid-cols-2 gap-3 text-sm text-slate-700">
               <div className="inline-flex items-center gap-2"><DollarSign className="h-4 w-4" /> {formatPKR(t.price)}</div>
             </div>
 
             <div className="mt-3 flex gap-2">
-              <button onClick={()=>{ setEditing(t); setOpenModal(true) }} className="inline-flex items-center gap-2 rounded-md border border-slate-300 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-700"><Edit2 className="h-4 w-4" /> Edit</button>
+              <button onClick={()=>{ setEditing(t); setOpenModal(true) }} className="inline-flex items-center gap-2 rounded-md border border-slate-300 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50"><Edit2 className="h-4 w-4" /> Edit</button>
               <button onClick={()=> requestDelete(t.id)} className="inline-flex items-center gap-2 rounded-md bg-rose-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-rose-700"><Trash2 className="h-4 w-4" /> Delete</button>
             </div>
           </div>
         ))}
       </div>
 
-      <div className="flex items-center justify-between text-sm text-slate-600 dark:text-slate-400">
+      <div className="flex items-center justify-between text-sm text-slate-600">
         <div>{total === 0 ? '0' : `${start}-${end}`} of {total}</div>
         <div className="flex items-center gap-1">
-          <button onClick={()=>setPage(1)} disabled={currentPage===1} className="rounded-md border border-slate-300 p-1 disabled:opacity-40 dark:border-slate-600"><ChevronsLeft className="h-4 w-4"/></button>
-          <button onClick={()=>setPage(p=>Math.max(1,p-1))} disabled={currentPage===1} className="rounded-md border border-slate-300 p-1 disabled:opacity-40 dark:border-slate-600"><ChevronLeft className="h-4 w-4"/></button>
+          <button onClick={()=>setPage(1)} disabled={currentPage===1} className="rounded-md border border-slate-300 p-1 disabled:opacity-40"><ChevronsLeft className="h-4 w-4"/></button>
+          <button onClick={()=>setPage(p=>Math.max(1,p-1))} disabled={currentPage===1} className="rounded-md border border-slate-300 p-1 disabled:opacity-40"><ChevronLeft className="h-4 w-4"/></button>
           <span className="px-2">Page {currentPage} / {pageCount}</span>
-          <button onClick={()=>setPage(p=>Math.min(pageCount,p+1))} disabled={currentPage===pageCount} className="rounded-md border border-slate-300 p-1 disabled:opacity-40 dark:border-slate-600"><ChevronRight className="h-4 w-4"/></button>
-          <button onClick={()=>setPage(pageCount)} disabled={currentPage===pageCount} className="rounded-md border border-slate-300 p-1 disabled:opacity-40 dark:border-slate-600"><ChevronsRight className="h-4 w-4"/></button>
+          <button onClick={()=>setPage(p=>Math.min(pageCount,p+1))} disabled={currentPage===pageCount} className="rounded-md border border-slate-300 p-1 disabled:opacity-40"><ChevronRight className="h-4 w-4"/></button>
+          <button onClick={()=>setPage(pageCount)} disabled={currentPage===pageCount} className="rounded-md border border-slate-300 p-1 disabled:opacity-40"><ChevronsRight className="h-4 w-4"/></button>
         </div>
       </div>
 
@@ -547,20 +547,20 @@ export default function Lab_Tests() {
 
       {importOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
-          <div className="w-full max-w-3xl rounded-xl bg-white shadow-2xl ring-1 ring-black/5 dark:bg-slate-900">
-            <div className="border-b border-slate-200 px-5 py-3 text-base font-semibold text-slate-800 dark:border-slate-700 dark:text-slate-100">Import {importKind.toUpperCase()}</div>
-            <div className="px-5 py-4 text-sm text-slate-700 dark:text-slate-200">
-              {importMsg ? <div className="mb-2 text-slate-600 dark:text-slate-300">{importMsg}</div> : null}
+          <div className="w-full max-w-3xl rounded-xl bg-white shadow-2xl ring-1 ring-black/5">
+            <div className="border-b border-slate-200 px-5 py-3 text-base font-semibold text-slate-800">Import {importKind.toUpperCase()}</div>
+            <div className="px-5 py-4 text-sm text-slate-700">
+              {importMsg ? <div className="mb-2 text-slate-600">{importMsg}</div> : null}
               <div className="mb-2">Preview ({importRows.length} rows)</div>
-              <div className="max-h-[45vh] overflow-auto rounded-md border border-slate-200 dark:border-slate-700">
+              <div className="max-h-[45vh] overflow-auto rounded-md border border-slate-200">
                 <table className="w-full table-fixed border-collapse text-xs">
-                  <thead className="bg-slate-50 dark:bg-slate-800">
+                  <thead className="bg-slate-50">
                     <tr>
-                      <th className="border-b border-slate-200 px-2 py-2 text-left dark:border-slate-700">Name</th>
-                      <th className="border-b border-slate-200 px-2 py-2 text-left dark:border-slate-700">Price</th>
-                      <th className="border-b border-slate-200 px-2 py-2 text-left dark:border-slate-700">Parameter</th>
-                      <th className="border-b border-slate-200 px-2 py-2 text-left dark:border-slate-700">Unit</th>
-                      <th className="border-b border-slate-200 px-2 py-2 text-left dark:border-slate-700">Error</th>
+                      <th className="border-b border-slate-200 px-2 py-2 text-left">Name</th>
+                      <th className="border-b border-slate-200 px-2 py-2 text-left">Price</th>
+                      <th className="border-b border-slate-200 px-2 py-2 text-left">Parameter</th>
+                      <th className="border-b border-slate-200 px-2 py-2 text-left">Unit</th>
+                      <th className="border-b border-slate-200 px-2 py-2 text-left">Error</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -569,12 +569,12 @@ export default function Lab_Tests() {
                       const paramOut = r.parameter || firstParam?.name || ''
                       const unitOut = r.unit || firstParam?.unit || ''
                       return (
-                      <tr key={i} className="odd:bg-white even:bg-slate-50 dark:odd:bg-slate-900 dark:even:bg-slate-800/40">
-                        <td className="border-b border-slate-100 px-2 py-1 dark:border-slate-800">{r.name || ''}</td>
-                        <td className="border-b border-slate-100 px-2 py-1 dark:border-slate-800">{Number(r.price||0).toFixed(2)}</td>
-                        <td className="border-b border-slate-100 px-2 py-1 dark:border-slate-800">{paramOut}</td>
-                        <td className="border-b border-slate-100 px-2 py-1 dark:border-slate-800">{unitOut}</td>
-                        <td className="border-b border-slate-100 px-2 py-1 text-rose-600 dark:border-slate-800">{r._error || ''}</td>
+                      <tr key={i} className="odd:bg-white even:bg-slate-50">
+                        <td className="border-b border-slate-100 px-2 py-1">{r.name || ''}</td>
+                        <td className="border-b border-slate-100 px-2 py-1">{Number(r.price||0).toFixed(2)}</td>
+                        <td className="border-b border-slate-100 px-2 py-1">{paramOut}</td>
+                        <td className="border-b border-slate-100 px-2 py-1">{unitOut}</td>
+                        <td className="border-b border-slate-100 px-2 py-1 text-rose-600">{r._error || ''}</td>
                       </tr>
                       )
                     })}
@@ -588,15 +588,15 @@ export default function Lab_Tests() {
                 </table>
               </div>
               {importProgress && (
-                <div className="mt-3 text-xs text-slate-600 dark:text-slate-300">
+                <div className="mt-3 text-xs text-slate-600">
                   Progress: {importProgress.done}/{importProgress.total} | Skipped: {importProgress.skipped} | Failed: {importProgress.failed}
                 </div>
               )}
-              <div className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+              <div className="mt-2 text-xs text-slate-500">
                 CSV expected headers: Name, Price, Parameter, Unit, NormalRangeMale, NormalRangeFemale, NormalRangePediatric, Parameters(JSON)
               </div>
             </div>
-            <div className="flex items-center justify-end gap-2 border-t border-slate-200 px-5 py-3 dark:border-slate-700">
+            <div className="flex items-center justify-end gap-2 border-t border-slate-200 px-5 py-3">
               <button onClick={()=>{ if (!importBusy) setImportOpen(false) }} className="btn-outline-navy">Cancel</button>
               <button disabled={importBusy || importRows.length===0} onClick={performImport} className="btn">{importBusy ? 'Importing...' : 'Import'}</button>
             </div>

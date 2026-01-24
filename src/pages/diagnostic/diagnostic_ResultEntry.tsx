@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { diagnosticApi } from '../../utils/api'
 import { DiagnosticFormRegistry } from '../../components/diagnostic/registry'
 import { printEchocardiographyReport } from '../../components/diagnostic/diagnostic_Echocardiography'
@@ -19,6 +19,8 @@ function resolveKey(name: string){
   if (n.includes('echocardio')) return 'Echocardiography'
   if (n.includes('colonoscopy')) return 'Colonoscopy'
   if (n.includes('uppergi')) return 'UpperGiEndoscopy'
+  if (n === 'stt' || n.includes('(stt)') || n.includes('stress tolerance')) return 'STT'
+  if (n === 'npt' || n.includes('(npt)') || n.includes('nocturnal penile tumescence')) return 'NPT'
   return name
 }
 
@@ -28,6 +30,7 @@ function formatDateTime(iso?: string) {
 }
 
 export default function Diagnostic_ResultEntry(){
+  const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const [orders, setOrders] = useState<Order[]>([])
   const [tests, setTests] = useState<Test[]>([])
@@ -132,11 +135,14 @@ export default function Diagnostic_ResultEntry(){
       status: 'final',
       reportedAt: new Date().toISOString(),
     }
+    let finalizedId: string | null = null
     if (resultId){
       await diagnosticApi.updateResult(resultId, { formData: value, status: 'final', reportedAt: payload.reportedAt })
+      finalizedId = resultId
     } else {
       const created = await diagnosticApi.createResult(payload as any) as any
-      setResultId(String(created?._id))
+      finalizedId = String(created?._id || '') || null
+      if (finalizedId) setResultId(finalizedId)
     }
     // Persist: after finalizing result, mark this test as returned in tracking so it won't reappear
     // when navigating back to Result Entry.
@@ -156,7 +162,13 @@ export default function Diagnostic_ResultEntry(){
     }))
     // Clear selection
     setSelectedOrderId(''); setSelectedTestId(''); setValue(''); setResultId(null); setOrderFromResult(null)
-    alert('Result finalized')
+    if (finalizedId){
+      const s = new URLSearchParams()
+      s.set('resultId', finalizedId)
+      navigate(`/diagnostic/report-generator?${s.toString()}`)
+    } else {
+      alert('Result finalized')
+    }
   }
 
   async function printNow(){

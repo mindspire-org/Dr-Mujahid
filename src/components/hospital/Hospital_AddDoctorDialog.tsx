@@ -43,15 +43,15 @@ export default function Hospital_AddDoctorDialog({
 
   return (
     <div className="fixed inset-0 z-20 flex items-center justify-center bg-black/30 p-4">
-      <div className="w-full max-w-2xl overflow-hidden rounded-xl border border-slate-200 bg-white shadow-lg">
-        <div className="flex items-start justify-between border-b border-slate-200 px-5 py-3">
+      <div className="w-full max-w-2xl max-h-[90vh] overflow-hidden rounded-xl border border-slate-200 bg-white shadow-lg">
+        <div className="flex items-start justify-between border-b border-slate-200 px-4 sm:px-5 py-3">
           <div>
             <h3 className="text-base font-semibold text-slate-800">Add New Doctor</h3>
           </div>
           <button onClick={onClose} className="text-slate-500">✖</button>
         </div>
 
-        <div className="max-h-[80vh] overflow-y-auto px-5 py-4">
+        <div className="max-h-[80vh] overflow-y-auto px-4 sm:px-5 py-4">
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           <div>
             <label className="mb-1 block text-sm text-slate-700">Doctor Name</label>
@@ -119,7 +119,7 @@ export default function Hospital_AddDoctorDialog({
           </div>
         </div>
 
-        <div className="flex justify-end gap-2 border-t border-slate-200 px-5 py-3">
+        <div className="flex justify-end gap-2 border-t border-slate-200 px-4 sm:px-5 py-3">
           <button onClick={onClose} className="rounded-md border border-slate-300 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50">Cancel</button>
           <button onClick={()=>onAdd(form)} className="rounded-md bg-violet-700 px-3 py-1.5 text-sm font-medium text-white hover:bg-violet-800">Add Doctor</button>
         </div>

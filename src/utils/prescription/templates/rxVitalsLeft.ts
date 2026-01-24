@@ -121,8 +121,16 @@ export async function buildRxVitalsLeft(data: PrescriptionPdfData){
   bandH = Math.max(bandH, (maxBandY - bandY) + 6)
   pdf.roundedRect(leftX, bandY, pageWidth - leftX*2, bandH, 2, 2)
 
+  // Divider after patient info
+  try {
+    pdf.setDrawColor(203,213,225)
+    pdf.setLineWidth(0.4)
+    const divY = bandY + bandH + 3
+    pdf.line(leftX, divY, pageWidth - leftX, divY)
+  } catch {}
+
   // Layout below band
-  const leftY = bandY + bandH + 6
+  const leftY = bandY + bandH + 8
   // Draw LEFT panel first; measure widest line to place Rx box tight to it
   pdf.setFont('helvetica','bold')
   pdf.setFontSize(10)

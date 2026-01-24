@@ -43,20 +43,20 @@ export default function Lab_Reports() {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <div>
-          <div className="text-xl font-bold text-slate-800 dark:text-slate-100">Lab Summary Report</div>
+          <div className="text-xl font-bold text-slate-800">Lab Summary Report</div>
         </div>
       </div>
 
-      <div className="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-800">
+      <div className="rounded-xl border border-slate-200 bg-white p-4">
         <div className="grid gap-3 md:grid-cols-[1fr_1fr_auto] items-end">
           <div className="grid gap-3 sm:grid-cols-2">
             <div>
-              <label className="mb-1 block text-sm text-slate-700 dark:text-slate-300">From</label>
-              <input type="date" value={from} onChange={e=>setFrom(e.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100" />
+              <label className="mb-1 block text-sm text-slate-700">From</label>
+              <input type="date" value={from} onChange={e=>setFrom(e.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
             </div>
             <div>
-              <label className="mb-1 block text-sm text-slate-700 dark:text-slate-300">To</label>
-              <input type="date" value={to} onChange={e=>setTo(e.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100" />
+              <label className="mb-1 block text-sm text-slate-700">To</label>
+              <input type="date" value={to} onChange={e=>setTo(e.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
             </div>
           </div>
           <div className="flex items-end">
@@ -78,9 +78,9 @@ export default function Lab_Reports() {
       </div>
 
       <div className="grid gap-4 md:grid-cols-2">
-        <div className="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-800">
-          <div className="mb-3 font-medium text-slate-800 dark:text-slate-200">Daily Revenue</div>
-          <div className="h-48 w-full rounded-md border border-slate-100 bg-slate-50 p-3 dark:border-slate-700 dark:bg-slate-900">
+        <div className="rounded-xl border border-slate-200 bg-white p-4">
+          <div className="mb-3 font-medium text-slate-800">Daily Revenue</div>
+          <div className="h-48 w-full rounded-md border border-slate-100 bg-slate-50 p-3">
             <div className="flex h-full items-end gap-3">
               {dailyRevenue.map(d => (
                 <div key={d.date} className="flex-1 h-full flex flex-col items-center justify-end">
@@ -89,15 +89,15 @@ export default function Lab_Reports() {
                     style={{ height: `${Math.max(8, (d.value/maxRev)*100)}%` }}
                     title={`${d.date.slice(0,10)} — PKR ${d.value.toLocaleString()}`}
                   />
-                  <div className="mt-2 text-center text-xs text-slate-600 dark:text-slate-400">{d.date.slice(0,10)}</div>
+                  <div className="mt-2 text-center text-xs text-slate-600">{d.date.slice(0,10)}</div>
                 </div>
               ))}
             </div>
           </div>
         </div>
-        <div className="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-800">
-          <div className="mb-3 font-medium text-slate-800 dark:text-slate-200">Comparison: Revenue, Expenses, Purchases</div>
-          <div className="h-48 w-full rounded-md border border-slate-100 bg-slate-50 p-3 dark:border-slate-700 dark:bg-slate-900">
+        <div className="rounded-xl border border-slate-200 bg-white p-4">
+          <div className="mb-3 font-medium text-slate-800">Comparison: Revenue, Expenses, Purchases</div>
+          <div className="h-48 w-full rounded-md border border-slate-100 bg-slate-50 p-3">
             <div className="flex h-full items-end gap-6 justify-center">
               {comparison.map(d => (
                 <div key={d.label} className="text-center h-full flex flex-col justify-end">
@@ -106,7 +106,7 @@ export default function Lab_Reports() {
                     style={{ height: `${Math.max(8, (d.value/maxComp)*100)}%` }}
                     title={`${d.label} — PKR ${d.value.toLocaleString()}`}
                   />
-                  <div className="mt-2 text-xs text-slate-600 dark:text-slate-400">{d.label}</div>
+                  <div className="mt-2 text-xs text-slate-600">{d.label}</div>
                 </div>
               ))}
             </div>
@@ -119,9 +119,9 @@ export default function Lab_Reports() {
 
 function SummaryCard({ title, value, bg, border }: { title: string; value: string; bg: string; border: string }) {
   return (
-    <div className={`rounded-xl border ${border} ${bg} p-4 dark:border-slate-700 dark:bg-slate-800`}>
-      <div className="text-xs font-medium text-slate-600 dark:text-slate-300">{title}</div>
-      <div className="mt-2 text-lg font-semibold text-slate-900 dark:text-slate-100">{value}</div>
+    <div className={`rounded-xl border ${border} ${bg} p-4`}>
+      <div className="text-xs font-medium text-slate-600">{title}</div>
+      <div className="mt-2 text-lg font-semibold text-slate-900">{value}</div>
     </div>
   )
 }

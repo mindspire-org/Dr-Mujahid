@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { TrendingUp, DollarSign, Users, BedSingle, Activity, RefreshCw, Clock, CalendarClock, Filter, RotateCcw, BarChart3 } from 'lucide-react'
+import { DollarSign, Users, Activity, RefreshCw, Clock, Filter, RotateCcw, BarChart3 } from 'lucide-react'
 import { hospitalApi, financeApi, labApi } from '../../utils/api'
 
 function iso(d: Date){ return d.toISOString().slice(0,10) }
@@ -40,17 +40,11 @@ export default function Hospital_Dashboard() {
   const [toDate, setToDate] = useState<string>(iso(new Date()))
   const [stats, setStats] = useState({
     tokens: 0,
-    admissions: 0,
-    discharges: 0,
-    activeIpd: 0,
-    bedsAvailable: 0,
-    occupancy: 0,
     present: 0,
     late: 0,
   })
   const [tokens, setTokens] = useState<any[]>([])
   const [expenses, setExpenses] = useState<any[]>([])
-  const [ipdPayments, setIpdPayments] = useState<any[]>([])
   const [doctorEarnRows, setDoctorEarnRows] = useState<any[]>([])
   const [doctorPayoutsTotal, setDoctorPayoutsTotal] = useState<number>(0)
   const REFRESH_MS = 15000
@@ -60,25 +54,19 @@ export default function Hospital_Dashboard() {
   async function load(){
     setLoading(true)
     try {
-      const [tokensRes, expensesRes, staffRes, bedsAllRes, bedsOccRes, attRes, shiftsRes, ipdAdmsRes, doctorsRes] = await Promise.all([
+      const [tokensRes, expensesRes, staffRes, attRes, shiftsRes, doctorsRes] = await Promise.all([
         hospitalApi.listTokens({ from: fromDate, to: toDate }) as any,
         hospitalApi.listExpenses({ from: fromDate, to: toDate }) as any,
         hospitalApi.listStaff() as any,
-        hospitalApi.listBeds() as any,
-        hospitalApi.listBeds({ status: 'occupied' }) as any,
         hospitalApi.listAttendance({ from: fromDate, to: toDate, limit: 5000 }) as any,
         hospitalApi.listShifts() as any,
-        hospitalApi.listIPDAdmissions({ from: fromDate, to: toDate, limit: 500 }) as any,
         hospitalApi.listDoctors() as any,
       ])
       const tokensArr: any[] = tokensRes?.tokens || tokensRes?.items || tokensRes || []
       const expensesArr: any[] = expensesRes?.expenses || expensesRes?.items || expensesRes || []
       let staffArr: any[] = staffRes?.staff || staffRes?.items || staffRes || []
-      const allBeds: any[] = bedsAllRes?.beds || []
-      const occBeds: any[] = bedsOccRes?.beds || []
       let attendance: any[] = attRes?.items || []
       let shifts: any[] = (shiftsRes?.items || shiftsRes || [])
-      const ipdAdms: any[] = ipdAdmsRes?.admissions || ipdAdmsRes?.items || ipdAdmsRes || []
 
       setTokens(tokensArr)
       setExpenses(expensesArr)
@@ -112,23 +100,6 @@ export default function Hospital_Dashboard() {
         setDoctorPayoutsTotal(total)
       } catch { setDoctorPayoutsTotal(0) }
 
-      const ipdPaysArrays = await Promise.all(ipdAdms.slice(0, 200).map(async (a:any)=>{
-        const id = String(a._id||a.id||a.encounterId||'')
-        if (!id) return [] as any[]
-        try {
-          const r: any = await hospitalApi.listIpdPayments(id)
-          const items: any[] = (r?.items || r?.payments || r || [])
-          return items
-        } catch { return [] as any[] }
-      }))
-      const ipdPayFlat = ([] as any[]).concat(...ipdPaysArrays)
-      setIpdPayments(ipdPayFlat)
-
-      const totalBeds = allBeds.length
-      const occupied = occBeds.length
-      const bedsAvailable = Math.max(0, totalBeds - occupied)
-      const occupancy = totalBeds ? Math.round((occupied / totalBeds) * 100) : 0
-
       const todayStr = toDate
       const dateOf = (x:any) => String(x?.date || x?.dateIso || x?.createdAt || '').slice(0,10)
       const presentToday = attendance.filter(a => dateOf(a) === todayStr && (String(a.status||'').toLowerCase()==='present' || !!a.clockIn)).length
@@ -146,7 +117,7 @@ export default function Hospital_Dashboard() {
         if (smin!=null && inMin!=null && inMin > smin) lateToday++
       }
 
-      setStats({ tokens: tokensArr.length, admissions: ipdAdms.length, discharges: (ipdAdmsRes?.admissions||[]).filter((a:any)=>a.status==='discharged').length, activeIpd: occupied, bedsAvailable, occupancy, present: presentToday, late: lateToday })
+      setStats({ tokens: tokensArr.length, present: presentToday, late: lateToday })
       setUpdatedAt(new Date().toLocaleString())
     } finally { setLoading(false) }
   }
@@ -154,9 +125,6 @@ export default function Hospital_Dashboard() {
   // Department map no longer needed after removing dept-wise widget
   const tokensPaid = useMemo(()=> tokens.filter(t=> t.status!=='returned' && t.status!=='cancelled'), [tokens])
   const opdRevenue = useMemo(()=> tokensPaid.reduce((s,t)=> s + money(t.net ?? (money(t.fee)-money(t.discount))), 0), [tokensPaid])
-  const ipdRevenue = useMemo(()=> ipdPayments
-    .filter(p=>{ const d = String(p.receivedAt||p.dateIso||p.date||p.createdAt||'').slice(0,10); return d>=fromDate && d<=toDate })
-    .reduce((s,p)=> s + money(p.amount), 0), [ipdPayments, fromDate, toDate])
   const expensesTotal = useMemo(()=> expenses.reduce((s,e)=> s + money(e.amount), 0), [expenses])
   const doctorPayouts = useMemo(()=> (doctorEarnRows||[]).filter((r:any)=>{
     const t = String(r.type||'').toLowerCase()
@@ -165,22 +133,13 @@ export default function Hospital_Dashboard() {
   const doctorPayoutsCard = useMemo(()=> doctorPayoutsTotal>0 ? doctorPayoutsTotal : doctorPayouts, [doctorPayoutsTotal, doctorPayouts])
   // Salaries widget removed per request
 
-  const totalRevenue = useMemo(()=> opdRevenue + ipdRevenue, [opdRevenue, ipdRevenue])
-  const recentIpdPayments = useMemo(()=> {
-    const getDate = (p:any)=> new Date(String(p.receivedAt||p.dateIso||p.date||p.createdAt||'') || 0).getTime()
-    return [...ipdPayments].sort((a,b)=> getDate(b) - getDate(a)).slice(0, 10)
-  }, [ipdPayments])
+  const totalRevenue = useMemo(()=> opdRevenue, [opdRevenue])
 
   // Removed per request: day-wise arrays for grouped bars
 
   const cards = [
     { title: 'Tokens', value: String(stats.tokens), tone: 'bg-emerald-50 border-emerald-200', icon: Activity },
-    { title: 'Admissions', value: String(stats.admissions), tone: 'bg-violet-50 border-violet-200', icon: TrendingUp },
-    { title: 'Discharges', value: String(stats.discharges), tone: 'bg-amber-50 border-amber-200', icon: CalendarClock },
-    { title: 'Active IPD Patients', value: String(stats.activeIpd), tone: 'bg-sky-50 border-sky-200', icon: Users },
-    { title: 'Beds Available', value: String(stats.bedsAvailable), tone: 'bg-cyan-50 border-cyan-200', icon: BedSingle },
     { title: 'OPD Revenue', value: `Rs ${opdRevenue.toFixed(0)}`, tone: 'bg-green-50 border-green-200', icon: DollarSign },
-    { title: 'IPD Revenue', value: `Rs ${ipdRevenue.toFixed(0)}`, tone: 'bg-green-50 border-green-200', icon: DollarSign },
     { title: 'Total Revenue', value: `Rs ${totalRevenue.toFixed(0)}`, tone: 'bg-green-50 border-green-200', icon: DollarSign },
     { title: 'Expenses', value: `Rs ${expensesTotal.toFixed(0)}`, tone: 'bg-rose-50 border-rose-200', icon: DollarSign },
     { title: 'Doctor Payouts', value: `Rs ${doctorPayoutsCard.toFixed(0)}`, tone: 'bg-amber-50 border-amber-200', icon: DollarSign },
@@ -246,28 +205,6 @@ export default function Hospital_Dashboard() {
             <TwoBars revenue={totalRevenue} expense={expensesTotal} />
           </div>
           <div className="mt-2 text-xs text-slate-600">Green: Revenue, Red: Expenses</div>
-        </div>
-
-        <div className="rounded-xl border border-slate-200 bg-white p-4">
-          <div className="mb-2 text-slate-800 font-semibold">Recent IPD Transactions</div>
-          <div className="divide-y">
-            {recentIpdPayments.length === 0 && (
-              <div className="text-sm text-slate-500">No IPD payments in the selected range.</div>
-            )}
-            {recentIpdPayments.map((p:any, i:number)=>{
-              const when = String(p.receivedAt||p.dateIso||p.date||p.createdAt||'').replace('T',' ').slice(0,19)
-              const method = p.method || p.paymentMethod || '—'
-              const ref = p.refNo || p.ref || ''
-              return (
-                <div key={i} className="flex items-center justify-between py-2 text-sm">
-                  <div>
-                    <div className="font-medium text-slate-800">Rs {money(p.amount).toFixed(0)}</div>
-                    <div className="text-xs text-slate-500">{when} • {method}{ref?` • ${ref}`:''}</div>
-                  </div>
-                </div>
-              )
-            })}
-          </div>
         </div>
       </div>
 
