@@ -2293,6 +2293,10 @@ export default function Doctor_Prescription() {
 
         {activeTab === 'Sexual History' && (
           <div className="space-y-6">
+            {(() => {
+              try {
+                return (
+                  <>
             <div className="rounded-lg border border-slate-200 bg-white p-4">
               <div className="text-sm font-semibold text-slate-800">Erection</div>
               <div className="mt-3 grid gap-4 sm:grid-cols-2">
@@ -2934,6 +2938,18 @@ export default function Doctor_Prescription() {
                 </div>
               </div>
             </div>
+              </>
+                );
+              } catch (error) {
+                console.error('Sexual History Tab Error:', error);
+                return (
+                  <div className="text-red-600 p-4 border border-red-300 bg-red-50 rounded">
+                    <h3 className="font-bold">Error loading Sexual History tab:</h3>
+                    <pre>{error?.message || 'Unknown error'}</pre>
+                  </div>
+                );
+              }
+            })()}
           </div>
         )}
 
