@@ -254,6 +254,51 @@ export default function Doctor_Prescription() {
       },
     },
   })
+
+  const normalizeSexualHistory = (incoming: any) => {
+    const empty = getEmptySexualHistory()
+    const s = incoming && typeof incoming === 'object' ? incoming : {}
+    return {
+      ...empty,
+      ...s,
+      erection: { ...empty.erection, ...(s as any).erection },
+      pe: { ...empty.pe, ...(s as any).pe },
+      pFluid: { ...empty.pFluid, ...(s as any).pFluid },
+      ud: { ...empty.ud, ...(s as any).ud },
+      pSize: { ...empty.pSize, ...(s as any).pSize },
+      inf: {
+        ...empty.inf,
+        ...(s as any).inf,
+        sexuality: { ...empty.inf.sexuality, ...(s as any).inf?.sexuality },
+        diagnosis: { ...empty.inf.diagnosis, ...(s as any).inf?.diagnosis },
+        problems: { ...empty.inf.problems, ...(s as any).inf?.problems },
+      },
+      oeMuscle: { ...empty.oeMuscle, ...(s as any).oeMuscle },
+      oe: {
+        ...empty.oe,
+        ...(s as any).oe,
+        disease: { ...empty.oe.disease, ...(s as any).oe?.disease },
+        testes: { ...empty.oe.testes, ...(s as any).oe?.testes },
+        epidCst: { ...empty.oe.epidCst, ...(s as any).oe?.epidCst },
+        varicocele: {
+          ...empty.oe.varicocele,
+          ...(s as any).oe?.varicocele,
+          rightGrades: { ...empty.oe.varicocele.rightGrades, ...(s as any).oe?.varicocele?.rightGrades },
+          leftGrades: { ...empty.oe.varicocele.leftGrades, ...(s as any).oe?.varicocele?.leftGrades },
+        },
+      },
+      uss: { ...empty.uss, ...(s as any).uss },
+      npt: { ...empty.npt, ...(s as any).npt },
+      desire: { ...empty.desire, ...(s as any).desire },
+      nightfall: { ...empty.nightfall, ...(s as any).nightfall },
+      experiences: {
+        ...empty.experiences,
+        ...(s as any).experiences,
+        preMarriage: { ...empty.experiences.preMarriage, ...(s as any).experiences?.preMarriage },
+        postMarriage: { ...empty.experiences.postMarriage, ...(s as any).experiences?.postMarriage },
+      },
+    }
+  }
   const [previousMedicalHistory, setPreviousMedicalHistory] = useState({
     exConsultation: '',
     exRx: '',
@@ -811,6 +856,27 @@ export default function Doctor_Prescription() {
     oeMuscle: {
       status: '' as '' | 'OK' | 'Semi' | 'FL',
     },
+    oe: {
+      disease: {
+        peyronie: false,
+        calcification: false,
+      },
+      testes: {
+        status: '' as '' | 'Atrophic' | 'Normal',
+      },
+      epidCst: {
+        side: '' as '' | 'Right' | 'Left',
+      },
+      varicocele: {
+        side: '' as '' | 'Right' | 'Left',
+        rightGrades: { g1: false, g2: false, g3: false, g4: false },
+        leftGrades: { g1: false, g2: false, g3: false, g4: false },
+      },
+    },
+    uss: {
+      status: '' as '' | 'Yes' | 'No',
+      other: '',
+    },
     npt: {
       status: '' as '' | 'OK' | 'NIL' | 'RARE',
       erectionPercentage: '',
@@ -957,7 +1023,7 @@ export default function Doctor_Prescription() {
         if (data.maritalStatus) setMaritalStatus({ ...getEmptyMaritalStatus(), ...data.maritalStatus })
         if (data.coitus) setCoitus({ ...getEmptyCoitus(), ...data.coitus })
         if (data.health) setHealth({ ...getEmptyHealth(), ...data.health })
-        if (data.sexualHistory) setSexualHistory({ ...getEmptySexualHistory(), ...data.sexualHistory })
+        if (data.sexualHistory) setSexualHistory(normalizeSexualHistory(data.sexualHistory))
         if (data.previousMedicalHistory) setPreviousMedicalHistory({ ...getEmptyPreviousMedicalHistory(), ...data.previousMedicalHistory })
         if (data.arrivalReference) setArrivalReference({ ...getEmptyArrivalReference(), ...data.arrivalReference })
       } catch (e: any) {
@@ -2293,10 +2359,7 @@ export default function Doctor_Prescription() {
 
         {activeTab === 'Sexual History' && (
           <div className="space-y-6">
-            {(() => {
-              try {
-                return (
-                  <>
+            <>
             <div className="rounded-lg border border-slate-200 bg-white p-4">
               <div className="text-sm font-semibold text-slate-800">Erection</div>
               <div className="mt-3 grid gap-4 sm:grid-cols-2">
@@ -2938,18 +3001,7 @@ export default function Doctor_Prescription() {
                 </div>
               </div>
             </div>
-              </>
-                );
-              } catch (error) {
-                console.error('Sexual History Tab Error:', error);
-                return (
-                  <div className="text-red-600 p-4 border border-red-300 bg-red-50 rounded">
-                    <h3 className="font-bold">Error loading Sexual History tab:</h3>
-                    <pre>{error?.message || 'Unknown error'}</pre>
-                  </div>
-                );
-              }
-            })()}
+            </>
           </div>
         )}
 
