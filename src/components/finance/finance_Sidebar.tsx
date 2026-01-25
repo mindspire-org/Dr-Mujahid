@@ -1,5 +1,5 @@
 import { NavLink, useNavigate } from 'react-router-dom'
-import { LogOut, BarChart3, FlaskConical, LayoutDashboard, Users, Activity, Landmark, FileText, WalletCards, Banknote } from 'lucide-react'
+import { LogOut, BarChart3, LayoutDashboard, Users, Activity, Landmark, FileText, WalletCards, Banknote } from 'lucide-react'
 import { hospitalApi } from '../../utils/api'
 import { useState } from 'react'
 
@@ -23,12 +23,6 @@ export default function Finance_Sidebar({ collapsed = false, onExpand, collapseS
       label: 'Pharmacy',
       items: [
         { to: '/finance/pharmacy-reports', label: 'Pharmacy Reports', icon: BarChart3 },
-      ],
-    },
-    {
-      label: 'Laboratory',
-      items: [
-        { to: '/finance/lab-reports', label: 'Lab Reports', icon: FlaskConical },
       ],
     },
     {

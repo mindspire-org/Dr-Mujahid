@@ -20,13 +20,6 @@ export default function Reception_Sidebar({ collapsed = false, onExpand, collaps
       ],
     },
     {
-      label: 'Laboratory',
-      items: [
-        { to: '/reception/lab/sample-intake', label: 'Lab Sample Intake', icon: Ticket },
-        { to: '/reception/lab/sample-tracking', label: 'Lab Sample Tracking', icon: ListChecks },
-      ],
-    },
-    {
       label: 'Diagnostics',
       items: [
         { to: '/reception/diagnostic/token-generator', label: 'Diagnostic Token Generator', icon: Ticket },
