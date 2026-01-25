@@ -1,4 +1,4 @@
-import { Route, Routes } from 'react-router-dom'
+import { Navigate, Route, Routes } from 'react-router-dom'
 import Home from './pages/Home'
 import Hospital_Login from './pages/hospital/hospital_Login'
 import Hospital_Layout from './pages/hospital/hospital_Layout'
@@ -359,7 +359,7 @@ export default function App() {
         <Route path="expenses" element={<Finance_ExpenseHistory />} />
         <Route path="doctor-payouts" element={<Hospital_DoctorPayouts />} />
         <Route path="pharmacy-reports" element={<Pharmacy_Reports />} />
-        <Route path="lab-reports" element={<Lab_Reports />} />
+        <Route path="lab-reports" element={<Navigate to="/finance" replace />} />
         <Route path="diagnostics-dashboard" element={<Diagnostic_Dashboard />} />
         <Route path="staff-dashboard" element={<Hospital_StaffDashboard />} />
         <Route path="hospital-dashboard" element={<Hospital_Dashboard />} />
@@ -373,8 +373,8 @@ export default function App() {
         <Route path="ipd-transactions" element={<Reception_IPDTransactions />} />
         <Route path="diagnostic/token-generator" element={<Diagnostic_TokenGenerator />} />
         <Route path="diagnostic/sample-tracking" element={<Diagnostic_SampleTracking />} />
-        <Route path="lab/sample-intake" element={<Lab_Orders />} />
-        <Route path="lab/sample-tracking" element={<Lab_Tracking />} />
+        <Route path="lab/sample-intake" element={<Navigate to="/reception" replace />} />
+        <Route path="lab/sample-tracking" element={<Navigate to="/reception" replace />} />
         <Route path="lab/manager-cash-count" element={<Lab_ManagerCashCount />} />
       </Route>
     </Routes>

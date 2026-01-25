@@ -24,7 +24,6 @@ export default function Home() {
 
   const modules = [
     { to: '/hospital/login', title: 'Hospital', description: 'Appointments, admissions, billing, and EMR.', icon: <Stethoscope className="size-7 text-sky-600" />, tone: 'sky' as const },
-    { to: '/lab/login', title: 'Lab', description: 'Lab orders, tests, and results management.', icon: <FlaskConical className="size-7 text-emerald-600" />, tone: 'emerald' as const },
     { to: '/diagnostic/login', title: 'Diagnostics', description: 'Diagnostic tokens, tests, tracking, and reports.', icon: <FlaskConical className="size-7 text-teal-600" />, tone: 'teal' as const },
     { to: '/pharmacy/login', title: 'Pharmacy', description: 'Prescriptions, inventory, and POS.', icon: <Pill className="size-7 text-violet-600" />, tone: 'violet' as const },
     { to: '/finance', title: 'Finance & Accounts', description: 'Financial management and accounting.', icon: <FileText className="size-7 text-amber-600" />, tone: 'amber' as const },
