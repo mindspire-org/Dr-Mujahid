@@ -1,19 +1,16 @@
 import { Request, Response } from 'express'
 import { InventoryItem } from '../models/InventoryItem'
 import { AuditLog } from '../models/AuditLog'
+import { Purchase } from '../models/Purchase'
 
 export async function list(req: Request, res: Response){
   const search = (req.query.search as string) || ''
-  const company = (req.query.company as string) || ''
   const limit = Number(req.query.limit || 10)
   const page = Math.max(1, Number((req.query.page as any) || 1))
   const filter: any = {}
-  if (company){
-    filter.company = company
-  }
   if (search){
     const rx = new RegExp(search, 'i')
-    filter.$or = [{ name: rx }, { category: rx }, { genericName: rx }, { company: rx }]
+    filter.$or = [{ name: rx }, { category: rx }, { genericName: rx }]
   }
   const skip = (page - 1) * limit
   const [items, total] = await Promise.all([
@@ -24,9 +21,60 @@ export async function list(req: Request, res: Response){
   res.json({ items, total, page, totalPages })
 }
 
+export async function listFiltered(req: Request, res: Response){
+  const search = (req.query.search as string) || ''
+  const status = String(req.query.status || '').toLowerCase() // 'low' | 'out' | 'expiring'
+  const limit = Math.max(1, Number(req.query.limit || 100))
+  const page = Math.max(1, Number((req.query.page as any) || 1))
+  const skip = (page - 1) * limit
+
+  if (!['low','out','expiring'].includes(status)){
+    return res.status(400).json({ error: 'Invalid status' })
+  }
+
+  const nameFilter: any = {}
+  if (search){
+    const rx = new RegExp(search, 'i')
+    nameFilter.$or = [{ name: rx }, { category: rx }, { genericName: rx }]
+  }
+
+  // Build base query
+  let query: any = nameFilter
+  let sort: any = { name: 1 }
+
+  if (status === 'out'){
+    query = { ...nameFilter, onHand: { $lte: 0 } }
+  } else if (status === 'low'){
+    // onHand > 0 AND onHand < minStock AND minStock != null
+    query = {
+      ...nameFilter,
+      $expr: {
+        $and: [
+          { $gt: ['$onHand', 0] },
+          { $ne: ['$minStock', null] },
+          { $lt: ['$onHand', '$minStock'] },
+        ]
+      }
+    }
+  } else if (status === 'expiring'){
+    const now = new Date()
+    const soon = new Date(now.getTime() + 30*24*60*60*1000)
+    const soonStr = soon.toISOString().slice(0,10)
+    // earliestExpiry is stored as yyyy-mm-dd string; lexical compare works
+    query = { ...nameFilter, earliestExpiry: { $lte: soonStr } }
+    sort = { earliestExpiry: 1, name: 1 }
+  }
+
+  const [items, total] = await Promise.all([
+    InventoryItem.find(query).sort(sort).skip(skip).limit(limit).lean(),
+    InventoryItem.countDocuments(query),
+  ])
+  const totalPages = Math.max(1, Math.ceil((total || 0) / (limit || 1)))
+  res.json({ items, total, page, totalPages })
+}
+
 export async function summary(req: Request, res: Response){
   const search = (req.query.search as string) || ''
-  const company = (req.query.company as string) || ''
   const limit = Number(req.query.limit || 500)
 
   function parseDate(s?: string){
@@ -36,40 +84,33 @@ export async function summary(req: Request, res: Response){
   }
 
   const filter: any = {}
-  if (company){
-    filter.company = company
-  }
   if (search){
     const rx = new RegExp(search, 'i')
-    filter.$or = [{ name: rx }, { category: rx }, { genericName: rx }, { company: rx }]
+    filter.$or = [{ name: rx }, { category: rx }, { genericName: rx }]
   }
   // Use current inventory collection for accurate onHand and pricing
   const allItems = await InventoryItem.find(filter).lean()
   const now = new Date()
   const soon = new Date(now.getTime() + 30*24*60*60*1000)
+  const soonStr = soon.toISOString().slice(0,10)
   const stockSaleValue = allItems.reduce((s:any,it:any)=> s + (Number(it.onHand||0) * Number(it.lastSalePerUnit||0)), 0)
-  const lowStockCount = allItems.reduce((s:any,it:any)=> s + ((it.minStock != null && (Number(it.onHand||0) <= Number(it.minStock))) ? 1 : 0), 0)
-  const outOfStockCount = allItems.reduce((s:any,it:any)=> s + (((Number(it.onHand||0) <= 0)) ? 1 : 0), 0)
-  const expiringSoonCount = allItems.reduce((s:any,it:any)=>{
-    const d = parseDate(it.earliestExpiry)
-    if (!d) return s
-    return s + (d <= soon ? 1 : 0)
-  }, 0)
+  // Counts via DB queries to exactly match filtered lists
+  const [lowStockCount, outOfStockCount, expiringSoonCount] = await Promise.all([
+    InventoryItem.countDocuments({ ...filter, $expr: { $and: [ { $gt: ['$onHand', 0] }, { $ne: ['$minStock', null] }, { $lt: ['$onHand', '$minStock'] } ] } }),
+    InventoryItem.countDocuments({ ...filter, onHand: { $lte: 0 } }),
+    InventoryItem.countDocuments({ ...filter, earliestExpiry: { $lte: soonStr } }),
+  ])
   const totalInventoryOnHand = allItems.reduce((s:any,it:any)=> s + Number(it.onHand||0), 0)
   const distinctCount = allItems.length
-  const expiringSoonItems = allItems
-    .filter((it:any)=>{ const d = parseDate(it.earliestExpiry); return !!d && d <= soon })
-    .sort((a:any,b:any)=>{
-      const da = parseDate(a.earliestExpiry)?.getTime() || 0
-      const db = parseDate(b.earliestExpiry)?.getTime() || 0
-      return da - db
-    })
-    .slice(0, 5)
-    .map((it:any)=> ({ name: it.name, earliestExpiry: it.earliestExpiry, onHand: it.onHand }))
+  const expiringSoonItems = await InventoryItem.find({ ...filter, earliestExpiry: { $lte: soonStr } })
+    .sort({ earliestExpiry: 1, name: 1 })
+    .limit(50)
+    .select({ name: 1, earliestExpiry: 1, onHand: 1 })
+    .lean()
+    .then(arr => arr.map((it:any)=> ({ name: it.name, earliestExpiry: it.earliestExpiry, onHand: it.onHand })))
 
   const items = (limit? allItems.slice(0, limit): allItems).map(it=>({
     name: it.name,
-    company: it.company,
     category: it.category,
     unitsPerPack: it.unitsPerPack,
     minStock: it.minStock,
@@ -116,48 +157,51 @@ export async function remove(req: Request, res: Response){
   res.json({ ok: true })
 }
 
-export async function create(req: Request, res: Response){
-  const {
-    name,
-    company,
-    genericName,
-    category,
-    unitsPerPack,
-    minStock,
-  } = (req.body || {})
+export async function details(req: Request, res: Response){
+  const key = String(req.params.key || '').trim().toLowerCase()
+  if (!key) return res.status(400).json({ error: 'Key required' })
+  const it: any = await InventoryItem.findOne({ key }).lean()
+  if (!it) return res.status(404).json({ error: 'Item not found' })
 
-  const cleanName = String(name || '').trim()
-  if (!cleanName) return res.status(400).json({ error: 'Name is required' })
+  // Try to resolve purchase from lastPurchaseId first
+  let purchase: any = null
+  const lastPurchaseId = String(it.lastPurchaseId || '')
+  if (lastPurchaseId) {
+    try {
+      purchase = await Purchase.findById(lastPurchaseId).lean()
+    } catch {}
+  }
 
-  const key = cleanName.toLowerCase()
-  const existing = await InventoryItem.findOne({ key }).lean()
-  if (existing) return res.status(409).json({ error: 'Medicine already exists', item: existing })
+  // Fallback: locate by invoice + supplier + date (best-effort)
+  if (!purchase && (it.lastInvoice || it.lastInvoiceDate || it.lastSupplierId || it.lastSupplier)) {
+    const q: any = {}
+    if (it.lastInvoice) q.invoice = String(it.lastInvoice)
+    if (it.lastInvoiceDate) q.date = String(it.lastInvoiceDate)
+    if (it.lastSupplierId) q.supplierId = String(it.lastSupplierId)
+    if (!q.supplierId && it.lastSupplier) q.supplierName = String(it.lastSupplier)
+    try {
+      purchase = await Purchase.findOne(q).sort({ createdAt: -1 }).lean()
+    } catch {}
+  }
 
-  const doc = await InventoryItem.create({
-    key,
-    name: cleanName,
-    company: (company != null && String(company).trim()) ? String(company).trim() : undefined,
-    genericName: (genericName != null && String(genericName).trim()) ? String(genericName).trim() : undefined,
-    category: (category != null && String(category).trim()) ? String(category).trim() : undefined,
-    unitsPerPack: Math.max(1, Number(unitsPerPack) || 1),
-    minStock: (minStock != null && minStock !== '') ? Number(minStock) : undefined,
-    onHand: 0,
+  const itemName = String(it.name || '')
+  const line = purchase?.lines ? (purchase.lines.find((l: any) => String(l?.name || '').trim().toLowerCase() === itemName.trim().toLowerCase()) || null) : null
+
+  res.json({
+    item: it,
+    purchase: purchase ? {
+      _id: purchase._id,
+      date: purchase.date,
+      invoice: purchase.invoice,
+      supplierId: purchase.supplierId,
+      supplierName: purchase.supplierName,
+      companyId: purchase.companyId,
+      companyName: purchase.companyName,
+      totals: purchase.totals,
+      totalAmount: purchase.totalAmount,
+    } : null,
+    line,
   })
-
-  try {
-    const actor = (req as any).user?.name || (req as any).user?.email || 'system'
-    await AuditLog.create({
-      actor,
-      action: 'Create Inventory',
-      label: 'CREATE_INVENTORY',
-      method: 'POST',
-      path: req.originalUrl,
-      at: new Date().toISOString(),
-      detail: `${doc.name || ''} — key:${doc.key}`,
-    })
-  } catch {}
-
-  res.status(201).json({ ok: true, item: doc })
 }
 
 export async function update(req: Request, res: Response){
@@ -167,7 +211,6 @@ export async function update(req: Request, res: Response){
 
   const {
     name,
-    company,
     genericName,
     category,
     unitsPerPack,
@@ -179,6 +222,9 @@ export async function update(req: Request, res: Response){
     date,
     supplierId,
     supplierName,
+    companyId,
+    companyName,
+    defaultDiscountPct,
   } = (req.body || {})
 
   const doc = await InventoryItem.findOne({ key: norm })
@@ -188,7 +234,6 @@ export async function update(req: Request, res: Response){
     doc.name = name.trim()
     doc.key = name.trim().toLowerCase()
   }
-  if (company !== undefined) doc.company = company || undefined
   if (genericName !== undefined) doc.genericName = genericName || undefined
   if (category !== undefined) doc.category = category || undefined
   if (unitsPerPack !== undefined) doc.unitsPerPack = Math.max(1, Number(unitsPerPack)||1)
@@ -204,6 +249,9 @@ export async function update(req: Request, res: Response){
   if (date !== undefined) doc.lastInvoiceDate = String(date||'')
   if (supplierId !== undefined) doc.lastSupplierId = supplierId || undefined
   if (supplierName !== undefined) doc.lastSupplier = supplierName || undefined
+  if (companyId !== undefined) doc.lastCompanyId = companyId || undefined
+  if (companyName !== undefined) doc.lastCompany = companyName || undefined
+  if (defaultDiscountPct !== undefined && defaultDiscountPct !== '') doc.defaultDiscountPct = Math.max(0, Math.min(100, Number(defaultDiscountPct)))
   if (expiry){
     const e = String(expiry)
     doc.lastExpiry = e

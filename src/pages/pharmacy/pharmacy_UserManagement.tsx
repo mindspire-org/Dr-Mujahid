@@ -8,12 +8,12 @@ export default function Pharmacy_UserManagement() {
   const navigate = useNavigate()
   const [users, setUsers] = useState<User[]>([])
   const [newUsername, setNewUsername] = useState('')
-  const [newRole, setNewRole] = useState<User['role']>('salesman')
+  const [newRole, setNewRole] = useState<User['role']>('')
   const [newPassword, setNewPassword] = useState('')
   const [loading, setLoading] = useState(false)
   const [editing, setEditing] = useState<{ _id: string; username: string; role: User['role'] } | null>(null)
   const [savingEdit, setSavingEdit] = useState(false)
-  const [roles, setRoles] = useState<string[]>(['admin', 'pharmacist', 'salesman'])
+  const [roles, setRoles] = useState<string[]>([])
   const [newRoleName, setNewRoleName] = useState('')
   const [creatingRole, setCreatingRole] = useState(false)
   const [addUserError, setAddUserError] = useState('')
@@ -28,7 +28,10 @@ export default function Pharmacy_UserManagement() {
 
       if (rolesRes.status === 'fulfilled') {
         const list = (rolesRes.value?.items || []) as string[]
-        if (Array.isArray(list) && list.length) setRoles(list)
+        if (Array.isArray(list)) {
+          setRoles(list)
+          if (!newRole && list.length) setNewRole(list[0] as User['role'])
+        }
       }
 
       if (usersRes.status === 'fulfilled') {
@@ -59,6 +62,10 @@ export default function Pharmacy_UserManagement() {
       setAddUserError('Please enter username and password')
       return
     }
+    if (!newRole) {
+      setAddUserError('Please select a role (or create one first)')
+      return
+    }
     if (newUsername.trim().length < 3) {
       setAddUserError('Username must be at least 3 characters')
       return
@@ -72,7 +79,7 @@ export default function Pharmacy_UserManagement() {
       setUsers(prev => [...prev, created as User])
       setNewUsername('')
       setNewPassword('')
-      setNewRole('salesman')
+      setNewRole((roles[0] as any) || '')
     } catch (e: any) {
       let msg = e?.message || 'Failed to add user'
       try {
@@ -134,11 +141,11 @@ export default function Pharmacy_UserManagement() {
 
   return (
     <>
-    <div className="relative min-h-[70dvh] overflow-hidden rounded-2xl border border-white/20 bg-gradient-to-br from-indigo-500/25 via-fuchsia-300/25 to-cyan-300/25 p-5 sm:p-6">
+    <div className="relative min-h-[70dvh] overflow-hidden rounded-2xl border border-white/20 bg-linear-to-br from-indigo-500/25 via-fuchsia-300/25 to-cyan-300/25 p-5 sm:p-6">
       <div className="pointer-events-none absolute inset-0">
         <div className="absolute -top-24 -right-24 h-72 w-72 rounded-full bg-sky-200/35 blur-3xl" />
         <div className="absolute -bottom-28 -left-28 h-80 w-80 rounded-full bg-fuchsia-200/25 blur-3xl" />
-        <div className="absolute left-1/2 top-1/2 h-[26rem] w-[26rem] -translate-x-1/2 -translate-y-1/2 rounded-full bg-indigo-200/20 blur-3xl" />
+        <div className="absolute left-1/2 top-1/2 h-104 w-104 -translate-x-1/2 -translate-y-1/2 rounded-full bg-indigo-200/20 blur-3xl" />
       </div>
 
       <div className="relative mx-auto w-full max-w-5xl">
@@ -179,7 +186,7 @@ export default function Pharmacy_UserManagement() {
                       <tr key={u._id} className="hover:bg-slate-50/70">
                         <td className="px-5 py-3">
                           <div className="flex items-center gap-3">
-                            <div className="grid h-9 w-9 place-items-center rounded-xl bg-gradient-to-br from-sky-500 to-indigo-600 text-sm font-semibold text-white shadow-sm">
+                            <div className="grid h-9 w-9 place-items-center rounded-xl bg-linear-to-br from-sky-500 to-indigo-600 text-sm font-semibold text-white shadow-sm">
                               {(u.username || 'U').slice(0, 1).toUpperCase()}
                             </div>
                             <div className="min-w-0">
@@ -231,7 +238,7 @@ export default function Pharmacy_UserManagement() {
                   <div className="text-sm font-semibold text-slate-900">Add New User</div>
                   <div className="mt-0.5 text-xs text-slate-500">Create a user and assign a role.</div>
                 </div>
-                <div className="rounded-full bg-slate-900 px-3 py-1 text-[11px] font-semibold text-white">Healthspire</div>
+                <div className="rounded-full bg-slate-900 px-3 py-1 text-[11px] font-semibold text-white dark:bg-slate-700">Healthspire</div>
               </div>
 
               <div className="mt-4">
@@ -244,9 +251,10 @@ export default function Pharmacy_UserManagement() {
                     placeholder="e.g. cashier"
                   />
                   <button
+                    type="button"
                     onClick={createRole}
                     disabled={creatingRole || !newRoleName.trim()}
-                    className="rounded-xl bg-gradient-to-r from-violet-600 to-fuchsia-600 px-4 py-2 text-sm font-semibold text-white shadow-lg shadow-fuchsia-200/60 transition hover:from-violet-700 hover:to-fuchsia-700 disabled:opacity-50"
+                    className="rounded-xl bg-linear-to-r from-violet-600 to-fuchsia-600 px-4 py-2 text-sm font-semibold text-white shadow-lg shadow-fuchsia-200/60 transition hover:from-violet-700 hover:to-fuchsia-700 disabled:opacity-50 dark:shadow-none"
                   >
                     {creatingRole ? 'Creating…' : 'Create'}
                   </button>
@@ -268,6 +276,7 @@ export default function Pharmacy_UserManagement() {
                     onChange={e=>setNewRole(e.target.value as User['role'])}
                     className="w-full rounded-xl border border-slate-200 bg-white/90 px-3 py-2 text-sm outline-none transition focus:border-sky-500 focus:ring-4 focus:ring-sky-200/60"
                   >
+                    {!newRole && <option value="" disabled>Select role</option>}
                     {(roles || []).map(r => (
                       <option key={r} value={r}>{r.charAt(0).toUpperCase() + r.slice(1)}</option>
                     ))}
@@ -282,8 +291,9 @@ export default function Pharmacy_UserManagement() {
                   />
 
                   <button
+                    type="button"
                     onClick={addUser}
-                    className="w-full rounded-xl bg-gradient-to-r from-sky-600 via-blue-600 to-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-xl shadow-sky-200/60 transition hover:from-sky-700 hover:via-blue-700 hover:to-indigo-700 focus:outline-none focus:ring-4 focus:ring-sky-300/70"
+                    className="w-full rounded-xl bg-linear-to-r from-sky-600 via-blue-600 to-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-xl shadow-sky-200/60 transition hover:from-sky-700 hover:via-blue-700 hover:to-indigo-700 focus:outline-none focus:ring-4 focus:ring-sky-300/70 dark:shadow-none"
                   >
                     Add User
                   </button>
@@ -316,20 +326,20 @@ export default function Pharmacy_UserManagement() {
       </div>
     </div>
     {editing && (
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-        <div className="w-full max-w-md overflow-hidden rounded-2xl border border-white/20 bg-white/90 shadow-2xl backdrop-blur">
-          <div className="bg-gradient-to-r from-sky-600 via-blue-600 to-indigo-600 px-5 py-4 text-white">
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" role="dialog" aria-modal="true">
+        <div className="w-full max-w-md overflow-hidden rounded-2xl border border-white/20 bg-white/90 shadow-2xl backdrop-blur dark:border-slate-700 dark:bg-slate-900/90">
+          <div className="bg-linear-to-r from-sky-600 via-blue-600 to-indigo-600 px-5 py-4 text-white">
             <div className="text-lg font-semibold">Edit User</div>
             <div className="mt-0.5 text-xs text-white/80">Update username and role.</div>
           </div>
           <div className="space-y-3">
             <div className="px-5 pt-5">
-              <label className="mb-1 block text-sm font-medium text-slate-700">Username</label>
-              <input value={editing.username} onChange={e=>setEditing(prev => prev ? { ...prev, username: e.target.value } : prev)} className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-sky-500 focus:ring-4 focus:ring-sky-200/60" />
+              <label className="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-200">Username</label>
+              <input value={editing.username} onChange={e=>setEditing(prev => prev ? { ...prev, username: e.target.value } : prev)} className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-sky-500 focus:ring-4 focus:ring-sky-200/60 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:focus:ring-sky-900/40" />
             </div>
             <div className="px-5">
-              <label className="mb-1 block text-sm font-medium text-slate-700">Role</label>
-              <select value={editing.role} onChange={e=>setEditing(prev => prev ? { ...prev, role: e.target.value as User['role'] } : prev)} className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-sky-500 focus:ring-4 focus:ring-sky-200/60">
+              <label className="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-200">Role</label>
+              <select value={editing.role} onChange={e=>setEditing(prev => prev ? { ...prev, role: e.target.value as User['role'] } : prev)} className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-sky-500 focus:ring-4 focus:ring-sky-200/60 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:focus:ring-sky-900/40">
                 {(roles || []).map(r => (
                   <option key={r} value={r}>{r.charAt(0).toUpperCase() + r.slice(1)}</option>
                 ))}
@@ -337,8 +347,8 @@ export default function Pharmacy_UserManagement() {
             </div>
           </div>
           <div className="flex items-center justify-end gap-2 px-5 pb-5 pt-4">
-            <button onClick={()=>setEditing(null)} className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">Cancel</button>
-            <button onClick={saveEdit} disabled={savingEdit} className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-950 disabled:opacity-50">{savingEdit ? 'Saving…' : 'Save'}</button>
+            <button type="button" onClick={()=>setEditing(null)} className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800">Cancel</button>
+            <button type="button" onClick={saveEdit} disabled={savingEdit} className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-950 disabled:opacity-50 dark:bg-sky-600 dark:hover:bg-sky-700">{savingEdit ? 'Saving…' : 'Save'}</button>
           </div>
         </div>
       </div>

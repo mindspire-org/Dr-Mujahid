@@ -8,12 +8,22 @@ const JournalLineSchema = new Schema({
 }, { _id: false })
 
 const JournalSchema = new Schema({
+  txId: { type: String, index: true, unique: true, sparse: true },
   dateIso: { type: String, required: true },
+  createdBy: { type: Schema.Types.ObjectId, ref: 'Hospital_User', index: true },
   refType: { type: String },
   refId: { type: String },
   memo: { type: String },
   lines: { type: [JournalLineSchema], default: [] },
 }, { timestamps: true })
+
+JournalSchema.pre('validate', function(next) {
+  try {
+    const self: any = this
+    if (!self.txId) self.txId = `TXN-${String(self._id)}`
+  } catch {}
+  next()
+})
 
 export type JournalLine = {
   account: string
@@ -24,6 +34,7 @@ export type JournalLine = {
 
 export type JournalDoc = {
   _id: string
+  txId?: string
   dateIso: string
   refType?: string
   refId?: string

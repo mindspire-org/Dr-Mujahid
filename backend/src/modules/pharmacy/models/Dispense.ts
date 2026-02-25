@@ -6,6 +6,7 @@ const LineSchema = new Schema({
   unitPrice: { type: Number, required: true },
   qty: { type: Number, required: true },
   costPerUnit: { type: Number, default: 0 },
+  discountRs: { type: Number, default: 0 },
 })
 
 const DispenseSchema = new Schema({
@@ -15,10 +16,14 @@ const DispenseSchema = new Schema({
   customer: { type: String, default: 'Walk-in' },
   payment: { type: String, enum: ['Cash','Card','Credit'], default: 'Cash' },
   discountPct: { type: Number, default: 0 },
+  lineDiscountTotal: { type: Number, default: 0 },
+  taxPct: { type: Number, default: 0 },
+  taxAmount: { type: Number, default: 0 },
   subtotal: { type: Number, required: true },
   total: { type: Number, required: true },
   lines: { type: [LineSchema], default: [] },
   profit: { type: Number, default: 0 },
+  createdBy: { type: String },
 }, { timestamps: true, collection: 'pharmacy_dispenses' })
 
 export type DispenseDoc = {
@@ -29,10 +34,14 @@ export type DispenseDoc = {
   customer?: string
   payment: 'Cash'|'Card'|'Credit'
   discountPct?: number
+  lineDiscountTotal?: number
+  taxPct?: number
+  taxAmount?: number
   subtotal: number
   total: number
   profit?: number
-  lines: { medicineId: string; name: string; unitPrice: number; qty: number; costPerUnit?: number }[]
+  createdBy?: string
+  lines: { medicineId: string; name: string; unitPrice: number; qty: number; costPerUnit?: number; discountRs?: number }[]
 }
 
 export const Dispense = models.Pharmacy_Dispense || model('Pharmacy_Dispense', DispenseSchema)

@@ -3,6 +3,7 @@ import { hospitalApi } from '../../utils/api'
 
 export default function Finance_PettyCashAccounts(){
   const [list, setList] = useState<any[]>([])
+  const [users, setUsers] = useState<any[]>([])
   const [code, setCode] = useState('')
   const [name, setName] = useState('')
   const [department, setDepartment] = useState('')
@@ -12,6 +13,11 @@ export default function Finance_PettyCashAccounts(){
   const [editItem, setEditItem] = useState<any|null>(null)
   const [editName, setEditName] = useState('')
   const [editStatus, setEditStatus] = useState<'Active'|'Inactive'>('Active')
+  const [editDepartment, setEditDepartment] = useState('')
+  const [editResponsibleStaff, setEditResponsibleStaff] = useState('')
+
+  const [deleteItem, setDeleteItem] = useState<any|null>(null)
+  const [deleteLoading, setDeleteLoading] = useState(false)
 
   async function reload(){
     setLoading(true)
@@ -20,7 +26,15 @@ export default function Finance_PettyCashAccounts(){
       setList(res?.accounts || [])
     } finally { setLoading(false) }
   }
-  useEffect(()=>{ reload() }, [])
+  async function reloadUsers(){
+    try {
+      const res: any = await hospitalApi.listHospitalUsers()
+      setUsers(Array.isArray(res?.users) ? res.users : [])
+    } catch {
+      setUsers([])
+    }
+  }
+  useEffect(()=>{ reload(); reloadUsers() }, [])
 
   async function create(){
     if (!code || !name) return alert('Code and Name are required')
@@ -83,6 +97,22 @@ export default function Finance_PettyCashAccounts(){
                 <input value={editName} onChange={(e)=> setEditName(e.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
               </div>
               <div>
+                <label className="mb-1 block text-sm font-medium text-slate-700">Department</label>
+                <input value={editDepartment} onChange={(e)=> setEditDepartment(e.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
+              </div>
+              <div>
+                <label className="mb-1 block text-sm font-medium text-slate-700">Responsible Staff</label>
+                <select value={editResponsibleStaff} onChange={(e)=> setEditResponsibleStaff(e.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm">
+                  <option value="">-- Select User --</option>
+                  {users.map((u:any)=>(
+                    <option key={String(u.id)} value={String(u.username||'')}>{`${String(u.username||'')}-${String(u.role||'')}`}</option>
+                  ))}
+                  {!!editResponsibleStaff && !users.some((u:any)=> String(u.username||'') === editResponsibleStaff) && (
+                    <option value={editResponsibleStaff}>{editResponsibleStaff}</option>
+                  )}
+                </select>
+              </div>
+              <div>
                 <label className="mb-1 block text-sm font-medium text-slate-700">Status</label>
                 <select value={editStatus} onChange={(e)=> setEditStatus(e.target.value as any)} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm">
                   <option value="Active">Active</option>
@@ -94,7 +124,7 @@ export default function Finance_PettyCashAccounts(){
               <button className="rounded border border-slate-300 px-3 py-2 text-sm" onClick={()=> setEditItem(null)}>Cancel</button>
               <button className="btn" onClick={async ()=>{
                 try {
-                  await hospitalApi.updatePettyCashAccount(editItem.id, { name: editName.trim(), status: editStatus })
+                  await hospitalApi.updatePettyCashAccount(editItem.id, { name: editName.trim(), department: editDepartment.trim(), responsibleStaff: editResponsibleStaff.trim(), status: editStatus })
                   setEditItem(null)
                   await reload()
                 } catch(e:any){ alert(e?.message||'Failed to update') }
@@ -120,7 +150,15 @@ export default function Finance_PettyCashAccounts(){
           </div>
           <div>
             <label className="mb-1 block text-sm font-medium text-slate-700">Responsible Staff</label>
-            <input value={responsibleStaff} onChange={e=> setResponsibleStaff(e.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" placeholder="e.g. John Doe" />
+            <select value={responsibleStaff} onChange={e=> setResponsibleStaff(e.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm">
+              <option value="">-- Select User --</option>
+              {users.map((u:any)=>(
+                <option key={String(u.id)} value={String(u.username||'')}>{`${String(u.username||'')}-${String(u.role||'')}`}</option>
+              ))}
+              {!!responsibleStaff && !users.some((u:any)=> String(u.username||'') === responsibleStaff) && (
+                <option value={responsibleStaff}>{responsibleStaff}</option>
+              )}
+            </select>
           </div>
         </div>
         <div className="flex justify-end">
@@ -148,7 +186,13 @@ export default function Finance_PettyCashAccounts(){
                   <td className="py-2 pr-4 font-mono">{a.code}</td>
                   <td className="py-2 pr-4">{a.name}</td>
                   <td className="py-2 pr-4">{a.department || '-'}</td>
-                  <td className="py-2 pr-4">{a.responsibleStaff || '-'}</td>
+                  <td className="py-2 pr-4">{(() => {
+                    const key = String(a?.responsibleStaff || '').trim()
+                    if (!key) return '-'
+                    const u = users.find((x:any) => String(x?.username || '').trim() === key)
+                    const role = String(u?.role || '').trim()
+                    return role ? `${key}-${role}` : key
+                  })()}</td>
                   <td className="py-2 pr-4">{a.status || 'Active'}</td>
                   <td className="py-2 pr-4">
                     <div className="flex justify-end gap-2">
@@ -163,21 +207,17 @@ export default function Finance_PettyCashAccounts(){
                           View
                         </span>
                       </button>
+
                       <button
                         className="rounded border border-slate-300 px-2 py-1 hover:bg-slate-50"
-                        onClick={()=> { setEditItem(a); setEditName(a.name||''); setEditStatus((a.status || 'Active') as any) }}
+                        onClick={()=> { setEditItem(a); setEditName(a.name||''); setEditDepartment(a.department||''); setEditResponsibleStaff(a.responsibleStaff||''); setEditStatus((a.status || 'Active') as any) }}
                         aria-label="Edit"
                         title="Edit"
                       >Edit</button>
+
                       <button
                         className="rounded border border-rose-300 text-rose-700 px-2 py-1 hover:bg-rose-50"
-                        onClick={async ()=>{
-                          if (!window.confirm('Delete this account? This cannot be undone.')) return
-                          try {
-                            await hospitalApi.deletePettyCashAccount(a.id)
-                            await reload()
-                          } catch(e:any){ alert(e?.message||'Failed to delete') }
-                        }}
+                        onClick={()=> setDeleteItem(a)}
                       >Delete</button>
                     </div>
                   </td>
@@ -187,6 +227,37 @@ export default function Finance_PettyCashAccounts(){
           </table>
         </div>
       </div>
+
+      {deleteItem && (
+        <div className="fixed inset-0 z-40 flex items-end sm:items-center justify-center">
+          <div className="fixed inset-0 bg-black/40" onClick={()=> { if (!deleteLoading) setDeleteItem(null) }}></div>
+          <div className="relative z-50 w-full sm:max-w-md bg-white rounded-t-2xl sm:rounded-2xl shadow-lg p-4 m-0 sm:m-4">
+            <div className="flex items-center justify-between">
+              <div className="text-lg font-semibold">Confirm Delete</div>
+              <button className="rounded p-1 hover:bg-slate-100" onClick={()=> { if (!deleteLoading) setDeleteItem(null) }}>✕</button>
+            </div>
+            <div className="mt-2 text-sm text-slate-600">
+              Delete this account? This cannot be undone.
+            </div>
+            <div className="mt-4 flex justify-end gap-2">
+              <button className="rounded border border-slate-300 px-3 py-2 text-sm" disabled={deleteLoading} onClick={()=> setDeleteItem(null)}>Cancel</button>
+              <button
+                className="rounded border border-rose-300 bg-rose-50 text-rose-700 px-3 py-2 text-sm hover:bg-rose-100 disabled:opacity-50"
+                disabled={deleteLoading}
+                onClick={async ()=>{
+                  setDeleteLoading(true)
+                  try {
+                    await hospitalApi.deletePettyCashAccount(deleteItem.id)
+                    setDeleteItem(null)
+                    await reload()
+                  } catch(e:any){ alert(e?.message||'Failed to delete') }
+                  finally { setDeleteLoading(false) }
+                }}
+              >Delete</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

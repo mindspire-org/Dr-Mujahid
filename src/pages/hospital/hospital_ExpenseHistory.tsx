@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import { hospitalApi } from '../../utils/api'
 
@@ -13,13 +13,17 @@ import { hospitalApi } from '../../utils/api'
   ref?: string
   module?: string
   department?: string
+  staff?: string
+  fromAccountCode?: string
+  status?: 'draft'|'submitted'|'approved'|'rejected'
+  rejectionReason?: string
 }
 
 // Fetch from backend only
 
 function toCsv(rows: ExpenseTxn[]) {
-  const headers = ['datetime','department','category','description','method','ref','amount']
-  const body = rows.map(r => [r.datetime, r.department ?? '', r.category, r.description, r.method ?? '', r.ref ?? '', r.amount])
+  const headers = ['datetime','department','staff','category','description','method','ref','amount']
+  const body = rows.map(r => [r.datetime, r.department ?? '', r.staff ?? '', r.category, r.description, r.method ?? '', r.ref ?? '', r.amount])
   return [headers, ...body].map(arr => arr.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n')
 }
 
@@ -28,20 +32,76 @@ export default function Finance_ExpenseHistory() {
   const base = location.pathname.startsWith('/hospital/') ? '/hospital/finance' : '/finance'
   const [deptList, setDeptList] = useState<Array<{ id: string; name: string }>>([])
   const [all, setAll] = useState<ExpenseTxn[]>([])
+  const [actionOpen, setActionOpen] = useState(false)
+  const [actionType, setActionType] = useState<'approve'|'reject'>('approve')
+  const [actionExpenseId, setActionExpenseId] = useState('')
+  const [rejectReason, setRejectReason] = useState('')
+  const [actionLoading, setActionLoading] = useState(false)
+  const [actionError, setActionError] = useState('')
   const [from, setFrom] = useState('')
   const [to, setTo] = useState('')
   const [dept, setDept] = useState<'All' | string>('All')
   const [cat, setCat] = useState<'All' | ExpenseTxn['category']>('All')
   const [method, setMethod] = useState<'All' | NonNullable<ExpenseTxn['method']>>('All')
+  const [status, setStatus] = useState<'All'|'draft'|'submitted'|'approved'|'rejected'>('All')
   const [q, setQ] = useState('')
   const [rowsPerPage, setRowsPerPage] = useState(50)
   const [tick, setTick] = useState(0)
+
+  const [toastMsg, setToastMsg] = useState('')
+  const [toastOpen, setToastOpen] = useState(false)
+  const [toastKind, setToastKind] = useState<'success'|'error'>('success')
+  const toastTimerRef = useRef<number | null>(null)
+
+  const showToast = (msg: string, kind: 'success'|'error' = 'success') => {
+    setToastMsg(msg)
+    setToastKind(kind)
+    setToastOpen(true)
+    if (toastTimerRef.current) window.clearTimeout(toastTimerRef.current)
+    toastTimerRef.current = window.setTimeout(() => {
+      setToastOpen(false)
+    }, 2500)
+  }
+
+  const role = useMemo(() => {
+    try {
+      const raw = base.startsWith('/hospital') ? localStorage.getItem('hospital.session') : localStorage.getItem('finance.session')
+      const s = raw ? JSON.parse(raw) : null
+      return String(s?.role || '')
+    } catch { return '' }
+  }, [base])
+  const canApprove = /^admin$/i.test(role) || /^finance$/i.test(role)
+
+  const toUserMessage = (err: any) => {
+    const raw = (typeof err === 'string' ? err : (err?.message || err?.error || '')).toString()
+    const trimmed = raw.trim()
+    let msg = trimmed
+    if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
+      try {
+        const j = JSON.parse(trimmed)
+        if (j?.error) msg = String(j.error)
+        else if (j?.message) msg = String(j.message)
+      } catch {
+        msg = trimmed
+      }
+    }
+
+    const lower = msg.toLowerCase()
+    if (lower.includes('insufficient') && lower.includes('balance')) {
+      return 'Insufficient balance in the selected account. Please choose another account or refill it.'
+    }
+    if (lower.includes('forbidden')) {
+      return 'You do not have permission to perform this action.'
+    }
+    if (!msg) return 'Something went wrong. Please try again.'
+    return msg
+  }
 
   useEffect(() => {
     let cancelled = false
     ;(async () => {
       try {
-        const res: any = await hospitalApi.listExpenses({ from: from || '1900-01-01', to: to || '2100-01-01' })
+        const res: any = await hospitalApi.listExpenses({ from: from || '1900-01-01', to: to || '2100-01-01', status: status === 'All' ? 'all' : status })
         const list: Array<any> = Array.isArray(res?.expenses) ? res.expenses : []
         const depMap: Record<string,string> = Object.fromEntries((deptList||[]).map(d => [d.id, d.name]))
         const rows: ExpenseTxn[] = list.map(r => ({
@@ -54,7 +114,11 @@ export default function Finance_ExpenseHistory() {
           method: (r.method ? String(r.method) : undefined) as any,
           ref: r.ref ? String(r.ref) : undefined,
           module: 'Hospital',
-          department: depMap[String(r.departmentId || '')] || String(r.departmentId || ''),
+          department: depMap[String(r.departmentId || '')] || String(r.departmentId || '') || '-',
+          staff: r.receiverLabel ? String(r.receiverLabel) : '-',
+          fromAccountCode: r.fromAccountCode ? String(r.fromAccountCode) : undefined,
+          status: (r.status ? String(r.status) : 'approved') as any,
+          rejectionReason: r.rejectionReason ? String(r.rejectionReason) : undefined,
         }))
         if (!cancelled) setAll(rows)
       } catch {
@@ -62,7 +126,7 @@ export default function Finance_ExpenseHistory() {
       }
     })()
     return () => { cancelled = true }
-  }, [from, to, tick, deptList])
+  }, [from, to, tick, deptList, status])
 
   useEffect(() => {
     let cancelled = false
@@ -88,7 +152,7 @@ export default function Finance_ExpenseHistory() {
       if (cat !== 'All' && r.category !== cat) return false
       if (method !== 'All' && (r.method ?? '') !== method) return false
       if (q) {
-        const hay = `${r.description} ${r.ref ?? ''} ${r.department ?? ''}`.toLowerCase()
+        const hay = `${r.description} ${r.ref ?? ''} ${r.department ?? ''} ${r.staff ?? ''}`.toLowerCase()
         if (!hay.includes(q.toLowerCase())) return false
       }
       return true
@@ -96,6 +160,7 @@ export default function Finance_ExpenseHistory() {
   }, [all, from, to, dept, cat, method, q])
 
   const total = useMemo(() => filtered.reduce((sum, r) => sum + (r.amount || 0), 0), [filtered])
+  const approvedTotal = useMemo(() => filtered.reduce((sum, r) => sum + ((r.status || 'approved') === 'approved' ? (r.amount || 0) : 0), 0), [filtered])
 
   const exportCsv = () => {
     const csv = toCsv(filtered)
@@ -162,6 +227,16 @@ export default function Finance_ExpenseHistory() {
               <option>card</option>
             </select>
           </div>
+          <div>
+            <label className="mb-1 block text-sm text-slate-700">Status</label>
+            <select value={status} onChange={e=>setStatus(e.target.value as any)} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm">
+              <option>All</option>
+              <option value="draft">draft</option>
+              <option value="submitted">submitted</option>
+              <option value="approved">approved</option>
+              <option value="rejected">rejected</option>
+            </select>
+          </div>
           <div className="md:col-span-2">
             <label className="mb-1 block text-sm text-slate-700">Search</label>
             <input value={q} onChange={e=>setQ(e.target.value)} placeholder="description, ref, dept" className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
@@ -185,11 +260,15 @@ export default function Finance_ExpenseHistory() {
               <tr>
                 <th className="px-4 py-2 font-medium">Date/Time</th>
                 <th className="px-4 py-2 font-medium">Department</th>
+                <th className="px-4 py-2 font-medium">Staff</th>
                 <th className="px-4 py-2 font-medium">Category</th>
                 <th className="px-4 py-2 font-medium">Description</th>
                 <th className="px-4 py-2 font-medium">Method</th>
+                <th className="px-4 py-2 font-medium">From (Account)</th>
                 <th className="px-4 py-2 font-medium">Ref</th>
+                <th className="px-4 py-2 font-medium">Status</th>
                 <th className="px-4 py-2 font-medium">Amount</th>
+                <th className="px-4 py-2 font-medium">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200 text-slate-700">
@@ -197,16 +276,54 @@ export default function Finance_ExpenseHistory() {
                 <tr key={r.id} className="hover:bg-slate-50/50">
                   <td className="px-4 py-2">{new Date(r.datetime).toLocaleString()}</td>
                   <td className="px-4 py-2">{r.department || '-'}</td>
+                  <td className="px-4 py-2">{r.staff || '-'}</td>
                   <td className="px-4 py-2">{r.category}</td>
                   <td className="px-4 py-2">{r.description}</td>
                   <td className="px-4 py-2">{r.method || '-'}</td>
+                  <td className="px-4 py-2 font-mono">{r.fromAccountCode || '-'}</td>
                   <td className="px-4 py-2">{r.ref || '-'}</td>
+                  <td className="px-4 py-2">
+                    <div className="leading-tight">
+                      <div className="capitalize">{r.status || 'approved'}</div>
+                      {r.status === 'rejected' && r.rejectionReason && (
+                        <div className="text-xs text-rose-600">{r.rejectionReason}</div>
+                      )}
+                    </div>
+                  </td>
                   <td className="px-4 py-2">Rs {r.amount.toFixed(2)}</td>
+                  <td className="px-4 py-2">
+                    <div className="flex items-center gap-2">
+                      {(r.status === 'draft' || r.status === 'submitted') && canApprove && (
+                        <>
+                          <button
+                            className="btn"
+                            onClick={async()=>{
+                              setActionError('')
+                              setRejectReason('')
+                              setActionExpenseId(String(r.id))
+                              setActionType('approve')
+                              setActionOpen(true)
+                            }}
+                          >Approve</button>
+                          <button
+                            className="btn-outline-navy"
+                            onClick={async()=>{
+                              setActionError('')
+                              setRejectReason('')
+                              setActionExpenseId(String(r.id))
+                              setActionType('reject')
+                              setActionOpen(true)
+                            }}
+                          >Reject</button>
+                        </>
+                      )}
+                    </div>
+                  </td>
                 </tr>
               ))}
               {filtered.length === 0 && (
                 <tr>
-                  <td colSpan={7} className="px-4 py-12 text-center text-slate-500">No expenses</td>
+                  <td colSpan={11} className="px-4 py-12 text-center text-slate-500">No expenses</td>
                 </tr>
               )}
             </tbody>
@@ -214,9 +331,70 @@ export default function Finance_ExpenseHistory() {
         </div>
         <div className="flex items-center justify-between border-t border-slate-200 px-4 py-3 text-sm text-slate-600">
           <div>Showing {Math.min(rowsPerPage, filtered.length)} of {filtered.length}</div>
-          <div className="font-medium">Total: Rs {total.toFixed(2)}</div>
+          <div className="font-medium">{status === 'All' ? `Total (Approved): Rs ${approvedTotal.toFixed(2)}` : `Total: Rs ${total.toFixed(2)}`}</div>
         </div>
       </div>
+
+      {actionOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => { if (!actionLoading) setActionOpen(false) }}>
+          <div className="w-full max-w-md rounded-2xl bg-white p-4 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between">
+              <div className="text-lg font-semibold text-slate-900">{actionType === 'approve' ? 'Approve Expense' : 'Reject Expense'}</div>
+              <button type="button" className="rounded-md p-2 text-slate-600 hover:bg-slate-100" onClick={() => { if (!actionLoading) setActionOpen(false) }} aria-label="Close">✕</button>
+            </div>
+
+            {actionType === 'reject' && (
+              <div className="mt-3">
+                <label className="mb-1 block text-sm text-slate-700">Rejection reason</label>
+                <textarea value={rejectReason} onChange={e=>setRejectReason(e.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" rows={3} />
+              </div>
+            )}
+
+            {actionError && (
+              <div className="mt-3 rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">{actionError}</div>
+            )}
+
+            <div className="mt-4 flex justify-end gap-2">
+              <button type="button" className="rounded-md border border-slate-300 px-3 py-2 text-sm" disabled={actionLoading} onClick={() => setActionOpen(false)}>Cancel</button>
+              <button
+                type="button"
+                className="btn"
+                disabled={actionLoading || !actionExpenseId || (actionType === 'reject' && !rejectReason.trim())}
+                onClick={async()=>{
+                  if (!actionExpenseId) return
+                  setActionLoading(true)
+                  setActionError('')
+                  try {
+                    if (actionType === 'approve') {
+                      await hospitalApi.approveExpense(actionExpenseId)
+                      showToast('Expense approved successfully', 'success')
+                    } else {
+                      await hospitalApi.rejectExpense(actionExpenseId, rejectReason.trim())
+                      showToast('Expense rejected successfully', 'success')
+                    }
+                    setActionOpen(false)
+                    setTick(t=>t+1)
+                  } catch (e: any) {
+                    const msg = toUserMessage(e)
+                    setActionError(msg)
+                    showToast(msg, 'error')
+                  } finally {
+                    setActionLoading(false)
+                  }
+                }}
+              >Confirm</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {toastOpen && (
+        <div className="fixed bottom-4 right-4 z-[60]">
+          <div className={`rounded-lg px-4 py-2 text-sm font-medium text-white shadow-lg ${toastKind === 'error' ? 'bg-rose-600' : 'bg-emerald-600'}`}>
+            {toastMsg}
+          </div>
+        </div>
+      )}
     </div>
   )
 }

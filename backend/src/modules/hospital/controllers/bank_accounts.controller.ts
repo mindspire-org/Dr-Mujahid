@@ -8,9 +8,9 @@ const createSchema = z.object({
   accountNumber: z.string().min(1),
   branchName: z.string().optional(),
   branchCode: z.string().optional(),
-  iban: z.string().optional(),
   swift: z.string().optional(),
-  status: z.enum(['Active','Inactive']).optional(),
+  responsibleStaff: z.string().optional(),
+  status: z.enum(['Active','Inactive']),
 })
 
 const updateSchema = z.object({
@@ -18,8 +18,8 @@ const updateSchema = z.object({
   accountTitle: z.string().min(1).optional(),
   branchName: z.string().optional(),
   branchCode: z.string().optional(),
-  iban: z.string().optional(),
   swift: z.string().optional(),
+  responsibleStaff: z.string().optional(),
   status: z.enum(['Active','Inactive']).optional(),
 })
 
@@ -37,9 +37,17 @@ export async function list(req: Request, res: Response){
       accountNumber: r.accountNumber,
       branchName: r.branchName,
       branchCode: r.branchCode,
-      iban: r.iban,
       swift: r.swift,
+      responsibleStaff: r.responsibleStaff,
       status: r.status || 'Active',
+      financeAccountCode: (() => {
+        const existing = String(r.financeAccountCode || '').trim().toUpperCase()
+        if (existing) return existing
+        const an = String(r.accountNumber || '')
+        const last4 = an ? an.slice(-4) : ''
+        const idSuffix = String(r._id || '').slice(-4).toUpperCase()
+        return last4 ? `BANK_${last4}_${idSuffix}` : ''
+      })(),
     }))
   res.json({ accounts: items })
 }
@@ -52,8 +60,8 @@ export async function update(req: Request, res: Response){
   if (data.accountTitle != null) patch.accountTitle = data.accountTitle.trim()
   if (data.branchName != null) patch.branchName = data.branchName?.trim()
   if (data.branchCode != null) patch.branchCode = data.branchCode?.trim()
-  if (data.iban != null) patch.iban = data.iban?.trim()
   if (data.swift != null) patch.swift = data.swift?.trim()
+  if (data.responsibleStaff != null) patch.responsibleStaff = data.responsibleStaff?.trim()
   if (data.status != null) patch.status = data.status
   const doc: any = await BankAccount.findByIdAndUpdate(id, patch, { new: true }).lean()
   if (!doc) return res.status(404).json({ error: 'Bank account not found' })
@@ -64,8 +72,8 @@ export async function update(req: Request, res: Response){
     accountNumber: doc.accountNumber,
     branchName: doc.branchName,
     branchCode: doc.branchCode,
-    iban: doc.iban,
     swift: doc.swift,
+    responsibleStaff: doc.responsibleStaff,
     status: doc.status || 'Active',
   } })
 }
@@ -79,18 +87,29 @@ export async function remove(req: Request, res: Response){
 
 export async function create(req: Request, res: Response){
   const data = createSchema.parse(req.body)
-  const exists = await BankAccount.findOne({ accountNumber: data.accountNumber }).lean()
-  if (exists) return res.status(409).json({ error: 'Duplicate account number' })
   const doc: any = await BankAccount.create({
     bankName: data.bankName.trim(),
     accountTitle: data.accountTitle.trim(),
     accountNumber: data.accountNumber.trim(),
     branchName: data.branchName?.trim(),
     branchCode: data.branchCode?.trim(),
-    iban: data.iban?.trim(),
     swift: data.swift?.trim(),
+    responsibleStaff: data.responsibleStaff?.trim(),
     status: data.status || 'Active',
   })
+  // Ensure stable, unique financeAccountCode even when account numbers repeat
+  if (!String(doc.financeAccountCode || '').trim()){
+    const an = String(doc.accountNumber || '')
+    const last4 = an ? an.slice(-4) : ''
+    const idSuffix = String(doc._id || '').slice(-4).toUpperCase()
+    if (last4){
+      const code = `BANK_${last4}_${idSuffix}`
+      try {
+        await BankAccount.updateOne({ _id: doc._id }, { $set: { financeAccountCode: code } }).exec()
+        doc.financeAccountCode = code
+      } catch {}
+    }
+  }
   res.status(201).json({ account: {
     id: String(doc._id),
     bankName: doc.bankName,
@@ -98,8 +117,8 @@ export async function create(req: Request, res: Response){
     accountNumber: doc.accountNumber,
     branchName: doc.branchName,
     branchCode: doc.branchCode,
-    iban: doc.iban,
     swift: doc.swift,
+    responsibleStaff: doc.responsibleStaff,
     status: doc.status || 'Active',
     financeAccountCode: doc.financeAccountCode,
   } })

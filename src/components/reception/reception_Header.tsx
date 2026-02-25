@@ -1,10 +1,38 @@
 import { Link } from 'react-router-dom'
 import { Menu } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { hospitalApi } from '../../utils/api'
 
 type Props = { onToggleSidebar?: () => void; collapsed?: boolean; onToggleTheme?: () => void; theme?: 'light'|'dark' }
 
 export default function Reception_Header({ onToggleSidebar, collapsed, onToggleTheme, theme }: Props) {
-  const user = (()=>{ try { return JSON.parse(localStorage.getItem('reception.session')||'{}') } catch { return {} } })()
+  const user = (()=>{ try { return JSON.parse(localStorage.getItem('reception.session') || localStorage.getItem('hospital.session') || '{}') } catch { return {} } })()
+  const DEFAULT_CLINIC_NAME = "Men's Care Clinic"
+  const [brand, setBrand] = useState<{ name?: string; logoDataUrl?: string }>(() => ({
+    name: DEFAULT_CLINIC_NAME,
+    logoDataUrl: undefined,
+  }))
+
+  useEffect(() => {
+    let mounted = true
+    ;(async () => {
+      try {
+        const s: any = await hospitalApi.getSettings()
+        if (!mounted) return
+        const name = String(s?.name || s?.hospitalName || s?.clinicName || '').trim()
+        const logoDataUrl = String(s?.logoDataUrl || '').trim()
+        setBrand({
+          name: name || DEFAULT_CLINIC_NAME,
+          logoDataUrl: logoDataUrl || undefined,
+        })
+      } catch {
+        if (!mounted) return
+        setBrand({ name: DEFAULT_CLINIC_NAME, logoDataUrl: undefined })
+      }
+    })()
+    return () => { mounted = false }
+  }, [])
+
   function handleToggleTheme(){
     const next = theme === 'dark' ? 'light' : 'dark'
     try { localStorage.setItem('reception.theme', next) } catch {}
@@ -45,10 +73,16 @@ export default function Reception_Header({ onToggleSidebar, collapsed, onToggleT
           </button>
 
           <Link to="/reception" className="ml-3 flex items-center gap-2">
-            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-emerald-100 text-emerald-600 shadow-inner">
-              <svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='currentColor' className='h-5 w-5'><path d='M4.5 12a5.5 5.5 0 0 1 9.9-3.3l.4.5 3 3a5.5 5.5 0 0 1-7.8 7.8l-3-3-.5-.4A5.48 5.48 0 0 1 4.5 12Zm4.9-3.6L7.1 10l6.9 6.9 2.3-2.3-6.9-6.9Z'/></svg>
+            <div className="flex h-8 w-8 items-center justify-center overflow-hidden rounded-full bg-white/10 ring-1 ring-white/15">
+              {brand.logoDataUrl ? (
+                <img src={brand.logoDataUrl} alt="Logo" className="h-full w-full object-cover" />
+              ) : (
+                <div className="flex h-full w-full items-center justify-center bg-emerald-100 text-emerald-600 shadow-inner">
+                  <svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='currentColor' className='h-5 w-5'><path d='M4.5 12a5.5 5.5 0 0 1 9.9-3.3l.4.5 3 3a5.5 5.5 0 0 1-7.8 7.8l-3-3-.5-.4A5.48 5.48 0 0 1 4.5 12Zm4.9-3.6L7.1 10l6.9 6.9 2.3-2.3-6.9-6.9Z'/></svg>
+                </div>
+              )}
             </div>
-            <div className="font-semibold text-white">Reception</div>
+            <div className="font-semibold text-white">{String(brand.name || '').trim() || DEFAULT_CLINIC_NAME}</div>
             <span className="ml-2 rounded-full bg-sky-100 px-2 py-0.5 text-xs font-medium text-sky-700">Online</span>
           </Link>
 

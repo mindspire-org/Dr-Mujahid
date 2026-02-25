@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { hospitalApi, labApi } from '../../utils/api'
+import { hospitalApi } from '../../utils/api'
 import { Users, CalendarCheck2, CalendarX2, CalendarRange, Wallet, Clock, RefreshCw, PieChart, BarChart3, Filter, RotateCcw } from 'lucide-react'
 
 function fmt(n?: number){ return (Number(n||0)).toLocaleString() }
@@ -51,62 +51,40 @@ export default function Hospital_StaffDashboard(){
   const [live, setLive] = useState<boolean>(true)
   const [refreshMs, setRefreshMs] = useState<number>(15000)
   const [tick, setTick] = useState<number>(0)
-  const [useLab, setUseLab] = useState<boolean>(false)
+  const [earningsSum, setEarningsSum] = useState<number>(0)
 
   useEffect(()=>{ loadMeta() }, [])
-  useEffect(()=>{ reloadAttendance() }, [fromDate, toDate, selectedShiftId])
+  useEffect(()=>{ reloadAttendance(); reloadEarnings() }, [fromDate, toDate, selectedShiftId])
 
   async function loadMeta(){
     setLoading(true)
     try{
-      try {
-        const [staffH, shiftsH] = await Promise.all([
-          hospitalApi.listStaff() as any,
-          hospitalApi.listShifts() as any,
-        ])
-        const staffListH: any[] = (staffH?.staff || staffH?.items || staffH || [])
-        const shiftsListH: any[] = (shiftsH?.items || shiftsH?.shifts || shiftsH || [])
-        if (staffListH.length > 0 || shiftsListH.length > 0){
-          setUseLab(false)
-          setStaff(staffListH as any[])
-          setShifts(shiftsListH as any[])
-        } else {
-          throw new Error('No hospital staff/shifts')
-        }
-      } catch {
-        const [staffL, shiftsL] = await Promise.all([
-          labApi.listStaff({ limit: 1000 }) as any,
-          labApi.listShifts() as any,
-        ])
-        const list = (staffL?.items || [])
-          .map((x:any)=> ({ _id: x._id, id: x._id, name: x.name, role: x.position || 'other', phone: x.phone, salary: x.salary, shiftId: x.shiftId, active: x.status !== 'inactive' }))
-        const listShifts = (shiftsL?.items || shiftsL || []).map((x:any)=> ({ _id: x._id, id: x._id, name: x.name, start: x.start, end: x.end }))
-        setUseLab(true)
-        setStaff(list as any[])
-        setShifts(listShifts as any[])
-      }
+      const [staffH, shiftsH] = await Promise.all([
+        hospitalApi.listStaff() as any,
+        hospitalApi.listShifts() as any,
+      ])
+      const staffListH: any[] = (staffH?.staff || staffH?.items || staffH || [])
+      const shiftsListH: any[] = (shiftsH?.items || shiftsH?.shifts || shiftsH || [])
+      setStaff(staffListH as any[])
+      setShifts(shiftsListH as any[])
       setUpdatedAt(new Date().toLocaleString())
     } finally { setLoading(false) }
+  }
+
+  async function reloadEarnings(){
+    try{
+      const res: any = await (hospitalApi as any).listStaffEarnings({ from: fromDate, to: toDate, limit: 5000 })
+      const sum = ((res?.items)||[]).reduce((s:number,n:any)=> s + Number(n?.amount||0), 0)
+      setEarningsSum(sum)
+    } catch { setEarningsSum(0) }
   }
 
   async function reloadAttendance(){
     setLoading(true)
     try{
-      try {
-        if (!useLab){
-          const attRes = await hospitalApi.listAttendance({ from: fromDate, to: toDate, shiftId: selectedShiftId || undefined, limit: 5000 }) as any
-          const arr = (attRes?.items || attRes || []) as any[]
-          if (arr.length === 0) throw new Error('No hospital attendance')
-          setAtt(arr)
-          setUseLab(false)
-        } else {
-          throw new Error('force lab')
-        }
-      } catch {
-        const labRes = await labApi.listAttendance({ from: fromDate, to: toDate, shiftId: selectedShiftId || undefined, limit: 5000 }) as any
-        setAtt((labRes?.items || []) as any[])
-        setUseLab(true)
-      }
+      const attRes = await hospitalApi.listAttendance({ from: fromDate, to: toDate, shiftId: selectedShiftId || undefined, limit: 5000 }) as any
+      const arr = (attRes?.items || attRes || []) as any[]
+      setAtt(arr)
       setUpdatedAt(new Date().toLocaleString())
     } finally { setLoading(false) }
   }
@@ -195,7 +173,8 @@ export default function Hospital_StaffDashboard(){
     { title: 'Absent Today', value: String(absentToday), icon: CalendarX2, tone: 'bg-rose-50 border-rose-200' },
     { title: 'On Leave', value: String(leaveToday), icon: CalendarRange, tone: 'bg-amber-50 border-amber-200' },
     { title: 'Late Today', value: String(lateToday), icon: CalendarRange, tone: 'bg-indigo-50 border-indigo-200' },
-    { title: 'Monthly Payroll', value: `PKR ${fmt(payrollMonthly)}`, icon: Wallet, tone: 'bg-teal-50 border-teal-200' },
+    { title: 'Monthly Payroll (Basic)', value: `PKR ${fmt(payrollMonthly)}`, icon: Wallet, tone: 'bg-teal-50 border-teal-200' },
+    { title: 'Additional Earnings', value: `PKR ${fmt(earningsSum)}`, icon: Wallet, tone: 'bg-emerald-50 border-emerald-200' },
   ]
 
   return (
@@ -263,7 +242,7 @@ export default function Hospital_StaffDashboard(){
       </div>
 
       <div className="grid gap-4 lg:grid-cols-2">
-        <div className="rounded-xl border border-slate-200 bg-white p-4">
+        <div className="rounded-xl border border-slate-200 bg-white p-4 min-h-[160px] min-w-0">
           <div className="mb-2 flex items-center justify-between">
             <div className="flex items-center gap-2 text-slate-800 font-semibold"><BarChart3 className="h-4 w-4" /> Attendance Trend (Selected range)</div>
             <div className="text-xs text-slate-500">Avg {fmt(Math.round((trend.reduce((s,n)=>s+n,0)/Math.max(1,trend.length))||0))}/day</div>
@@ -271,7 +250,7 @@ export default function Hospital_StaffDashboard(){
           <LineSpark data={trend} color="#0ea5e9" />
         </div>
 
-        <div className="rounded-xl border border-slate-200 bg-white p-4">
+        <div className="rounded-xl border border-slate-200 bg-white p-4 min-h-[160px] min-w-0">
           <div className="mb-2 flex items-center gap-2 text-slate-800 font-semibold"><PieChart className="h-4 w-4" /> Roles Distribution</div>
           <div className="flex items-center gap-6">
             <Bars values={roleValues} color="#111827" />

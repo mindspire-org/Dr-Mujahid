@@ -5,19 +5,16 @@ import { AuditLog } from '../models/AuditLog'
 
 export async function list(req: Request, res: Response){
   const parsed = purchaseQuerySchema.safeParse(req.query)
-  const { from, to, search, company, page, limit } = parsed.success ? parsed.data as any : {}
+  const { from, to, search, page, limit } = parsed.success ? parsed.data as any : {}
   const filter: any = {}
   if (from || to) {
     filter.date = {}
     if (from) filter.date.$gte = from
     if (to) filter.date.$lte = to
   }
-  if (company){
-    filter['lines.company'] = company
-  }
   if (search){
     const rx = new RegExp(search, 'i')
-    filter.$or = [ { invoice: rx }, { supplierName: rx }, { 'lines.name': rx }, { 'lines.company': rx } ]
+    filter.$or = [ { invoice: rx }, { supplierName: rx }, { 'lines.name': rx } ]
   }
   const effectiveLimit = Number(limit || 10)
   const currentPage = Math.max(1, Number(page || 1))
@@ -36,6 +33,8 @@ export async function create(req: Request, res: Response){
     invoice: data.invoice,
     supplierId: data.supplierId,
     supplierName: data.supplierName,
+    companyId: (data as any).companyId,
+    companyName: (data as any).companyName,
     totalAmount: Number(totalAmount.toFixed(2)),
     lines: data.lines.map(l => ({
       ...l,

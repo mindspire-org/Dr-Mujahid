@@ -115,6 +115,53 @@ export default function Hospital_SearchPatients() {
       ])
       const pres = detail?.prescription
 
+      // Read history taking from DB (staff module) for this encounter
+      let historyTaking: any = null
+      const encounterId = String(pres?.encounterId?._id || pres?.encounterId || '')
+      try {
+        if (encounterId) {
+          const ht: any = await hospitalApi.getHistoryTaking(encounterId)
+          historyTaking = ht?.historyTaking?.data || null
+        }
+      } catch {}
+
+      // Fallback vitals from history taking (matches prescription history)
+      const vitalsFromHistoryTaking = (() => {
+        const d: any = historyTaking || null
+        if (!d) return undefined
+        const p2 = d.personalInfo || d.personal_info || d.personal || d.patient || d
+        const num = (x: any) => {
+          if (x == null) return undefined
+          const v = parseFloat(String(x).trim())
+          return isFinite(v) ? v : undefined
+        }
+        const bpRaw = p2?.bp ?? p2?.BP ?? p2?.bloodPressure ?? p2?.blood_pressure
+        let sys: number | undefined
+        let dia: number | undefined
+        if (typeof bpRaw === 'string') {
+          const s = String(bpRaw).trim()
+          if (s.includes('/')) {
+            const m = s.match(/(\d+(?:\.\d+)?)\s*\/\s*(\d+(?:\.\d+)?)/)
+            if (m) { sys = num(m[1]); dia = num(m[2]) }
+          } else {
+            sys = num(s)
+          }
+        } else if (bpRaw && typeof bpRaw === 'object') {
+          sys = num(bpRaw.sys ?? bpRaw.systolic ?? bpRaw.bloodPressureSys)
+          dia = num(bpRaw.dia ?? bpRaw.diastolic ?? bpRaw.bloodPressureDia)
+        }
+        const heightCm = num(p2?.heightCm ?? p2?.height_cm ?? p2?.height)
+        const weightKg = num(p2?.weightKg ?? p2?.weight_kg ?? p2?.weight)
+        if (sys == null && dia == null && heightCm == null && weightKg == null) return undefined
+        return {
+          bloodPressureSys: sys,
+          bloodPressureDia: dia,
+          heightCm,
+          weightKg,
+        }
+      })()
+      const vitals = pres?.vitals || vitalsFromHistoryTaking
+
       // Try to enrich doctor info (same behavior as prescription history)
       let doctor: any = { name: pres?.encounterId?.doctorId?.name || '-', specialization: '', qualification: '', departmentName: '', phone: '' }
       try {
@@ -160,9 +207,8 @@ export default function Hospital_SearchPatients() {
 
       let tpl: PrescriptionPdfTemplate = 'default'
       try {
-        const rawSess = localStorage.getItem('doctor.session')
-        const sess = rawSess ? JSON.parse(rawSess) : null
-        const raw = localStorage.getItem(`doctor.rx.template.${sess?.id || 'anon'}`) as PrescriptionPdfTemplate | null
+        const docId = String(pres?.encounterId?.doctorId?._id || pres?.encounterId?.doctorId || '')
+        const raw = localStorage.getItem(`doctor.rx.template.${docId || 'anon'}`) as PrescriptionPdfTemplate | null
         if (raw === 'default' || raw === 'rx-vitals-left') tpl = raw
       } catch {}
 
@@ -170,8 +216,9 @@ export default function Hospital_SearchPatients() {
         doctor,
         settings,
         patient,
-        items: pres?.items || [],
-        vitals: pres?.vitals,
+        items: pres?.medicine || pres?.items || [],
+        historyTaking,
+        vitals,
         primaryComplaint: pres?.primaryComplaint || pres?.complaints,
         primaryComplaintHistory: pres?.primaryComplaintHistory,
         familyHistory: pres?.familyHistory,
@@ -187,6 +234,9 @@ export default function Hospital_SearchPatients() {
         diagnosticNotes: pres?.diagnosticNotes || '',
         therapyTests: pres?.therapyTests || [],
         therapyNotes: pres?.therapyNotes || '',
+        therapyPlan: pres?.therapyPlan,
+        therapyMachines: pres?.therapyMachines,
+        counselling: pres?.counselling,
         createdAt: pres?.createdAt,
       }, tpl)
     } catch (e: any) {
@@ -273,7 +323,7 @@ export default function Hospital_SearchPatients() {
       // Prefer single backend-driven endpoint for both portals (more consistent + fewer calls)
       try {
         const res: any = await hospitalApi.getPatientProfile(mrn)
-        const pres: any[] = (res?.pres || []).map((p: any) => ({ id: p.id || p._id, createdAt: p.createdAt, diagnosis: p.diagnosis, doctor: p.doctor || '-', items: p.items || [] }))
+        const pres: any[] = (res?.pres || []).map((p: any) => ({ id: p.id || p._id, createdAt: p.createdAt, diagnosis: p.diagnosis, doctor: p.doctor || '-', items: p.medicine || p.items || [] }))
         const lab: any[] = (res?.lab || [])
         const diag: any[] = (res?.diag || [])
         const patient = res?.patient || null
@@ -291,7 +341,7 @@ export default function Hospital_SearchPatients() {
         labApi.listOrders({ q: mrn, limit: 50 }) as any,
         diagnosticApi.listOrders({ q: mrn, limit: 50 }) as any,
       ])
-      const pres: any[] = (presRes?.prescriptions || []).map((p: any) => ({ id: p._id || p.id, createdAt: p.createdAt, diagnosis: p.diagnosis, doctor: p.encounterId?.doctorId?.name || '-', items: p.items || [] }))
+      const pres: any[] = (presRes?.prescriptions || []).map((p: any) => ({ id: p._id || p.id, createdAt: p.createdAt, diagnosis: p.diagnosis, doctor: p.encounterId?.doctorId?.name || '-', items: p.medicine || p.items || [] }))
       const orders: any[] = (ordersRes?.items || [])
       const lab: any[] = []
       for (const o of orders){

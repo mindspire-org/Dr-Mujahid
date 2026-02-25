@@ -105,6 +105,9 @@ export default function Pharmacy_Customers() {
           cnic: x.cnic,
           mrNumber: x.mrNumber,
           totalSpent: x.totalSpent,
+          totalCreditAmount: x.totalCreditAmount,
+          totalPaid: x.totalPaid,
+          totalRemaining: x.totalRemaining,
           salesCount: x.salesCount,
           lastPurchaseAt: x.lastPurchaseAt,
         }))
@@ -118,14 +121,19 @@ export default function Pharmacy_Customers() {
     load()
     const handler = () => load()
     try { window.addEventListener('pharmacy:sale', handler as any) } catch {}
-    return () => { mounted = false; try { window.removeEventListener('pharmacy:sale', handler as any) } catch {} }
+    try { window.addEventListener('pharmacy:customer-payment', handler as any) } catch {}
+    return () => {
+      mounted = false
+      try { window.removeEventListener('pharmacy:sale', handler as any) } catch {}
+      try { window.removeEventListener('pharmacy:customer-payment', handler as any) } catch {}
+    }
   }, [q, page, limit])
 
   return (
     <div className="space-y-6">
       <div className="rounded-xl border border-slate-200 bg-white">
         <div className="flex items-center gap-3 border-b border-slate-200 px-4 py-3">
-          <h2 className="text-sm font-medium text-slate-700">Customer Management</h2>
+          <h2 className="text-sm font-medium text-slate-700">Credit Customers</h2>
           <div className="ml-auto flex items-center gap-2">
             <button type="button" onClick={exportCsv} disabled={exporting} className="btn-outline-navy disabled:opacity-60">
               <Download className="h-4 w-4" /> {exporting ? 'Exporting...' : 'Export Report'}
@@ -140,7 +148,7 @@ export default function Pharmacy_Customers() {
               <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
               <input
                 className="w-full rounded-md border border-slate-300 pl-9 pr-3 py-2 text-sm"
-                placeholder="Search customers..."
+                placeholder="Search credit customers..."
                 value={q}
                 onChange={e=> { setQ(e.target.value); setPage(1) }}
               />
@@ -197,6 +205,9 @@ export default function Pharmacy_Customers() {
               cnic: x.cnic,
               mrNumber: x.mrNumber,
               totalSpent: x.totalSpent,
+              totalCreditAmount: x.totalCreditAmount,
+              totalPaid: x.totalPaid,
+              totalRemaining: x.totalRemaining,
               salesCount: x.salesCount,
               lastPurchaseAt: x.lastPurchaseAt,
             }))
@@ -230,6 +241,9 @@ export default function Pharmacy_Customers() {
               cnic: x.cnic,
               mrNumber: x.mrNumber,
               totalSpent: x.totalSpent,
+              totalCreditAmount: x.totalCreditAmount,
+              totalPaid: x.totalPaid,
+              totalRemaining: x.totalRemaining,
               salesCount: x.salesCount,
               lastPurchaseAt: x.lastPurchaseAt,
             }))
@@ -260,6 +274,9 @@ export default function Pharmacy_Customers() {
               cnic: x.cnic,
               mrNumber: x.mrNumber,
               totalSpent: x.totalSpent,
+              totalCreditAmount: x.totalCreditAmount,
+              totalPaid: x.totalPaid,
+              totalRemaining: x.totalRemaining,
               salesCount: x.salesCount,
               lastPurchaseAt: x.lastPurchaseAt,
             }))

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import Pharmacy_AddStaffDialog, { type PharmacyStaff } from '../../components/pharmacy/pharmacy_AddStaffDialog'
+import Pharmacy_StaffEarningsDialog from '../../components/pharmacy/pharmacy_StaffEarningsDialog'
 import { pharmacyApi } from '../../utils/api'
 
 type Shift = { id: string; name: string }
@@ -15,6 +16,8 @@ export default function Pharmacy_StaffManagement(){
   const [staff, setStaff] = useState<PharmacyStaff[]>([])
   const [shifts, setShifts] = useState<Shift[]>([])
   const [reloadTick, setReloadTick] = useState(0)
+  const [earningsOpen, setEarningsOpen] = useState(false)
+  const [earningsStaff, setEarningsStaff] = useState<{ id: string; name: string } | null>(null)
 
   useEffect(()=>{
     let mounted = true
@@ -112,6 +115,7 @@ export default function Pharmacy_StaffManagement(){
                   <td className="px-4 py-2">
                     <div className="flex items-center gap-2">
                       <button onClick={()=>openEdit(s)} className="rounded-md bg-sky-600 px-2 py-1 text-xs text-white hover:bg-sky-700">Edit</button>
+                      <button onClick={()=>{ setEarningsStaff({ id: s.id, name: s.name }); setEarningsOpen(true) }} className="rounded-md bg-emerald-600 px-2 py-1 text-xs text-white hover:bg-emerald-700">Earnings</button>
                       <button onClick={()=>remove(s.id)} className="rounded-md bg-rose-600 px-2 py-1 text-xs text-white hover:bg-rose-700">Delete</button>
                     </div>
                   </td>
@@ -141,6 +145,13 @@ export default function Pharmacy_StaffManagement(){
 
       <Pharmacy_AddStaffDialog open={addOpen} onClose={()=>setAddOpen(false)} onSave={addStaff} />
       <Pharmacy_AddStaffDialog open={editOpen} onClose={()=>setEditOpen(false)} onSave={saveEdit} initial={editing ?? undefined} title="Edit Staff" submitLabel="Save" />
+      {earningsStaff && (
+        <Pharmacy_StaffEarningsDialog
+          open={earningsOpen}
+          onClose={()=>{ setEarningsOpen(false); setEarningsStaff(null) }}
+          staff={{ id: earningsStaff.id, name: earningsStaff.name }}
+        />
+      )}
     </div>
   )
 }

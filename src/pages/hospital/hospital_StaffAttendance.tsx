@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { labApi } from '../../utils/api'
+import { hospitalApi } from '../../utils/api'
 
 type Attendance = { id?: string; staffId: string; date: string; shiftId?: string; status: 'present'|'absent'|'leave'; clockIn?: string; clockOut?: string; notes?: string }
 type Staff = { id: string; name: string; position?: string; phone?: string; shiftId?: string }
@@ -27,15 +27,17 @@ export default function Pharmacy_StaffAttendance(){
     ;(async () => {
       try {
         const [staffRes, shiftRes] = await Promise.all([
-          labApi.listStaff({ shiftId: shiftId || undefined, page, limit }),
-          labApi.listShifts(),
+          (hospitalApi as any).listStaff({ shiftId: shiftId || undefined, page, limit }),
+          (hospitalApi as any).listShifts(),
         ])
         if (!mounted) return
-        const list = (staffRes.items||[]).map((x:any)=>({ id: x._id, name: x.name, position: x.position, phone: x.phone, shiftId: x.shiftId }))
+        const rawStaff: any[] = (staffRes?.items || staffRes?.staff || staffRes || [])
+        const list = rawStaff.map((x:any)=>({ id: x._id, name: x.name, position: x.position || x.role || '', phone: x.phone, shiftId: x.shiftId }))
         setStaff(list)
-        setTotal(Number(staffRes.total || list.length || 0))
-        setTotalPages(Number(staffRes.totalPages || 1))
-        setShifts((shiftRes.items||[]).map((x:any)=>({ id: x._id, name: x.name, start: x.start, end: x.end })))
+        setTotal(Number(staffRes?.total || list.length || 0))
+        setTotalPages(Number(staffRes?.totalPages || 1))
+        const rawShifts: any[] = (shiftRes?.items || shiftRes?.shifts || shiftRes || [])
+        setShifts(rawShifts.map((x:any)=>({ id: x._id, name: x.name, start: x.start, end: x.end })))
       } catch (e) { console.error(e) }
     })()
     return ()=>{ mounted = false }
@@ -45,7 +47,7 @@ export default function Pharmacy_StaffAttendance(){
     let mounted = true
     ;(async () => {
       try {
-        const res = await labApi.listAttendance({ date, shiftId: shiftId || undefined, limit: 1000 })
+        const res = await hospitalApi.listAttendance({ date, shiftId: shiftId || undefined, limit: 1000 })
         if (!mounted) return
         setAtt((res.items||[]).map((x:any)=>({ id: x._id || `${x.staffId}-${x.date}-${x.shiftId||''}`, staffId: x.staffId, date: x.date, shiftId: x.shiftId, status: x.status, clockIn: x.clockIn, clockOut: x.clockOut, notes: x.notes })))
       } catch (e) { console.error(e) }
@@ -80,7 +82,7 @@ export default function Pharmacy_StaffAttendance(){
     if (type==='out' && rec?.clockOut) return
     const payload: any = { staffId: s.id, date, shiftId: s.shiftId || undefined, status: 'present' }
     if (type==='in') payload.clockIn = nowTime(); else payload.clockOut = nowTime()
-    await labApi.upsertAttendance(payload)
+    await hospitalApi.upsertAttendance(payload)
     refresh()
   }
 

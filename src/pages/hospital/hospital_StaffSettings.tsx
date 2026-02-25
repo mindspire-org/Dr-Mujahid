@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { labApi } from '../../utils/api'
+import { hospitalApi } from '../../utils/api'
 
 type Shift = {
   id: string
@@ -10,7 +10,18 @@ type Shift = {
   absentCharges?: number
   lateDeduction?: number
   earlyOutDeduction?: number
+  weekendDays?: number[]
 }
+
+const WEEKDAYS: Array<{ n: number; label: string }> = [
+  { n: 0, label: 'Sun' },
+  { n: 1, label: 'Mon' },
+  { n: 2, label: 'Tue' },
+  { n: 3, label: 'Wed' },
+  { n: 4, label: 'Thu' },
+  { n: 5, label: 'Fri' },
+  { n: 6, label: 'Sat' },
+]
 
 export default function Pharmacy_StaffSettings(){
   const [shifts, setShifts] = useState<Shift[]>([])
@@ -20,7 +31,7 @@ export default function Pharmacy_StaffSettings(){
     let mounted = true
     ;(async () => {
       try {
-        const res = await labApi.listShifts()
+        const res = await hospitalApi.listShifts()
         if (!mounted) return
         const mapped: Shift[] = (res.items||[]).map((x:any)=>({
           id: x._id,
@@ -31,6 +42,7 @@ export default function Pharmacy_StaffSettings(){
           absentCharges: Number(x.absentCharges||0),
           lateDeduction: Number(x.lateDeduction||0),
           earlyOutDeduction: Number(x.earlyOutDeduction||0),
+          weekendDays: Array.isArray(x.weekendDays) ? x.weekendDays.map((n:any)=> Number(n)).filter((n:number)=> Number.isFinite(n) && n>=0 && n<=6) : [],
         }))
         setShifts(mapped)
       } catch(e){ console.error(e) }
@@ -43,7 +55,7 @@ export default function Pharmacy_StaffSettings(){
   }
 
   const addShift = async () => {
-    const created = await labApi.createShift({ name: `Shift ${shifts.length+1}`, start: '09:00', end: '17:00', absentCharges: 0, lateDeduction: 0, earlyOutDeduction: 0 })
+    const created = await hospitalApi.createShift({ name: `Shift ${shifts.length+1}`, start: '09:00', end: '17:00', absentCharges: 0, lateDeduction: 0, earlyOutDeduction: 0, weekendDays: [0] })
     setShifts(s => [...s, {
       id: created._id,
       name: created.name,
@@ -53,10 +65,11 @@ export default function Pharmacy_StaffSettings(){
       absentCharges: Number(created.absentCharges||0),
       lateDeduction: Number(created.lateDeduction||0),
       earlyOutDeduction: Number(created.earlyOutDeduction||0),
+      weekendDays: Array.isArray(created.weekendDays) ? created.weekendDays.map((n:any)=> Number(n)).filter((n:number)=> Number.isFinite(n) && n>=0 && n<=6) : [0],
     }])
   }
   const removeShift = async (id: string) => {
-    await labApi.deleteShift(id)
+    await hospitalApi.deleteShift(id)
     setShifts(s => s.filter(x=>x.id!==id))
   }
 
@@ -64,7 +77,7 @@ export default function Pharmacy_StaffSettings(){
     setSaving(true)
     try {
       // Persist updates for all shifts
-      await Promise.all(shifts.map(sh => labApi.updateShift(sh.id, {
+      await Promise.all(shifts.map(sh => hospitalApi.updateShift(sh.id, {
         name: sh.name,
         start: sh.start,
         end: sh.end,
@@ -72,6 +85,7 @@ export default function Pharmacy_StaffSettings(){
         absentCharges: sh.absentCharges||0,
         lateDeduction: sh.lateDeduction||0,
         earlyOutDeduction: sh.earlyOutDeduction||0,
+        weekendDays: Array.isArray(sh.weekendDays) ? sh.weekendDays : [],
       })))
     } finally {
       setTimeout(()=>setSaving(false), 300)
@@ -119,6 +133,28 @@ export default function Pharmacy_StaffSettings(){
                   <span className="block text-xs text-slate-600">Early Out Deduction (Rs)</span>
                   <input type="number" value={sh.earlyOutDeduction||0} onChange={e=>update(i,{ earlyOutDeduction: Math.max(0, Number(e.target.value||'0')) })} className="w-full rounded-md border border-slate-300 px-2 py-1" />
                 </label>
+              </div>
+              <div className="mt-2">
+                <div className="text-xs text-slate-600">Weekend Holiday(s)</div>
+                <div className="mt-1 flex flex-wrap gap-2">
+                  {WEEKDAYS.map(w => {
+                    const checked = (sh.weekendDays || []).includes(w.n)
+                    return (
+                      <label key={w.n} className={`flex items-center gap-1 rounded-md border px-2 py-1 text-xs ${checked ? 'border-slate-400 bg-slate-50' : 'border-slate-200'}`}>
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={(e)=>{
+                            const cur = Array.isArray(sh.weekendDays) ? sh.weekendDays : []
+                            const next = e.target.checked ? Array.from(new Set([...cur, w.n])).sort((a,b)=>a-b) : cur.filter(n=>n!==w.n)
+                            update(i, { weekendDays: next })
+                          }}
+                        />
+                        {w.label}
+                      </label>
+                    )
+                  })}
+                </div>
               </div>
             </div>
           ))}

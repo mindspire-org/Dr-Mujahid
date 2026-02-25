@@ -26,14 +26,34 @@ export async function computeDoctorBalance(doctorId: string){
   return round2(credits - debits)
 }
 
-export async function createDoctorPayout(doctorId: string, amount: number, method: 'Cash'|'Bank' = 'Cash', memo?: string){
+export async function createDoctorPayout(doctorId: string, amount: number, method: 'Cash'|'Bank' = 'Cash', memo?: string, fromAccountCode?: string, createdBy?: string){
   const dateIso = todayIso()
   const tags = { doctorId: toOid(doctorId) }
+  const from = String(fromAccountCode || '').trim().toUpperCase()
+  const creditAccount = from || (method === 'Bank' ? 'BANK' : 'CASH')
   const lines: JournalLine[] = [
     { account: 'DOCTOR_PAYABLE', debit: amount, tags },
-    { account: method === 'Bank' ? 'BANK' : 'CASH', credit: amount, tags },
+    { account: creditAccount, credit: amount, tags },
   ]
-  return await FinanceJournal.create({ dateIso, refType: 'doctor_payout', refId: doctorId, memo: memo || 'Doctor payout', lines })
+  return await FinanceJournal.create({ dateIso, createdBy, refType: 'doctor_payout', refId: doctorId, memo: memo || 'Doctor payout', lines })
+}
+
+export async function reverseOpdTokenAsReturn(tokenId: string, createdBy?: string, memo?: string){
+  const base: any = { refType: 'opd_token', refId: tokenId }
+  const list = await FinanceJournal.find(base).lean()
+  if (!list.length) return null
+
+  const existing = await FinanceJournal.findOne({ refType: 'opd_return', refId: tokenId }).lean()
+  if (existing) return existing as any
+
+  const revLines: JournalLine[] = []
+  for (const j of list){
+    for (const l of (j.lines || [])){
+      revLines.push({ account: l.account, debit: l.credit || 0, credit: l.debit || 0, tags: l.tags })
+    }
+  }
+  const r = await FinanceJournal.create({ dateIso: todayIso(), createdBy, refType: 'opd_return', refId: tokenId, memo: memo || `OPD Return for token ${tokenId}` , lines: revLines })
+  return r
 }
 
 export async function manualDoctorEarning(data: { doctorId: string; departmentId?: string; amount: number; revenueAccount?: 'OPD_REVENUE'|'PROCEDURE_REVENUE'|'IPD_REVENUE'; paidMethod?: 'Cash'|'Bank'|'AR'; memo?: string; sharePercent?: number; patientName?: string; mrn?: string }){
@@ -53,14 +73,15 @@ export async function manualDoctorEarning(data: { doctorId: string; departmentId
   return await FinanceJournal.create({ dateIso, refType: 'manual_doctor_earning', refId: data.doctorId, memo: data.memo, lines })
 }
 
-export async function postOpdTokenJournal(args: { tokenId: string; dateIso: string; fee: number; doctorId?: string; departmentId?: string; patientId?: string; patientName?: string; mrn?: string; tokenNo?: string; paidMethod?: 'Cash'|'Bank'|'AR' }){
+export async function postOpdTokenJournal(args: { tokenId: string; dateIso: string; fee: number; doctorId?: string; departmentId?: string; patientId?: string; patientName?: string; mrn?: string; tokenNo?: string; paidMethod?: 'Cash'|'Bank'|'AR'; receivedToAccountCode?: string; createdBy?: string }){
   // Idempotency: avoid duplicate posting for same token
   const existing = await FinanceJournal.findOne({ refType: 'opd_token', refId: args.tokenId }).lean()
   if (existing) return existing as any
   const doc: any = args.doctorId ? await HospitalDoctor.findById(args.doctorId).lean() : null
   const percent = (doc as any)?.shares ?? 100
   const share = round2((args.fee || 0) * (Math.max(percent,0) / 100))
-  const debitAccount = args.paidMethod === 'Bank' ? 'BANK' : (args.paidMethod === 'Cash' ? 'CASH' : 'AR')
+  const receivedTo = String(args.receivedToAccountCode || '').trim().toUpperCase()
+  const debitAccount = receivedTo || (args.paidMethod === 'Bank' ? 'BANK' : (args.paidMethod === 'Cash' ? 'CASH' : 'AR'))
   const tagsBase: any = { }
   if (args.doctorId) tagsBase.doctorId = toOid(args.doctorId)
   if (args.departmentId) tagsBase.departmentId = toOid(args.departmentId)
@@ -76,7 +97,7 @@ export async function postOpdTokenJournal(args: { tokenId: string; dateIso: stri
     { account: 'DOCTOR_PAYABLE', credit: share, tags: { ...tagsBase } },
   ]
   const memo = `OPD Token ${args.tokenNo ? ('#'+args.tokenNo) : ''}`.trim()
-  return await FinanceJournal.create({ dateIso: args.dateIso || todayIso(), refType: 'opd_token', refId: args.tokenId, memo, lines })
+  return await FinanceJournal.create({ dateIso: args.dateIso || todayIso(), createdBy: args.createdBy, refType: 'opd_token', refId: args.tokenId, memo, lines })
 }
 
 export async function reverseJournalByRef(refType: string, refId: string, memo?: string){

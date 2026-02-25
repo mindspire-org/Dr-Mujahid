@@ -19,6 +19,14 @@ export const diagnosticOrderCreateSchema = z.object({
   subtotal: z.coerce.number().nonnegative().optional().default(0),
   discount: z.coerce.number().nonnegative().optional().default(0),
   net: z.coerce.number().nonnegative().optional().default(0),
+  payPreviousDues: z.coerce.boolean().optional().default(false),
+  useAdvance: z.coerce.boolean().optional().default(false),
+  amountReceived: z.coerce.number().nonnegative().optional().default(0),
+  paymentStatus: z.enum(['paid','unpaid']).optional().default('paid'),
+  receptionistName: z.string().optional(),
+  paymentMethod: z.enum(['Cash','Card']).optional(),
+  accountNumberIban: z.string().optional(),
+  receivedToAccountCode: z.string().optional(),
   referringConsultant: z.string().optional(),
   tokenNo: z.string().optional(),
   // Corporate billing
@@ -50,4 +58,11 @@ export const diagnosticOrderUpdateSchema = z.object({
   subtotal: z.coerce.number().nonnegative().optional(),
   discount: z.coerce.number().nonnegative().optional(),
   net: z.coerce.number().nonnegative().optional(),
+})
+
+export const diagnosticOrderPaySchema = z.object({
+  receptionistName: z.string().optional(),
+  paymentMethod: z.enum(['Cash','Card']),
+  accountNumberIban: z.string().optional(),
+  receivedToAccountCode: z.string().optional(),
 })

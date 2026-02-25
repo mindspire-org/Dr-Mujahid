@@ -3,11 +3,11 @@ import { Schema, model, models } from 'mongoose'
 const BankAccountSchema = new Schema({
   bankName: { type: String, required: true },
   accountTitle: { type: String, required: true },
-  accountNumber: { type: String, required: true, unique: true, index: true },
+  accountNumber: { type: String, required: true },
   branchName: { type: String },
   branchCode: { type: String },
-  iban: { type: String },
   swift: { type: String },
+  responsibleStaff: { type: String },
   status: { type: String, enum: ['Active','Inactive'], default: 'Active', index: true },
   financeAccountCode: { type: String },
 }, { timestamps: true })
@@ -19,8 +19,8 @@ export type BankAccountDoc = {
   accountNumber: string
   branchName?: string
   branchCode?: string
-  iban?: string
   swift?: string
+  responsibleStaff?: string
   status: 'Active'|'Inactive'
   financeAccountCode?: string
 }

@@ -29,8 +29,10 @@ export default function Pharmacy_CustomerCard({ c, onPayBill, onEdit, onDelete }
             )}
           </div>
 
-          <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
-            <div className="rounded-md border border-slate-200 bg-slate-50 p-2">Total Spent: {c.totalSpent != null ? `Rs ${c.totalSpent.toFixed(2)}` : '—'}</div>
+          <div className="mt-3 grid grid-cols-2 gap-2 text-xs sm:grid-cols-4">
+            <div className="rounded-md border border-slate-200 bg-slate-50 p-2">Total Credit Amount: {c.totalCreditAmount != null ? `Rs ${Number(c.totalCreditAmount).toFixed(2)}` : (c.totalSpent != null ? `Rs ${c.totalSpent.toFixed(2)}` : '—')}</div>
+            <div className="rounded-md border border-emerald-200 bg-emerald-50 p-2 text-emerald-700">Total Paid: {c.totalPaid != null ? `Rs ${Number(c.totalPaid).toFixed(2)}` : '—'}</div>
+            <div className="rounded-md border border-rose-200 bg-rose-50 p-2 text-rose-700">Total Remaining: {c.totalRemaining != null ? `Rs ${Number(c.totalRemaining).toFixed(2)}` : '—'}</div>
             <div className="rounded-md border border-slate-200 bg-slate-50 p-2">Sales Count: {c.salesCount ?? 0}</div>
           </div>
 

@@ -34,29 +34,18 @@ export default function Diagnostic_Dashboard(){
     let mounted = true
     ;(async()=>{
       try {
-        const [rangeOrders, testsPage, weeklyOrders] = await Promise.all([
-          diagnosticApi.listOrders({ from: effFrom, to: effTo, page: 1, limit: 500 }) as any,
+        const [summary, testsPage, weeklyOrders] = await Promise.all([
+          diagnosticApi.getDashboardSummary({ from: effFrom, to: effTo }) as any,
           diagnosticApi.listTests({ page: 1, limit: 1 }) as any,
           diagnosticApi.listOrders({ from: from8w, to: todayStr, page: 1, limit: 1000 }) as any,
         ])
         if (!mounted) return
-        setTokensToday(Number(rangeOrders?.total || (rangeOrders?.items||[]).length || 0))
+        setTokensToday(Number(summary?.orders || 0))
         setTotalTests(Number(testsPage?.total || (Array.isArray(testsPage?.items) ? testsPage.items.length : 0)))
-        let rev = 0, pending = 0, completed = 0, returned = 0
-        const ordersArr = Array.isArray(rangeOrders?.items) ? rangeOrders.items : []
-        for (const o of ordersArr){
-          rev += Number(o?.net || 0)
-          const items = Array.isArray(o?.items) ? o.items : []
-          for (const it of items){
-            if (it?.status === 'completed') completed++
-            else if (it?.status === 'returned') returned++
-            else pending++
-          }
-        }
-        setRevenueTotal(rev)
-        setPendingCount(pending)
-        setCompletedCount(completed)
-        setReturnedCount(returned)
+        setRevenueTotal(Number(summary?.revenue || 0))
+        setPendingCount(Number(summary?.pending || 0))
+        setCompletedCount(Number(summary?.completed || 0))
+        setReturnedCount(Number(summary?.returned || 0))
 
         // Recent Sales (latest 5 by createdAt desc if available order already sorted)
         const weeklyArr = Array.isArray(weeklyOrders?.items) ? weeklyOrders.items : []
@@ -103,30 +92,30 @@ export default function Diagnostic_Dashboard(){
 
   // Last 7 days revenue (fixed window)
   const cards = [
-    { title: 'Total Revenue', value: `PKR ${Number(revenueTotal||0).toFixed(0)}`, tone: 'border-green-300', bg: 'bg-green-50 dark:bg-emerald-900/20', icon: DollarSign },
-    { title: isFiltered ? 'Tokens (range)' : "Today's Tokens", value: String(tokensToday), tone: 'border-emerald-300', bg: 'bg-emerald-50 dark:bg-emerald-900/20', icon: Activity },
-    { title: 'Completed', value: String(completedCount), tone: 'border-violet-300', bg: 'bg-violet-50 dark:bg-violet-900/20', icon: CheckCircle },
-    { title: 'Returned', value: String(returnedCount), tone: 'border-rose-300', bg: 'bg-rose-50 dark:bg-rose-900/20', icon: RotateCcw },
-    { title: 'Pending', value: String(pendingCount), tone: 'border-sky-300', bg: 'bg-sky-50 dark:bg-sky-900/20', icon: Clock },
-    { title: 'Total Tests', value: String(totalTests), tone: 'border-amber-300', bg: 'bg-amber-50 dark:bg-amber-900/20', icon: FlaskConical },
+    { title: 'Total Revenue', value: `PKR ${Number(revenueTotal||0).toFixed(0)}`, tone: 'border-green-300', bg: 'bg-green-50 ', icon: DollarSign },
+    { title: isFiltered ? 'Tokens (range)' : "Today's Tokens", value: String(tokensToday), tone: 'border-emerald-300', bg: 'bg-emerald-50 ', icon: Activity },
+    { title: 'Completed', value: String(completedCount), tone: 'border-violet-300', bg: 'bg-violet-50 ', icon: CheckCircle },
+    { title: 'Returned', value: String(returnedCount), tone: 'border-rose-300', bg: 'bg-rose-50 ', icon: RotateCcw },
+    { title: 'Pending', value: String(pendingCount), tone: 'border-sky-300', bg: 'bg-sky-50 ', icon: Clock },
+    { title: 'Total Tests', value: String(totalTests), tone: 'border-amber-300', bg: 'bg-amber-50 ', icon: FlaskConical },
   ]
 
   return (
     <div className="space-y-4">
-      <h2 className="text-xl font-semibold text-slate-800 dark:text-slate-200">Diagnostic Dashboard</h2>
+      <h2 className="text-xl font-semibold text-slate-800 ">Diagnostic Dashboard</h2>
 
       {/* Filters */}
-      <div className="rounded-xl border border-slate-200 bg-white p-3 dark:border-slate-700 dark:bg-slate-900">
+      <div className="rounded-xl border border-slate-200 bg-white p-3 ">
         <div className="flex flex-wrap items-center gap-2 text-sm">
           <div className="flex items-center gap-2">
-            <label className="text-slate-600 dark:text-slate-300">From</label>
-            <input type="date" value={from} onChange={e=> setFrom(e.target.value)} className="rounded-md border border-slate-300 px-2 py-1 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100" />
+            <label className="text-slate-600 ">From</label>
+            <input type="date" value={from} onChange={e=> setFrom(e.target.value)} className="rounded-md border border-slate-300 px-2 py-1 " />
           </div>
           <div className="flex items-center gap-2">
-            <label className="text-slate-600 dark:text-slate-300">To</label>
-            <input type="date" value={to} onChange={e=> setTo(e.target.value)} className="rounded-md border border-slate-300 px-2 py-1 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100" />
+            <label className="text-slate-600 ">To</label>
+            <input type="date" value={to} onChange={e=> setTo(e.target.value)} className="rounded-md border border-slate-300 px-2 py-1" />
           </div>
-          <button onClick={()=>{ setFrom(''); setTo('') }} className="ml-auto rounded-md border border-slate-300 px-3 py-1 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800">Reset</button>
+          <button onClick={()=>{ setFrom(''); setTo('') }} className="ml-auto rounded-md border border-slate-300 px-3 py-1 hover:bg-slate-50">Reset</button>
         </div>
       </div>
 
@@ -136,10 +125,10 @@ export default function Diagnostic_Dashboard(){
           <div key={title} className={`rounded-xl border ${tone} p-4 ${bg}`}>
             <div className="flex items-start justify-between">
               <div>
-                <div className="text-sm text-slate-700 dark:text-slate-300">{title}</div>
-                <div className="mt-1 text-2xl md:text-3xl font-semibold tracking-tight text-slate-900 dark:text-slate-100">{value}</div>
+                <div className="text-sm text-slate-700 ">{title}</div>
+                <div className="mt-1 text-2xl md:text-3xl font-semibold tracking-tight text-slate-900 ">{value}</div>
               </div>
-              <div className="rounded-md bg-white/70 p-2 text-slate-700 shadow-sm dark:bg-slate-800/70 dark:text-slate-200">
+              <div className="rounded-md bg-white/70 p-2 text-slate-700 shadow-sm ">
                 <Icon className="h-4 w-4" />
               </div>
             </div>
@@ -148,23 +137,23 @@ export default function Diagnostic_Dashboard(){
       </div>
 
       <div className="grid gap-3 md:grid-cols-3">
-        <div className="rounded-xl border border-slate-200 bg-white p-4 md:col-span-2 dark:border-slate-700 dark:bg-slate-900">
-          <div className="mb-2 text-sm font-medium text-slate-700 dark:text-slate-300">Weekly Sales</div>
+        <div className="rounded-xl border border-slate-200 bg-white p-4 md:col-span-2 ">
+          <div className="mb-2 text-sm font-medium text-slate-700 ">Weekly Sales</div>
           <MiniBars data={weeklyTotals} labels={weeklyLabels} color="#0ea5e9" />
         </div>
-        <div className="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
-          <div className="mb-2 flex items-center gap-2 text-sm font-medium text-slate-700 dark:text-slate-300"><Bell className="h-4 w-4"/> Recent Sales</div>
+        <div className="rounded-xl border border-slate-200 bg-white p-4">
+          <div className="mb-2 flex items-center gap-2 text-sm font-medium text-slate-700 "><Bell className="h-4 w-4"/> Recent Sales</div>
           <ul className="space-y-2 text-sm">
             {recentSales.map((o:any, idx:number)=> (
-              <li key={String(o?._id || idx)} className="flex items-center justify-between rounded-md border border-slate-100 px-3 py-2 dark:border-slate-700">
+              <li key={String(o?._id || idx)} className="flex items-center justify-between rounded-md border border-slate-100 px-3 py-2 ">
                 <div>
-                  <div className="font-medium text-slate-800 dark:text-slate-200">{formatDate(o?.createdAt)}</div>
-                  <div className="text-xs text-slate-500 dark:text-slate-400">{Array.isArray(o?.items)? o.items.length : 0} item(s)</div>
+                  <div className="font-medium text-slate-800 ">{formatDate(o?.createdAt)}</div>
+                  <div className="text-xs text-slate-500 ">{Array.isArray(o?.items)? o.items.length : 0} item(s)</div>
                 </div>
-                <div className="text-right font-semibold text-slate-900 dark:text-slate-100">Rs {Number(o?.net||0).toFixed(2)}</div>
+                <div className="text-right font-semibold text-slate-900 ">Rs {Number(o?.net||0).toFixed(2)}</div>
               </li>
             ))}
-            {recentSales.length===0 && <li className="text-slate-500 dark:text-slate-400">No recent sales</li>}
+            {recentSales.length===0 && <li className="text-slate-500 ">No recent sales</li>}
           </ul>
         </div>
       </div>
@@ -191,10 +180,10 @@ function MiniBars({ data, labels, color }: { data: number[]; labels: string[]; c
           const h = Math.max(2, Math.round((v / (maxVal || 1)) * 100))
           return (
             <div key={i} className="flex-1 flex flex-col items-center">
-              <div className="relative h-28 w-full rounded bg-slate-100 dark:bg-slate-800">
+              <div className="relative h-28 w-full rounded bg-slate-100 ">
                 <div className="absolute bottom-0 left-0 right-0 rounded-b" style={{ height: `${h}%`, backgroundColor: color }} />
               </div>
-              <div className="mt-1 text-[10px] text-slate-500 dark:text-slate-400">{labels[i]}</div>
+              <div className="mt-1 text-[10px] text-slate-500">{labels[i]}</div>
             </div>
           )
         })}

@@ -17,9 +17,13 @@ export const createOpdTokenSchema = z.object({
   visitType: z.enum(['new','followup']).default('new'),
   discount: z.number().min(0).optional(),
   paymentStatus: z.enum(['paid','unpaid']).default('paid'),
+  payPreviousDues: z.coerce.boolean().optional(),
+  useAdvance: z.coerce.boolean().optional(),
+  amountReceived: z.coerce.number().min(0).optional(),
   receptionistName: z.string().optional(),
   paymentMethod: z.enum(['Cash','Card','Insurance']).optional(),
   accountNumberIban: z.string().optional(),
+  receivedToAccountCode: z.string().optional(),
   paymentRef: z.string().optional(),
   corporateId: z.string().optional(),
   corporatePreAuthNo: z.string().optional(),
@@ -40,5 +44,30 @@ export const listTokensSchema = z.object({
 export const payTokenSchema = z.object({
   receptionistName: z.string().min(1).optional(),
   paymentMethod: z.enum(['Cash','Card','Insurance']),
+  accountNumberIban: z.string().optional(),
+  receivedToAccountCode: z.string().optional(),
+})
+
+export const updateTokenSchema = z.object({
+  // Patient (optional)
+  patientName: z.string().optional(),
+  phone: z.string().optional(),
+  gender: z.string().optional(),
+  guardianRel: z.string().optional(),
+  guardianName: z.string().optional(),
+  cnic: z.string().optional(),
+  address: z.string().optional(),
+  age: z.string().optional(),
+
+  // Assignment
+  departmentId: z.string().optional(),
+  doctorId: z.string().optional(),
+
+  // Billing
+  amount: z.number().min(0).optional(),
+  discount: z.number().min(0).optional(),
+  paymentStatus: z.enum(['paid','unpaid']).optional(),
+  receptionistName: z.string().optional(),
+  paymentMethod: z.enum(['Cash','Card','Insurance']).optional(),
   accountNumberIban: z.string().optional(),
 })

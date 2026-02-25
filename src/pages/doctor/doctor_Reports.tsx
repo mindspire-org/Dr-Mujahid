@@ -26,6 +26,15 @@ type LabResultRec = { id: string; orderId: string; rows: any[]; interpretation?:
 
 type LabOrder = { id: string; createdAt: string; tokenNo?: string; patient?: any; tests?: string[]; sampleTime?: string; reportingTime?: string; referringConsultant?: string }
 
+type PrescRec = {
+  id: string
+  createdAt?: string
+  encounter?: any
+  therapyTests?: string[]
+  therapyNotes?: string
+  medicine?: Array<{ name?: string; frequency?: string; duration?: string; dose?: string; instruction?: string; route?: string }>
+}
+
 export default function Doctor_Reports(){
   const location = useLocation()
   const today = new Date()
@@ -38,11 +47,12 @@ export default function Doctor_Reports(){
   const [from, setFrom] = useState(iso(lastWeek))
   const [to, setTo] = useState(iso(today))
   const [q, setQ] = useState('')
-  const [type, setType] = useState<'all'|'lab'|'diagnostic'>('all')
+  const [type, setType] = useState<'all'|'lab'|'diagnostic'|'prescription'>('all')
   const [diagStatus, setDiagStatus] = useState<'all'|'draft'|'final'>('final')
   const [rows, setRows] = useState(20)
   const [diagPage, setDiagPage] = useState(1)
   const [labPage, setLabPage] = useState(1)
+  const [presPage, setPresPage] = useState(1)
   const [myOnly, setMyOnly] = useState(false)
   const [mrnFilter, setMrnFilter] = useState('')
 
@@ -79,7 +89,7 @@ export default function Doctor_Reports(){
       const tp = (qs.get('type')||'').toLowerCase()
       const my = qs.get('my')
       if (mrn) setMrnFilter(mrn)
-      if (tp==='lab' || tp==='diagnostic' || tp==='all') setType(tp as any)
+      if (tp==='lab' || tp==='diagnostic' || tp==='prescription' || tp==='all') setType(tp as any)
       if (my==='1' || my==='true') setMyOnly(true)
     }catch{}
     // run once for initial mount
@@ -181,6 +191,42 @@ export default function Doctor_Reports(){
 
   const ordersMap = useMemo(()=> Object.fromEntries((labOrders||[]).map(o => [o.id, o])), [labOrders])
 
+  const [presItems, setPresItems] = useState<PrescRec[]>([])
+  const [presTotal, setPresTotal] = useState(0)
+  const [presTotalPages, setPresTotalPages] = useState(1)
+  const presReq = useRef(0)
+  useEffect(()=>{
+    let mounted = true
+    ;(async()=>{
+      try{
+        const my = ++presReq.current
+        const res: any = await hospitalApi.listPrescriptions({
+          doctorId: myOnly ? (doc?.id || undefined) : undefined,
+          patientMrn: mrnFilter || undefined,
+          from: from || undefined,
+          to: to || undefined,
+          page: presPage,
+          limit: rows,
+        })
+        if (!mounted || my !== presReq.current) return
+        const arr: PrescRec[] = (res?.prescriptions || []).map((p: any) => ({
+          id: String(p._id || p.id),
+          createdAt: p.createdAt,
+          encounter: p.encounterId,
+          therapyTests: Array.isArray(p.therapyTests) ? p.therapyTests : [],
+          therapyNotes: p.therapyNotes,
+          medicine: Array.isArray(p.medicine || p.items) ? (p.medicine || p.items) : [],
+        }))
+        setPresItems(arr)
+        setPresTotal(Number(res?.total || arr.length || 0))
+        setPresTotalPages(Math.max(1, Math.ceil(Number(res?.total || arr.length || 0) / rows)))
+      } catch {
+        if (mounted){ setPresItems([]); setPresTotal(0); setPresTotalPages(1) }
+      }
+    })()
+    return ()=>{ mounted = false }
+  }, [doc?.id, from, to, presPage, rows, myOnly, mrnFilter])
+
   // Filters
   const diagFiltered = useMemo(()=>{
     const mineStr = doc?.name ? `Dr. ${doc.name}` : ''
@@ -224,6 +270,20 @@ export default function Doctor_Reports(){
       )
     })
   }, [labResults, ordersMap, myOnly, labMrnSet, doc?.name, q, mrnFilter])
+
+  const presFiltered = useMemo(()=>{
+    const term = q.trim().toLowerCase()
+    const mrn = mrnFilter.trim().toLowerCase()
+    return (presItems || []).filter(p => {
+      const patName = String(p.encounter?.patientId?.fullName || '').toLowerCase()
+      const patMrn = String(p.encounter?.patientId?.mrn || '').toLowerCase()
+      if (mrn && patMrn !== mrn) return false
+      if (!term) return true
+      const medsText = (p.medicine || []).map(m => `${m?.name || ''} ${m?.frequency || ''} ${m?.duration || ''} ${m?.dose || ''}`).join(' ').toLowerCase()
+      const therapyText = `${(p.therapyTests || []).join(' ')} ${String(p.therapyNotes || '')}`.toLowerCase()
+      return patName.includes(term) || patMrn.includes(term) || medsText.includes(term) || therapyText.includes(term)
+    })
+  }, [presItems, q, mrnFilter])
 
   // Printing actions
   async function onPrintDiag(r: DiagResult){
@@ -278,6 +338,11 @@ export default function Doctor_Reports(){
   const labStart = Math.min((labCurPage - 1) * rows + 1, labTotal)
   const labEnd = Math.min((labCurPage - 1) * rows + labFiltered.length, labTotal)
 
+  const presPageCount = Math.max(1, presTotalPages)
+  const presCurPage = Math.min(presPage, presPageCount)
+  const presStart = Math.min((presCurPage - 1) * rows + 1, presTotal)
+  const presEnd = Math.min((presCurPage - 1) * rows + presFiltered.length, presTotal)
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between flex-wrap gap-2">
@@ -285,7 +350,7 @@ export default function Doctor_Reports(){
       </div>
 
       <div className="rounded-xl border border-slate-200 bg-white p-4">
-        <div className="grid gap-3 md:grid-cols-[1fr_auto_auto_auto_auto] items-end">
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4 items-end">
           <div className="grid gap-3 sm:grid-cols-2">
             <div>
               <label className="mb-1 block text-sm text-slate-700">Search</label>
@@ -313,6 +378,7 @@ export default function Doctor_Reports(){
                 <option value="all">All</option>
                 <option value="diagnostic">Diagnostic</option>
                 <option value="lab">Lab</option>
+                <option value="prescription">Prescription</option>
               </select>
             </div>
             <div>
@@ -437,6 +503,56 @@ export default function Doctor_Reports(){
             <button className="rounded-md border border-slate-300 px-3 py-1 disabled:opacity-50" disabled={labCurPage<=1} onClick={()=>setLabPage(p=>Math.max(1,p-1))}>Prev</button>
             <div className="text-slate-600">Page {labCurPage} / {labPageCount}</div>
             <button className="rounded-md border border-slate-300 px-3 py-1 disabled:opacity-50" disabled={labCurPage>=labPageCount} onClick={()=>setLabPage(p=>p+1)}>Next</button>
+          </div>
+        </div>
+      )}
+
+      {(type==='prescription' || type==='all') && (
+        <div className="rounded-xl border border-slate-200 bg-white">
+          <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3 text-sm">
+            <div className="font-medium text-slate-800">Prescriptions</div>
+            <div className="text-slate-600">{presTotal ? `${presStart}-${presEnd} of ${presTotal}` : ''}</div>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="border-b border-slate-200 bg-slate-50 text-left text-slate-600">
+                <tr>
+                  <th className="px-4 py-2">Date</th>
+                  <th className="px-4 py-2">Patient</th>
+                  <th className="px-4 py-2">MRN</th>
+                  <th className="px-4 py-2">Therapy</th>
+                  <th className="px-4 py-2">Medicines</th>
+                </tr>
+              </thead>
+              <tbody>
+                {presFiltered.map(p => {
+                  const patientName = p.encounter?.patientId?.fullName || '-'
+                  const patientMrn = p.encounter?.patientId?.mrn || '-'
+                  const therapyText = [
+                    ...(Array.isArray(p.therapyTests) ? p.therapyTests : []),
+                    String(p.therapyNotes || '').trim(),
+                  ].filter(Boolean).join(' | ')
+                  const medsText = (p.medicine || [])
+                    .map(m => `${m?.name || '-'}${m?.frequency ? ` • ${m.frequency}` : ''}${m?.duration ? ` • ${m.duration}` : ''}${m?.dose ? ` • ${m.dose}` : ''}`)
+                    .join(' | ')
+                  return (
+                    <tr key={p.id} className="border-b border-slate-100">
+                      <td className="px-4 py-2 whitespace-nowrap">{new Date(p.createdAt || '').toLocaleString()}</td>
+                      <td className="px-4 py-2 whitespace-nowrap">{patientName}</td>
+                      <td className="px-4 py-2 whitespace-nowrap">{patientMrn}</td>
+                      <td className="px-4 py-2">{therapyText || '-'}</td>
+                      <td className="px-4 py-2">{medsText || '-'}</td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+            {presFiltered.length===0 && <div className="p-6 text-sm text-slate-500">No prescriptions</div>}
+          </div>
+          <div className="flex items-center justify-between px-4 py-3 text-sm">
+            <button className="rounded-md border border-slate-300 px-3 py-1 disabled:opacity-50" disabled={presCurPage<=1} onClick={()=>setPresPage(p=>Math.max(1,p-1))}>Prev</button>
+            <div className="text-slate-600">Page {presCurPage} / {presPageCount}</div>
+            <button className="rounded-md border border-slate-300 px-3 py-1 disabled:opacity-50" disabled={presCurPage>=presPageCount} onClick={()=>setPresPage(p=>p+1)}>Next</button>
           </div>
         </div>
       )}

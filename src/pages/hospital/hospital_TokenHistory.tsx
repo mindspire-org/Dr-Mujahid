@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import Hospital_TokenSlip, { type TokenSlipData } from '../../components/hospital/Hospital_TokenSlip'
 import { hospitalApi } from '../../utils/api'
-import { CheckCircle, Eye, X } from 'lucide-react'
+import { Eye, X } from 'lucide-react'
 
 interface TokenRow {
   _id: string
@@ -19,15 +19,28 @@ interface TokenRow {
   doctor?: string
   department?: string
   fee: number
+  discount?: number
   paymentStatus?: 'paid'|'unpaid'
   receptionistName?: string
   paymentMethod?: string
   accountNumberIban?: string
+  amountReceived?: number
+  payPreviousDues?: boolean
+  useAdvance?: boolean
+  advanceApplied?: number
+  duesBefore?: number
+  advanceBefore?: number
+  duesPaid?: number
+  paidForToday?: number
+  advanceAdded?: number
+  duesAfter?: number
+  advanceAfter?: number
   status: 'queued'|'in-progress'|'completed'|'returned'|'cancelled'
   raw?: any
 }
 
 export default function Hospital_TokenHistory() {
+  const payToStorageKey = 'hospital.receivedToAccountCode'
   const [query, setQuery] = useState('')
   const [rowsPerPage, setRowsPerPage] = useState(10)
   const [page, setPage] = useState(1)
@@ -35,8 +48,8 @@ export default function Hospital_TokenHistory() {
   const today = new Date().toISOString().slice(0,10)
   const [from, setFrom] = useState(today)
   const [to, setTo] = useState(today)
-  const [department, setDepartment] = useState<string>('All')
-  const [doctor, setDoctor] = useState<string>('All')
+  const [department, setDepartment] = useState<string>('')
+  const [doctor, setDoctor] = useState<string>('')
   const [departments, setDepartments] = useState<any[]>([])
   const [doctors, setDoctors] = useState<any[]>([])
   const [rows, setRows] = useState<TokenRow[]>([])
@@ -44,13 +57,68 @@ export default function Hospital_TokenHistory() {
   const [slipData, setSlipData] = useState<TokenSlipData | null>(null)
   const [showDetails, setShowDetails] = useState(false)
   const [detailsRow, setDetailsRow] = useState<TokenRow | null>(null)
-  const [payOpen, setPayOpen] = useState(false)
-  const [payRow, setPayRow] = useState<TokenRow | null>(null)
-  const [payForm, setPayForm] = useState<{ receptionistName: string; paymentMethod: 'Cash'|'Card'|'Insurance'; accountNumberIban: string }>({ receptionistName: '', paymentMethod: 'Cash', accountNumberIban: '' })
-  const [payBusy, setPayBusy] = useState(false)
+
+  const [payToAccounts, setPayToAccounts] = useState<Array<{ code: string; label: string }>>([])
+
+  const payToLoadedRef = useRef(false)
 
   useEffect(() => { loadFilters() }, [])
   useEffect(() => { load() }, [from, to, department, doctor])
+
+  useEffect(()=>{
+    if (payToLoadedRef.current) return
+    payToLoadedRef.current = true
+    let mounted = true
+    ;(async()=>{
+      try {
+        const [mineRes, bankRes, pettyRes] = await Promise.all([
+          hospitalApi.myPettyCash(),
+          hospitalApi.listBankAccounts(),
+          hospitalApi.listPettyCashAccounts(),
+        ]) as any
+
+        const opts: Array<{ code: string; label: string }> = []
+        const seen = new Set<string>()
+        const add = (code?: string, label?: string) => {
+          const c = String(code || '').trim().toUpperCase()
+          if (!c) return
+          if (seen.has(c)) return
+          seen.add(c)
+          opts.push({ code: c, label: String(label || c) })
+        }
+
+        const myCode = String(mineRes?.account?.code || '').trim().toUpperCase()
+        if (myCode) {
+          add(myCode, `${mineRes?.account?.name || 'My Petty Cash'} (${myCode})`)
+        }
+
+        const petty: any[] = pettyRes?.accounts || []
+        for (const p of petty){
+          const code = String(p?.code || '').trim().toUpperCase()
+          if (!code) continue
+          const rs = String(p?.responsibleStaff || '').trim()
+          if (rs) continue
+          if (String(p?.status || 'Active') !== 'Active') continue
+          add(code, `${String(p?.name || code).trim()} (${code})`)
+        }
+
+        const banks: any[] = bankRes?.accounts || []
+        for (const b of banks){
+          const an = String(b?.accountNumber || '')
+          const last4 = an ? an.slice(-4) : ''
+          const code = String(b?.financeAccountCode || (last4 ? `BANK_${last4}` : '')).trim().toUpperCase()
+          if (!code) continue
+          const bankLabel = `${String(b?.bankName || '').trim()} - ${String(b?.accountTitle || '').trim()}${last4 ? ` (${last4})` : ''}`.trim()
+          add(code, bankLabel ? `${bankLabel} (${code})` : code)
+        }
+
+        if (mounted) setPayToAccounts(opts)
+      } catch {
+        if (mounted) setPayToAccounts([])
+      }
+    })()
+    return ()=>{ mounted = false }
+  }, [])
 
   async function loadFilters(){
     try {
@@ -84,10 +152,22 @@ export default function Hospital_TokenHistory() {
       doctor: t.doctorId?.name || '-',
       department: t.departmentId?.name || '-',
       fee: Number(t.fee || 0),
+      discount: Number(t.discount ?? t.pricing?.discount ?? 0),
       paymentStatus: (t.paymentStatus || 'paid') as any,
       receptionistName: t.receptionistName || '',
       paymentMethod: t.paymentMethod || '',
       accountNumberIban: t.accountNumberIban || '',
+      amountReceived: t.amountReceived,
+      payPreviousDues: t.payPreviousDues,
+      useAdvance: t.useAdvance,
+      advanceApplied: t.advanceApplied,
+      duesBefore: t.duesBefore,
+      advanceBefore: t.advanceBefore,
+      duesPaid: t.duesPaid,
+      paidForToday: t.paidForToday,
+      advanceAdded: t.advanceAdded,
+      duesAfter: t.duesAfter,
+      advanceAfter: t.advanceAfter,
       status: t.status,
       raw: t,
     }))
@@ -95,7 +175,7 @@ export default function Hospital_TokenHistory() {
     setPage(1)
   }
 
-  const filtered = useMemo(() => {
+  const scoped = useMemo(() => {
     const q = query.trim().toLowerCase()
     const start = new Date(from)
     const end = new Date(to)
@@ -106,18 +186,52 @@ export default function Hospital_TokenHistory() {
       if (d < start || d > end) return false
       if (department !== 'All' && r.department !== (departments.find(x=>x._id===department)?.name || r.department)) return false
       if (doctor !== 'All' && r.doctor !== (doctors.find(x=>x._id===doctor)?.name || r.doctor)) return false
-      if (!q) return true
-      return [r.patient, r.mrNo, r.tokenNo, r.doctor, r.department, r.time]
+      return true
+    })
+  }, [from, to, department, doctor, rows, departments, doctors, query])
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase()
+    if (!q) return scoped
+    return scoped.filter(r => {
+      const address = r.raw?.patientId?.address || r.raw?.address
+      const status = r.status
+      return [
+        r.patient,
+        r.mrNo,
+        r.tokenNo,
+        r.doctor,
+        r.department,
+        r.time,
+        r.date,
+        r.phone,
+        r.age,
+        r.gender,
+        r.guardianRel,
+        r.guardianName,
+        r.cnic,
+        address,
+        r.paymentStatus,
+        r.receptionistName,
+        r.paymentMethod,
+        r.accountNumberIban,
+        status,
+        r.discount,
+      ]
         .filter(Boolean)
         .some(v => String(v).toLowerCase().includes(q))
     })
-  }, [query, from, to, department, doctor, rows, departments, doctors])
+  }, [query, scoped])
 
-  const totalTokens = filtered.length
-  const totalRevenue = filtered.reduce((s, r) => s + r.fee, 0)
-  const returnedPatients = filtered.filter(r=>r.status==='returned').length
+  const totalTokens = scoped.length
+  const totalRevenue = scoped.reduce((s, r) => s + (r.status === 'returned' ? 0 : r.fee), 0)
+  const returnedPatients = scoped.filter(r=>r.status==='returned').length
 
   function printSlip(r: TokenRow){
+    const t = r.raw || {}
+    const amount = Number(t.amount ?? (Number(t.fee||0) + Number(t.discount||0)) ?? 0)
+    const discount = Number(t.discount ?? r.discount ?? 0)
+    const payable = Number(t.fee ?? Math.max(amount - discount, 0))
     const slip: TokenSlipData = {
       tokenNo: r.tokenNo,
       departmentName: r.department || '-',
@@ -130,14 +244,26 @@ export default function Hospital_TokenHistory() {
       guardianRel: r.guardianRel,
       guardianName: r.guardianName,
       cnic: r.cnic,
-      amount: r.fee,
-      discount: 0,
-      payable: r.fee,
+      amount,
+      discount,
+      payable,
       paymentStatus: r.paymentStatus || (r.raw?.paymentStatus || 'paid'),
       receptionistName: r.receptionistName || (r.raw?.receptionistName || ''),
+      receivedToAccountCode: String(t.receivedToAccountCode || '') || undefined,
       paymentMethod: r.paymentMethod || (r.raw?.paymentMethod || ''),
       accountNumberIban: r.accountNumberIban || (r.raw?.accountNumberIban || ''),
       createdAt: `${r.date}T${r.time}`,
+      amountReceived: (t.amountReceived ?? r.amountReceived) as any,
+      payPreviousDues: (t.payPreviousDues ?? r.payPreviousDues) as any,
+      useAdvance: (t.useAdvance ?? r.useAdvance) as any,
+      advanceApplied: (t.advanceApplied ?? r.advanceApplied) as any,
+      duesBefore: (t.duesBefore ?? r.duesBefore) as any,
+      advanceBefore: (t.advanceBefore ?? r.advanceBefore) as any,
+      duesPaid: (t.duesPaid ?? r.duesPaid) as any,
+      paidForToday: (t.paidForToday ?? r.paidForToday) as any,
+      advanceAdded: (t.advanceAdded ?? r.advanceAdded) as any,
+      duesAfter: (t.duesAfter ?? r.duesAfter) as any,
+      advanceAfter: (t.advanceAfter ?? r.advanceAfter) as any,
     }
     setSlipData(slip)
     setShowSlip(true)
@@ -146,37 +272,6 @@ export default function Hospital_TokenHistory() {
   function openDetails(r: TokenRow){
     setDetailsRow(r)
     setShowDetails(true)
-  }
-
-  function openPay(r: TokenRow){
-    setPayRow(r)
-    const t = r.raw || {}
-    const method = (t.paymentMethod || r.paymentMethod || 'Cash') as any
-    setPayForm({
-      receptionistName: String(t.receptionistName || r.receptionistName || ''),
-      paymentMethod: (['Cash','Card','Insurance'].includes(String(method)) ? method : 'Cash'),
-      accountNumberIban: String(t.accountNumberIban || r.accountNumberIban || ''),
-    })
-    setPayOpen(true)
-  }
-
-  async function submitPay(){
-    if (!payRow) return
-    try {
-      setPayBusy(true)
-      await hospitalApi.payToken(payRow._id, {
-        receptionistName: payForm.receptionistName || undefined,
-        paymentMethod: payForm.paymentMethod,
-        accountNumberIban: payForm.paymentMethod === 'Card' ? (payForm.accountNumberIban || undefined) : undefined,
-      })
-      setPayOpen(false)
-      setPayRow(null)
-      await load()
-    } catch (e: any) {
-      alert(e?.message || 'Failed to mark token as paid')
-    } finally {
-      setPayBusy(false)
-    }
   }
 
   const startIdx = (page - 1) * rowsPerPage
@@ -223,8 +318,7 @@ export default function Hospital_TokenHistory() {
         <table className="min-w-full divide-y divide-slate-200 text-sm">
           <thead className="bg-slate-50">
             <tr className="text-left text-slate-600">
-              <Th>Date</Th>
-              <Th>Time</Th>
+              <Th>DateTime</Th>
               <Th>Token #</Th>
               <Th>MR #</Th>
               <Th>Patient</Th>
@@ -233,14 +327,19 @@ export default function Hospital_TokenHistory() {
               <Th>Department</Th>
               <Th>Fee</Th>
               <Th>Payment Status</Th>
+              <Th>Discount</Th>
               <Th>Actions</Th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-200">
             {pageRows.map((r, idx) => (
-              <tr key={idx} className="text-slate-700">
-                <Td>{r.date}</Td>
-                <Td>{r.time}</Td>
+              <tr key={idx} className={`text-slate-700 ${r.status === 'returned' ? 'bg-amber-50' : ''}`}>
+                <Td>
+                  <div className="leading-tight">
+                    <div>{r.date}</div>
+                    <div>{r.time}</div>
+                  </div>
+                </Td>
                 <Td>{r.tokenNo}</Td>
                 <Td>{r.mrNo}</Td>
                 <Td className="font-medium">{r.patient}</Td>
@@ -253,17 +352,10 @@ export default function Hospital_TokenHistory() {
                     <span className={`rounded px-2 py-0.5 text-xs ${String(r.paymentStatus||'paid').toLowerCase()==='paid' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-800'}`}>
                       {String(r.paymentStatus || 'paid').toUpperCase()}
                     </span>
-                    {String(r.paymentStatus||'paid').toLowerCase()==='unpaid' && (
-                      <button
-                        type="button"
-                        onClick={()=>openPay(r)}
-                        title="Mark as Paid"
-                        className="text-emerald-700 hover:text-emerald-900"
-                      >
-                        <CheckCircle size={18} />
-                      </button>
-                    )}
                   </div>
+                </Td>
+                <Td>
+                  Rs. {Number(r.discount ?? r.raw?.discount ?? r.raw?.pricing?.discount ?? 0).toLocaleString()}
                 </Td>
                 <Td>
                   <div className="flex items-center gap-3">
@@ -301,84 +393,13 @@ export default function Hospital_TokenHistory() {
       )}
 
       {showDetails && detailsRow && (
-        <TokenDetailsDialog open={showDetails} onClose={()=>setShowDetails(false)} row={detailsRow} />
-      )}
-
-      {payOpen && payRow && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4 py-6">
-          <div className="w-full max-w-md overflow-hidden rounded-xl bg-white shadow-2xl ring-1 ring-black/5">
-            <div className="flex items-center justify-between border-b border-slate-200 px-5 py-3">
-              <div className="text-base font-semibold text-slate-800">Pay Token</div>
-              <button
-                onClick={()=>{ if (payBusy) return; setPayOpen(false); setPayRow(null) }}
-                className="rounded-md border border-slate-300 px-3 py-1.5 text-sm"
-              >
-                Close
-              </button>
-            </div>
-
-            <div className="max-h-[70vh] overflow-y-auto px-5 py-4 space-y-4">
-              <div className="text-sm text-slate-600">Token #{payRow.tokenNo} • {payRow.patient}</div>
-
-              <div>
-                <label className="mb-1 block text-sm font-medium text-slate-700">Payed to (Receptionist)</label>
-                <input
-                  value={payForm.receptionistName}
-                  onChange={e=>setPayForm(p=>({ ...p, receptionistName: e.target.value }))}
-                  className="w-full rounded-md border border-slate-300 px-3 py-2 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-200"
-                  placeholder="Enter receptionist name"
-                />
-              </div>
-
-              <div>
-                <label className="mb-1 block text-sm font-medium text-slate-700">Payement Method</label>
-                <select
-                  value={payForm.paymentMethod}
-                  onChange={e=>setPayForm(p=>({ ...p, paymentMethod: e.target.value as any }))}
-                  className="w-full rounded-md border border-slate-300 px-3 py-2 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-200"
-                >
-                  <option value="Cash">Cash</option>
-                  <option value="Card">Card</option>
-                  <option value="Insurance">Insurance</option>
-                </select>
-              </div>
-
-              {payForm.paymentMethod === 'Card' && (
-                <div>
-                  <label className="mb-1 block text-sm font-medium text-slate-700">Account Number/IBAN</label>
-                  <input
-                    value={payForm.accountNumberIban}
-                    onChange={e=>setPayForm(p=>({ ...p, accountNumberIban: e.target.value }))}
-                    className="w-full rounded-md border border-slate-300 px-3 py-2 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-200"
-                    placeholder="Enter account number or IBAN"
-                  />
-                </div>
-              )}
-            </div>
-
-            <div className="flex items-center justify-end gap-2 border-t border-slate-200 px-5 py-3">
-              <button
-                onClick={()=>{ if (payBusy) return; setPayOpen(false); setPayRow(null) }}
-                className="rounded-md border border-slate-300 px-3 py-1.5 text-sm"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={submitPay}
-                disabled={payBusy}
-                className="rounded-md bg-emerald-700 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50"
-              >
-                {payBusy ? 'Paying...' : 'Pay'}
-              </button>
-            </div>
-          </div>
-        </div>
+        <TokenDetailsDialog open={showDetails} onClose={()=>setShowDetails(false)} row={detailsRow} payToAccounts={payToAccounts} />
       )}
     </div>
   )
 }
 
-function TokenDetailsDialog({ open, onClose, row }: { open: boolean; onClose: ()=>void; row: TokenRow }){
+function TokenDetailsDialog({ open, onClose, row, payToAccounts }: { open: boolean; onClose: ()=>void; row: TokenRow; payToAccounts: Array<{ code: string; label: string }> }){
   if (!open) return null
   const t = row.raw || {}
   const patient = t.patientId || {}
@@ -405,7 +426,47 @@ function TokenDetailsDialog({ open, onClose, row }: { open: boolean; onClose: ()
   const paymentStatus = String(t.paymentStatus || row.paymentStatus || 'paid')
   const isPaid = paymentStatus.toLowerCase() === 'paid'
 
+  const clamp0 = (n: any) => Math.max(0, Number(n || 0))
+  const net = clamp0(payable)
+  const isUnpaid = paymentStatus.toLowerCase() === 'unpaid'
+  const computed = (() => {
+    const duesBefore = clamp0(t.duesBefore ?? row.duesBefore)
+    const advanceBefore = clamp0(t.advanceBefore ?? row.advanceBefore)
+    const advanceApplied = clamp0(t.advanceApplied ?? row.advanceApplied)
+    const amountReceived = isUnpaid ? 0 : clamp0(t.amountReceived ?? row.amountReceived)
+    const duesPaid = clamp0(t.duesPaid ?? row.duesPaid)
+    const paidForToday = clamp0(t.paidForToday ?? row.paidForToday)
+    const advanceAdded = clamp0(t.advanceAdded ?? row.advanceAdded)
+    const duesAfter = clamp0(t.duesAfter ?? row.duesAfter)
+    const advanceAfter = clamp0(t.advanceAfter ?? row.advanceAfter)
+    const paidToday = isUnpaid ? 0 : Math.min(net, paidForToday + advanceApplied)
+    const remaining = Math.max(0, net - paidToday)
+    return {
+      duesBefore,
+      advanceBefore,
+      advanceApplied,
+      amountReceived,
+      duesPaid,
+      paidForToday,
+      advanceAdded,
+      duesAfter,
+      advanceAfter,
+      paidToday,
+      remaining,
+      payPreviousDues: !!(t.payPreviousDues ?? row.payPreviousDues),
+      useAdvance: !!(t.useAdvance ?? row.useAdvance),
+    }
+  })()
+
   const receptionistName = String(t.receptionistName || row.receptionistName || '')
+  const receivedToAccountCode = String(t.receivedToAccountCode || '')
+  const payedToName = (()=>{
+    const code = String(receivedToAccountCode || '').trim().toUpperCase()
+    if (!code) return receptionistName || '-'
+    const label = payToAccounts.find(x => x.code === code)?.label || ''
+    if (label) return String(label).split('(')[0].trim() || label
+    return receptionistName || code || '-'
+  })()
   const paymentMethod = String(t.paymentMethod || row.paymentMethod || t.billingType || '')
   const accountNumberIban = String(t.accountNumberIban || '')
 
@@ -460,11 +521,37 @@ function TokenDetailsDialog({ open, onClose, row }: { open: boolean; onClose: ()
               <Info label="Fee" value={`Rs. ${fee.toLocaleString()}`} />
               <Info label="Discount" value={`Rs. ${discount.toLocaleString()}`} />
               <Info label="Payable" value={`Rs. ${payable.toLocaleString()}`} />
+              <Info label="Paid" value={`Rs. ${computed.paidToday.toLocaleString()}`} />
+              <Info label="Remaining" value={`Rs. ${computed.remaining.toLocaleString()}`} />
+              <Info label="Adv. After" value={`Rs. ${computed.advanceAfter.toLocaleString()}`} />
               <Info label="Payment Status" value={paymentStatus.toUpperCase()} />
-              <Info label="Payed to(Receptionist)" value={receptionistName || '-'} />
+              <Info label="Payed to:" value={payedToName} />
               {isPaid && <Info label="Payment Method" value={paymentMethod || '-'} />}
               {isPaid && paymentMethod === 'Card' && <Info label="Account Number/IBAN" value={accountNumberIban || '-'} />}
               <Info label="Appointment Slot" value={String(appointmentSlot)} />
+            </div>
+          </section>
+
+          <section>
+            <h4 className="text-sm font-semibold text-slate-800">Payment Summary</h4>
+            <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <Info label="Prev. Dues" value={`Rs. ${computed.duesBefore.toLocaleString()}`} />
+              <Info label="Prev. Adv." value={`Rs. ${computed.advanceBefore.toLocaleString()}`} />
+              <Info label="Received Now" value={`Rs. ${computed.amountReceived.toLocaleString()}`} />
+              <Info label="Adv. Used" value={`Rs. ${computed.advanceApplied.toLocaleString()}`} />
+              <Info label="Dues After" value={`Rs. ${computed.duesAfter.toLocaleString()}`} />
+              <Info label="Adv. After" value={`Rs. ${computed.advanceAfter.toLocaleString()}`} />
+            </div>
+          </section>
+
+          <section>
+            <h4 className="text-sm font-semibold text-slate-800">Payment Details</h4>
+            <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+              {computed.payPreviousDues && <Info label="Pay Prev. Dues" value="YES" />}
+              {computed.useAdvance && <Info label="Use Adv." value="YES" />}
+              <Info label="Dues Paid" value={`Rs. ${computed.duesPaid.toLocaleString()}`} />
+              <Info label="Paid For Today" value={`Rs. ${computed.paidForToday.toLocaleString()}`} />
+              <Info label="Adv. Added" value={`Rs. ${computed.advanceAdded.toLocaleString()}`} />
             </div>
           </section>
         </div>

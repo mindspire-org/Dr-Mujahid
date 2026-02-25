@@ -1,4 +1,4 @@
-﻿import { useEffect, useState } from 'react'
+﻿import { useEffect, useRef, useState } from 'react'
 import { hospitalApi } from '../../utils/api'
 
 export default function Finance_OpeningBalances(){
@@ -6,6 +6,9 @@ export default function Finance_OpeningBalances(){
   const [bankAccounts, setBankAccounts] = useState<any[]>([])
   const [dateIso, setDateIso] = useState(()=> new Date().toISOString().slice(0,10))
   const [account, setAccount] = useState('')
+  const [senderAccount, setSenderAccount] = useState('')
+  const [senderBalance, setSenderBalance] = useState<number|null>(null)
+  const [loadingSenderBal, setLoadingSenderBal] = useState(false)
   const [amount, setAmount] = useState<number>(0)
   const [memo, setMemo] = useState('')
   const [loading, setLoading] = useState(true)
@@ -13,11 +16,26 @@ export default function Finance_OpeningBalances(){
   const [balancesByCode, setBalancesByCode] = useState<Record<string, number>>({})
   const [bankFilterCode, setBankFilterCode] = useState('')
   const [pettyRefills, setPettyRefills] = useState<Array<{ id: string; dateIso: string; pettyCode: string; bankId?: string; amount: number; memo?: string }>>([])
+  const [bankLedger, setBankLedger] = useState<any[]>([])
+  const [bankLedgerLoading, setBankLedgerLoading] = useState(false)
   const [bankPageSize, setBankPageSize] = useState<number>(20)
   const [bankPage, setBankPage] = useState<number>(1)
   const [bankFrom, setBankFrom] = useState<string>('')
   const [bankTo, setBankTo] = useState<string>('')
   const [viewTxn, setViewTxn] = useState<any|null>(null)
+
+  const [toastMsg, setToastMsg] = useState('')
+  const [toastOpen, setToastOpen] = useState(false)
+  const toastTimerRef = useRef<number | null>(null)
+
+  const showToast = (msg: string) => {
+    setToastMsg(msg)
+    setToastOpen(true)
+    if (toastTimerRef.current) window.clearTimeout(toastTimerRef.current)
+    toastTimerRef.current = window.setTimeout(() => {
+      setToastOpen(false)
+    }, 2500)
+  }
 
   useEffect(()=>{
     let cancelled = false
@@ -26,7 +44,7 @@ export default function Finance_OpeningBalances(){
       try {
         const [pettyRes, bankRes]: any = await Promise.all([
           hospitalApi.listPettyCashAccounts({ status: 'Active' }),
-          hospitalApi.listBankAccounts({ status: 'Active' }),
+          hospitalApi.listBankAccounts(),
         ])
         const petty = (pettyRes?.accounts || []).map((p:any)=> ({
           id: String(p.id||p._id||p.code),
@@ -36,15 +54,16 @@ export default function Finance_OpeningBalances(){
         }))
         const bankRaw = (bankRes?.accounts || [])
         const bank = bankRaw.map((b:any)=>{
-          const code = `BANK_${String(b.accountNumber||'').slice(-4).toUpperCase()}`
+          const code = String(b?.financeAccountCode || `BANK_${String(b?.accountNumber||'').slice(-4)}`.toUpperCase()).trim().toUpperCase()
+          if (!code) return null
           return {
-            id: String(b.id||b._id||b.accountNumber||code),
+            id: String(b.id||b._id||code),
             code,
             name: `${b.bankName||''} - ${b.accountTitle||''}`.trim(),
             category: 'Bank',
           }
-        })
-        const list = [...petty, ...bank]
+        }).filter(Boolean)
+        const list = [...petty, ...(bank as any[])]
         if (!cancelled) { setAccounts(list); setBankAccounts(bankRaw) }
       } catch {
         if (!cancelled) { setAccounts([]); setBankAccounts([]) }
@@ -86,7 +105,46 @@ export default function Finance_OpeningBalances(){
     return ()=>{ cancelled = true }
   }, [accounts])
 
+  useEffect(()=>{
+    let cancelled = false
+    ;(async()=>{
+      const code = String(bankFilterCode || '').trim().toUpperCase()
+      if (!code) { setBankLedger([]); return }
+      setBankLedgerLoading(true)
+      try {
+        const res: any = await hospitalApi.listFinanceAccountTransactions({
+          code,
+          from: bankFrom || undefined,
+          to: bankTo || undefined,
+          limit: 500,
+        })
+        if (!cancelled) setBankLedger(res?.entries || [])
+      } catch {
+        if (!cancelled) setBankLedger([])
+      } finally {
+        if (!cancelled) setBankLedgerLoading(false)
+      }
+    })()
+    return ()=>{ cancelled = true }
+  }, [bankFilterCode, bankFrom, bankTo])
+
   useEffect(()=>{ setBankPage(1) }, [bankFilterCode, bankPageSize, bankFrom, bankTo])
+
+  useEffect(()=>{
+    (async ()=>{
+      const code = String(senderAccount || '').trim().toUpperCase()
+      if (!code){ setSenderBalance(null); return }
+      setLoadingSenderBal(true)
+      try {
+        const res: any = await hospitalApi.getFinanceAccountBalance(code)
+        setSenderBalance(Number(res?.balance||0))
+      } catch {
+        setSenderBalance(0)
+      } finally {
+        setLoadingSenderBal(false)
+      }
+    })()
+  }, [senderAccount])
 
   return (
     <div className="w-full px-6 py-6 space-y-4">
@@ -102,13 +160,28 @@ export default function Finance_OpeningBalances(){
             <input type="date" value={dateIso} onChange={e=>setDateIso(e.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
           </div>
           <div>
-            <label className="mb-1 block text-sm font-medium text-slate-700">Account</label>
+            <label className="mb-1 block text-sm font-medium text-slate-700">Account (Receiver)</label>
             <select value={account} onChange={e=>setAccount(e.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" disabled={loading}>
               <option value="">Select account</option>
               {accounts.filter(a=> a.category==='Bank').map(a => (
                 <option key={a.id} value={a.code}>{a.code} — {a.name}</option>
               ))}
             </select>
+          </div>
+          <div className="sm:col-span-2">
+            <label className="mb-1 block text-sm font-medium text-slate-700">Account (Sender)</label>
+            <select value={senderAccount} onChange={e=> setSenderAccount(e.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" disabled={loading}>
+              <option value="">Select account</option>
+              {accounts.map(a => (
+                <option key={a.id} value={a.code}>{a.code} — {a.name}</option>
+              ))}
+            </select>
+            {senderAccount && (
+              <div className="mt-2 text-sm">
+                <span className="text-slate-600">Current Sender Balance: </span>
+                <span className="font-medium">Rs. {new Intl.NumberFormat('en-PK').format(Number(senderBalance||0))}</span>
+              </div>
+            )}
           </div>
           <div>
             <label className="mb-1 block text-sm font-medium text-slate-700">Amount</label>
@@ -122,33 +195,53 @@ export default function Finance_OpeningBalances(){
         <div className="mt-4 flex justify-end">
           <button
             className="btn"
+            disabled={
+              loading ||
+              loadingSenderBal ||
+              !dateIso ||
+              !account ||
+              !senderAccount ||
+              !(amount > 0)
+            }
             onClick={async()=>{
-              if (!dateIso || !account || !(amount > 0)) return
+              if (!dateIso) return showToast('Please select date')
+              if (!account) return showToast('Please select Account (Receiver)')
+              if (!senderAccount) return showToast('Please select Account (Sender)')
+              if (!(amount > 0)) return showToast('Please enter amount')
+              if (loadingSenderBal) return showToast('Please wait, loading sender balance...')
               try {
-                await hospitalApi.postOpeningBalance({ dateIso, account, amount, memo: memo||undefined })
+                await hospitalApi.transferFinanceAccount({ fromAccountCode: senderAccount, toAccountCode: account, amount, dateIso, memo: memo||undefined })
                 // Refresh balances for involved accounts
                 try {
                   const targetCodes = new Set<string>()
                   targetCodes.add(account)
+                  targetCodes.add(senderAccount)
                   const updated: Record<string, number> = { ...balancesByCode }
                   for (const code of Array.from(targetCodes)){
                     try { const bal:any = await hospitalApi.getFinanceAccountBalance(code); updated[code] = Number(bal?.balance||0) } catch { updated[code]=0 }
                   }
                   setBalancesByCode(updated)
                 } catch {}
-                alert('Opening balance posted')
+                showToast('Transfer completed')
+
+                // Reset fields (keep date as-is)
+                setAccount('')
+                setSenderAccount('')
+                setSenderBalance(null)
+                setAmount(0)
+                setMemo('')
               } catch (e: any) {
-                alert(e?.message || 'Failed')
+                showToast(e?.message || 'Failed')
               }
             }}
-          >Post Opening Balance</button>
+          >Transfer</button>
         </div>
       </div>
 
       <div className="grid gap-4 md:grid-cols-1">
         <div className="rounded-xl border border-slate-200 bg-white p-4">
           <div className="flex items-center justify-between">
-            <div className="text-lg font-semibold">Bank Account Balance</div>
+            <div className="text-lg font-semibold">Bank Account Transactions</div>
           </div>
           <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
             <div className="flex flex-wrap items-center gap-2">
@@ -190,34 +283,26 @@ export default function Finance_OpeningBalances(){
             </div>
           </div>
           {(() => {
-            const openingBank = openingEntries.filter(e=> {
-              const acc = accounts.find(a=> a.code===e.account)
-              if (acc?.category!=='Bank') return false
-              if (bankFilterCode && e.account!==bankFilterCode) return false
-              if (bankFrom && String(e.dateIso||'') < bankFrom) return false
-              if (bankTo && String(e.dateIso||'') > bankTo) return false
-              return true
-            })
-            const refillBank = pettyRefills.map(r => {
-              const b:any = bankAccounts.find(x=> String(x.id||x._id) === String(r.bankId||''))
-              const bankCode = b ? String(b.financeAccountCode || `BANK_${String(b.accountNumber||'').slice(-4).toUpperCase()}`) : ''
-              return { id: r.id, dateIso: r.dateIso, account: bankCode, amount: -Math.abs(Number(r.amount||0)), memo: r.memo }
-            }).filter(e => e.account && (!bankFilterCode || e.account===bankFilterCode))
-            return [...openingBank, ...refillBank].length === 0
+            if (!bankFilterCode) return true
+            return bankLedger.length === 0
           })() ? (
-            <div className="mt-3 text-sm text-slate-500">No entry yet. Post an opening balance to view bank balances here.</div>
+            <div className="mt-3 text-sm text-slate-500">
+              {!bankFilterCode
+                ? 'Select a bank account to view transactions.'
+                : (bankLedgerLoading ? 'Loading...' : 'No transactions found for this bank account in selected range.')}
+            </div>
           ) : (
             <div className="mt-3 overflow-x-auto">
               <table className="min-w-full text-sm">
                 <thead>
                   <tr className="text-left text-slate-600 border-b">
-                    <th className="py-2 pr-4">Date</th>
-                    <th className="py-2 pr-4">Account</th>
-                    <th className="py-2 pr-4">Name</th>
-                    <th className="py-2 pr-4">Transfer to</th>
+                    <th className="py-2 pr-4">Transaction ID</th>
+                    <th className="py-2 pr-4">DateTime</th>
+                    <th className="py-2 pr-4">Account ID(Receiver)</th>
+                    <th className="py-2 pr-4">Account ID(Sender)</th>
+                    <th className="py-2 pr-4">User</th>
                     <th className="py-2 pr-4">Status</th>
-                    <th className="py-2 pr-4 text-right">Send/Receive</th>
-                    <th className="py-2 pr-4 text-right">Previous Balance</th>
+                    <th className="py-2 pr-4 text-right">Received/Sent</th>
                     <th className="py-2 pr-4 text-right">Current Balance</th>
                     <th className="py-2 pr-4 text-right">Actions</th>
                   </tr>
@@ -225,65 +310,68 @@ export default function Finance_OpeningBalances(){
                 <tbody>
                   {(() => {
                     const bankRows: any[] = []
-                    // opening entries for bank accounts
-                    const openingBank = openingEntries.filter(e=> {
-                      const acc = accounts.find(a=> a.code===e.account)
-                      if (acc?.category!=='Bank') return false
-                      if (bankFilterCode && e.account!==bankFilterCode) return false
-                      if (bankFrom && String(e.dateIso||'') < bankFrom) return false
-                      if (bankTo && String(e.dateIso||'') > bankTo) return false
-                      return true
-                    })
-                    // petty refills transformed as bank debits (negative amounts) using bank finance code
-                    const refillBank = pettyRefills.map(r => {
-                      const b:any = bankAccounts.find(x=> String(x.id||x._id) === String(r.bankId||''))
-                      const bankCode = b ? String(b.financeAccountCode || `BANK_${String(b.accountNumber||'').slice(-4).toUpperCase()}`) : ''
-                      const dest = accounts.find(a=> a.code===String(r.pettyCode||''))
-                      return { id: r.id, dateIso: r.dateIso, account: bankCode, amount: -Math.abs(Number(r.amount||0)), memo: r.memo, transferTo: dest?.name || String(r.pettyCode||'') }
-                    }).filter(e => {
-                      if (!e.account) return false
-                      if (bankFilterCode && e.account!==bankFilterCode) return false
-                      if (bankFrom && String(e.dateIso||'') < bankFrom) return false
-                      if (bankTo && String(e.dateIso||'') > bankTo) return false
-                      return true
-                    })
-                    // combine
-                    const bankEntries = [
-                      ...openingBank,
-                      ...refillBank,
-                    ] as Array<{ id: string; dateIso: string; account: string; amount: number; memo?: string; transferTo?: string }>
-                    const byAccount: Record<string, any[]> = {}
-                    for (const e of bankEntries){
-                      if (!byAccount[e.account]) byAccount[e.account] = [] as any
-                      byAccount[e.account].push(e)
+
+                    const resolveAccountTitle = (code: string) => {
+                      const c = String(code || '').trim().toUpperCase()
+                      if (!c) return '-'
+                      const acc = accounts.find(a => String(a.code||'').trim().toUpperCase() === c)
+                      if (acc?.name) return String(acc.name)
+                      const b = bankAccounts.find((x:any) => String(x.financeAccountCode || `BANK_${String(x.accountNumber||'').slice(-4)}`.toUpperCase()).trim().toUpperCase() === c)
+                      if (b) return `${b.bankName||''} - ${b.accountTitle||''}`.trim()
+                      return '-'
                     }
-                    const fmt = new Intl.NumberFormat('en-PK')
-                    Object.keys(byAccount).forEach(code => {
-                      const list = byAccount[code].slice().sort((a,b)=> a.dateIso.localeCompare(b.dateIso) || a.id.localeCompare(b.id))
+
+                    if (bankFilterCode){
+                      const fmt = new Intl.NumberFormat('en-PK')
+                      const code = String(bankFilterCode || '').trim().toUpperCase()
                       let running = 0
-                      const meta = accounts.find(a=> a.code===code)
+                      const list = (bankLedger || []).slice().sort((a:any,b:any)=>
+                        String(a.dateIso||'').localeCompare(String(b.dateIso||'')) ||
+                        String(a.createdAt||'').localeCompare(String(b.createdAt||'')) ||
+                        String(a.id||'').localeCompare(String(b.id||''))
+                      )
+                      const renderedRows: any[] = []
                       for (let i=0;i<list.length;i++){
-                        const e = list[i]
-                        const previous = running
-                        running = previous + Number(e.amount||0)
-                        const statusLabel = running>previous ? 'Credit' : (running<previous ? 'Debit' : '—')
-                        const statusCls = running>previous ? 'bg-green-100 text-green-700' : (running<previous ? 'bg-red-100 text-red-700' : 'bg-slate-100 text-slate-600')
-                        const isSend = Number(e.amount||0) < 0
-                        bankRows.unshift(
-                          <tr key={`bank-${e.id}-${i}`} className="border-b last:border-0">
-                            <td className="py-2 pr-4">{e.dateIso}</td>
-                            <td className="py-2 pr-4 font-mono">{e.account}</td>
-                            <td className="py-2 pr-4">{meta?.name || '-'}</td>
-                            <td className="py-2 pr-4">{e.transferTo || '-'}</td>
+                        const t:any = list[i]
+                        const delta = Number(t.debit||0) - Number(t.credit||0)
+                        running = running + delta
+                        const statusLabel = delta>0 ? 'Credit' : (delta<0 ? 'Debit' : '—')
+                        const statusCls = delta>0 ? 'bg-green-100 text-green-700' : (delta<0 ? 'bg-red-100 text-red-700' : 'bg-slate-100 text-slate-600')
+                        const cpCodes = Array.isArray(t.counterparties) && t.counterparties.length
+                          ? t.counterparties.map((c:any)=> String(c.account||'')).filter(Boolean)
+                          : []
+                        const cpCode = cpCodes[0] || '-'
+
+                        const receiverCode = delta < 0 ? cpCode : code
+                        const senderCode = delta > 0 ? cpCode : code
+
+                        renderedRows.push(
+                          <tr key={`bank-ledger-${String(t.id)}-${i}`} className="border-b last:border-0">
+                            <td className="py-2 pr-4 font-mono">{String(t.txId||`TXN-${String(t.id)}`)}</td>
+                            <td className="py-2 pr-4">
+                              <div className="leading-tight">
+                                <div>{String(t.dateIso||'') || '-'}</div>
+                                <div className="text-xs text-slate-500">{(() => {
+                                  const timeDt = t?.createdAt ? new Date(String(t.createdAt)) : null
+                                  const timeLabel = (!timeDt || Number.isNaN(timeDt.getTime())) ? '-' : timeDt.toLocaleTimeString()
+                                  return timeLabel
+                                })()}</div>
+                              </div>
+                            </td>
+                            <td className="py-2 pr-4 font-mono">{receiverCode || '-'}</td>
+                            <td className="py-2 pr-4">{senderCode || '-'}</td>
+                            <td className="py-2 pr-4">{(() => {
+                              const u = t?.user
+                              const name = String(u?.fullName || u?.username || t?.createdBy || '-').trim() || '-'
+                              const role = String(u?.role || '').trim()
+                              return role ? `${name}-${role}` : name
+                            })()}</td>
                             <td className="py-2 pr-4">
                               <span className={`inline-flex items-center rounded px-2 py-0.5 text-xs font-medium ${statusCls}`}>
                                 {statusLabel}
                               </span>
                             </td>
-                            <td className="py-2 pr-4 text-right">
-                              {isSend ? '-' : ''}Rs. {fmt.format(Math.abs(Number(e.amount||0)))}
-                            </td>
-                            <td className="py-2 pr-4 text-right">Rs. {fmt.format(previous)}</td>
+                            <td className="py-2 pr-4 text-right">Rs. {fmt.format(delta)}</td>
                             <td className="py-2 pr-4 text-right">Rs. {fmt.format(running)}</td>
                             <td className="py-2 pr-4 text-right">
                               <button
@@ -291,16 +379,17 @@ export default function Finance_OpeningBalances(){
                                 className="rounded border border-slate-300 px-2 py-1 text-xs hover:bg-slate-50"
                                 onClick={()=> setViewTxn({
                                   section: 'Bank',
-                                  dateIso: e.dateIso,
-                                  accountCode: e.account,
-                                  accountName: meta?.name || '-',
-                                  transferTo: e.transferTo || '-',
-                                  transferFrom: e.transferTo ? (meta?.name || e.account) : '-',
+                                  transactionId: String(t.txId||`TXN-${String(t.id)}`),
+                                  dateIso: t.dateIso,
+                                  createdAt: t.createdAt,
+                                  accountCode: receiverCode,
+                                  accountName: resolveAccountTitle(receiverCode),
+                                  senderAccount: senderCode,
+                                  senderAccountNameCode: cpCode,
                                   status: statusLabel,
-                                  amount: Number(e.amount||0),
-                                  previous,
+                                  amount: delta,
                                   current: running,
-                                  memo: e.memo || '-',
+                                  memo: t.memo || '-',
                                 })}
                                 aria-label="View"
                                 title="View"
@@ -311,7 +400,32 @@ export default function Finance_OpeningBalances(){
                           </tr>
                         )
                       }
-                    })
+
+                      // Show newest-to-oldest (running balance still computed oldest-to-newest)
+                      bankRows.push(...renderedRows.reverse())
+
+                      const total = bankRows.length
+                      const pageCount = Math.max(1, Math.ceil(total / Math.max(1, bankPageSize)))
+                      const page = Math.min(Math.max(1, bankPage), pageCount)
+                      const start = (page - 1) * bankPageSize
+                      const end = start + bankPageSize
+                      return (
+                        <>
+                          {bankRows.slice(start, end)}
+                          <tr>
+                            <td colSpan={9} className="pt-2">
+                              <div className="flex items-center justify-between text-xs text-slate-500">
+                                <div>{total ? `${start+1}-${Math.min(end, total)} of ${total}` : '0'}</div>
+                                <div className="flex gap-1">
+                                  <button className="rounded border border-slate-300 px-2 py-1 text-xs disabled:opacity-50" disabled={page<=1} onClick={()=> setBankPage(p=> Math.max(1, p-1))}>Prev</button>
+                                  <button className="rounded border border-slate-300 px-2 py-1 text-xs disabled:opacity-50" disabled={page>=pageCount} onClick={()=> setBankPage(p=> p+1)}>Next</button>
+                                </div>
+                              </div>
+                            </td>
+                          </tr>
+                        </>
+                      )
+                    }
                     const total = bankRows.length
                     const pageCount = Math.max(1, Math.ceil(total / Math.max(1, bankPageSize)))
                     const page = Math.min(Math.max(1, bankPage), pageCount)
@@ -351,20 +465,47 @@ export default function Finance_OpeningBalances(){
             </div>
             <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
               <div><div className="text-slate-500">Section</div><div>{viewTxn.section || '-'}</div></div>
-              <div><div className="text-slate-500">Date</div><div>{viewTxn.dateIso || '-'}</div></div>
-              <div><div className="text-slate-500">Account</div><div className="font-mono">{viewTxn.accountCode || '-'}</div></div>
-              <div><div className="text-slate-500">Name</div><div>{viewTxn.accountName || '-'}</div></div>
+              <div><div className="text-slate-500">Transaction ID</div><div className="font-mono">{viewTxn.transactionId || '-'}</div></div>
+              <div><div className="text-slate-500">DateTime</div><div className="leading-tight">{(() => {
+                const dateDt = new Date(`${String(viewTxn.dateIso||'').slice(0,10)}T00:00:00.000Z`)
+                const dateLabel = Number.isNaN(dateDt.getTime()) ? String(viewTxn.dateIso||'') : dateDt.toLocaleDateString()
+                const timeDt = viewTxn.createdAt ? new Date(String(viewTxn.createdAt)) : null
+                const timeLabel = (!timeDt || Number.isNaN(timeDt.getTime())) ? '-' : timeDt.toLocaleTimeString()
+                return (
+                  <div>
+                    <div>{dateLabel || '-'}</div>
+                    <div className="text-xs text-slate-500">{timeLabel || '-'}</div>
+                  </div>
+                )
+              })()}</div></div>
+              <div><div className="text-slate-500">Account ID(Receiver)</div><div className="font-mono">{viewTxn.accountCode || '-'}</div></div>
+              <div><div className="text-slate-500">Account Title(Receiver)</div><div>{viewTxn.accountName || '-'}</div></div>
               <div><div className="text-slate-500">Status</div><div>{viewTxn.status || '-'}</div></div>
               <div><div className="text-slate-500">Amount</div><div>{`Rs. ${new Intl.NumberFormat('en-PK').format(Number(viewTxn.amount||0))}`}</div></div>
-              <div><div className="text-slate-500">Previous Balance</div><div>{`Rs. ${new Intl.NumberFormat('en-PK').format(Number(viewTxn.previous||0))}`}</div></div>
               <div><div className="text-slate-500">Current Balance</div><div>{`Rs. ${new Intl.NumberFormat('en-PK').format(Number(viewTxn.current||0))}`}</div></div>
-              <div><div className="text-slate-500">Transfer From</div><div>{viewTxn.transferFrom || '-'}</div></div>
-              <div><div className="text-slate-500">Transfer To</div><div>{viewTxn.transferTo || '-'}</div></div>
+              <div><div className="text-slate-500">Account ID(Sender)</div><div>{viewTxn.senderAccount || '-'}</div></div>
+              <div><div className="text-slate-500">Account Name(Sender)</div><div>{(() => {
+                const code = String(viewTxn.senderAccountNameCode || viewTxn.senderAccount || '').trim().toUpperCase()
+                if (!code) return '-'
+                const b = bankAccounts.find((x:any) => String(x.financeAccountCode || `BANK_${String(x.accountNumber||'').slice(-4)}`.toUpperCase()).trim().toUpperCase() === code)
+                if (b) return `${b.bankName||''}-${b.accountTitle||''}`.trim()
+                const a = accounts.find(x => String(x.code||'').trim().toUpperCase() === code)
+                if (a) return String(a.name || '-')
+                return '-'
+              })()}</div></div>
               <div className="sm:col-span-2"><div className="text-slate-500">Memo</div><div className="break-words">{viewTxn.memo || '-'}</div></div>
             </div>
             <div className="mt-4 flex justify-end">
               <button className="btn" onClick={()=> setViewTxn(null)}>Close</button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {toastOpen && (
+        <div className="fixed bottom-4 right-4 z-50">
+          <div className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white shadow-lg">
+            {toastMsg}
           </div>
         </div>
       )}

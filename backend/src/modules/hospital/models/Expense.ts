@@ -8,7 +8,25 @@ const ExpenseSchema = new Schema({
   note: { type: String },
   method: { type: String },
   ref: { type: String },
+  supplierName: { type: String },
+  invoiceNo: { type: String },
+  kind: { type: String, index: true },
+  staffId: { type: String, index: true },
+  salaryMonth: { type: String, index: true }, // yyyy-mm
+  paymentMode: { type: String },
   createdBy: { type: String },
+  fromAccountCode: { type: String },
+  journalId: { type: String },
+  paidAt: { type: Date },
+  receiverLabel: { type: String },
+  status: { type: String, default: 'draft', index: true },
+  submittedAt: { type: Date },
+  submittedBy: { type: String },
+  approvedAt: { type: Date },
+  approvedBy: { type: String },
+  rejectedAt: { type: Date },
+  rejectedBy: { type: String },
+  rejectionReason: { type: String },
 }, { timestamps: true })
 
 export type HospitalExpenseDoc = {
@@ -20,7 +38,25 @@ export type HospitalExpenseDoc = {
   note?: string
   method?: string
   ref?: string
+  supplierName?: string
+  invoiceNo?: string
+  kind?: string
+  staffId?: string
+  salaryMonth?: string
+  paymentMode?: string
   createdBy?: string
+  fromAccountCode?: string
+  journalId?: string
+  paidAt?: any
+  receiverLabel?: string
+  status?: 'draft'|'submitted'|'approved'|'rejected'
+  submittedAt?: any
+  submittedBy?: string
+  approvedAt?: any
+  approvedBy?: string
+  rejectedAt?: any
+  rejectedBy?: string
+  rejectionReason?: string
 }
 
 export const HospitalExpense = models.Hospital_Expense || model('Hospital_Expense', ExpenseSchema)

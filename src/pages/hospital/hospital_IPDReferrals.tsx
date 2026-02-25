@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { hospitalApi, labApi } from '../../utils/api'
+import { hospitalApi } from '../../utils/api'
 import { previewIpdReferralPdf } from '../../utils/ipdReferralPdf'
 
 export default function Hospital_IPDReferrals(){
@@ -36,9 +36,6 @@ export default function Hospital_IPDReferrals(){
       try { const r = await hospitalApi.getIpdReferralById(id) as any; ref = r?.referral || r } catch {}
       if (!ref) {
         ref = rows.find(r=> String(r._id||r.id)===String(id))
-        if (!ref){
-          try { const arr = JSON.parse(localStorage.getItem('hospital.ipd.referrals')||'[]') as any[]; ref = arr.find(x=> String(x._id||x.id)===String(id)) } catch {}
-        }
       }
       if (!ref) { alert('Referral not found'); return }
       const snap = ref.patientSnapshot || ref.patient || {}
@@ -52,8 +49,16 @@ export default function Hospital_IPDReferrals(){
         address: snap.address || '',
         cnic: snap.cnic || (snap as any)?.cnicNormalized || '',
       }
-      if (!patient.cnic && patient.mrn){
-        try { const resp: any = await labApi.getPatientByMrn(patient.mrn); const lp = resp?.patient; if (lp) patient.cnic = lp.cnic || lp.cnicNormalized || patient.cnic; if (!patient.address) patient.address = lp?.address || patient.address; if (!patient.phone) patient.phone = lp?.phone || lp?.phoneNormalized || patient.phone } catch {}
+      if (patient.mrn){
+        try {
+          const prof: any = await hospitalApi.getPatientProfile(patient.mrn)
+          const lp = prof?.patient
+          if (lp) {
+            if (!patient.address) patient.address = lp?.address || patient.address
+            if (!patient.phone) patient.phone = lp?.phoneNormalized || patient.phone
+            if (!patient.cnic) patient.cnic = lp?.cnicNormalized || patient.cnic
+          }
+        } catch {}
       }
       const referral = {
         date: ref.referralDate || ref.createdAt,
@@ -77,31 +82,15 @@ export default function Hospital_IPDReferrals(){
       const items = (res?.items || res?.referrals || res || []) as any[]
       setRows(items)
     }catch{
-      try{
-        const raw = localStorage.getItem('hospital.ipd.referrals')||'[]'
-        let items = JSON.parse(raw) as any[]
-        if (status) items = items.filter(r => r.status === status)
-        if (q) { const qq = q.toLowerCase(); items = items.filter(r=>`${r.serial} ${r?.patientSnapshot?.fullName||''} ${r?.patientSnapshot?.mrn||''}`.toLowerCase().includes(qq)) }
-        if (from) { const dd = new Date(from).getTime(); items = items.filter(r=> new Date(r.referralDate||r.createdAt).getTime() >= dd) }
-        if (to) { const dd = new Date(to).getTime()+86400000-1; items = items.filter(r=> new Date(r.referralDate||r.createdAt).getTime() <= dd) }
-        setRows(items)
-      }catch{ setRows([]) }
+      setRows([])
     }finally{ setLoading(false) }
   }
 
   async function accept(id: string){
-    try{ await hospitalApi.updateIpdReferralStatus(id, 'accept'); await load() }catch{ updateLocal(id, { status: 'Accepted' }); await load() }
+    try{ await hospitalApi.updateIpdReferralStatus(id, 'accept'); await load() }catch{ await load() }
   }
   async function reject(id: string){
-    try{ await hospitalApi.updateIpdReferralStatus(id, 'reject'); await load() }catch{ updateLocal(id, { status: 'Rejected' }); await load() }
-  }
-  function updateLocal(id: string, patch: any){
-    try{
-      const key = 'hospital.ipd.referrals'
-      const arr = JSON.parse(localStorage.getItem(key)||'[]') as any[]
-      const idx = arr.findIndex(x=> String(x._id||x.id)===String(id))
-      if (idx>=0){ arr[idx] = { ...arr[idx], ...patch }; localStorage.setItem(key, JSON.stringify(arr)) }
-    }catch{}
+    try{ await hospitalApi.updateIpdReferralStatus(id, 'reject'); await load() }catch{ await load() }
   }
 
   function numericDate(s?: string){ if(!s) return ''; const d = new Date(s); return isNaN(d as any) ? '' : d.toLocaleDateString() }
@@ -120,7 +109,7 @@ export default function Hospital_IPDReferrals(){
       try{
         const ref = rows.find(r=> String(r._id||r.id)===String(id))
         const pid = String(ref?.patientId?._id || ref?.patientId || '')
-        if (pid && f.departmentId){ await hospitalApi.admitIPD({ patientId: pid, departmentId: f.departmentId, doctorId: f.doctorId || undefined, bedId: f.bedId || undefined, deposit: f.deposit? Number(f.deposit): undefined }); updateLocal(id, { status: 'Admitted' }) }
+        if (pid && f.departmentId){ await hospitalApi.admitIPD({ patientId: pid, departmentId: f.departmentId, doctorId: f.doctorId || undefined, bedId: f.bedId || undefined, deposit: f.deposit? Number(f.deposit): undefined }) }
       }catch{}
     }
     setOpenAdmit(null); setAdmitForm({ departmentId: '', doctorId: '', bedId: '', wardId: '', deposit: '', tokenFee: '' }); await load()

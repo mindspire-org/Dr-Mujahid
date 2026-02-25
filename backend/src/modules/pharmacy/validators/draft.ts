@@ -3,7 +3,6 @@ import { z } from 'zod'
 export const draftLineSchema = z.object({
   medicineId: z.string().optional(),
   name: z.string().min(1),
-  company: z.string().optional(),
   genericName: z.string().optional(),
   unitsPerPack: z.coerce.number().int().positive().default(1),
   packs: z.coerce.number().int().nonnegative().default(0),
@@ -15,6 +14,7 @@ export const draftLineSchema = z.object({
   expiry: z.string().optional(),
   category: z.string().optional(),
   minStock: z.coerce.number().int().nonnegative().optional(),
+  defaultDiscountPct: z.coerce.number().min(0).max(100).optional(),
   lineTaxType: z.enum(['percent','fixed']).optional(),
   lineTaxValue: z.coerce.number().nonnegative().optional(),
 })
@@ -24,6 +24,8 @@ export const draftCreateSchema = z.object({
   invoice: z.string().min(1),
   supplierId: z.string().optional(),
   supplierName: z.string().optional(),
+  companyId: z.string().optional(),
+  companyName: z.string().optional(),
   invoiceTaxes: z.array(z.object({
     name: z.string().min(1),
     value: z.coerce.number(),
@@ -38,6 +40,5 @@ export const draftQuerySchema = z.object({
   from: z.string().optional(),
   to: z.string().optional(),
   search: z.string().optional(),
-  company: z.string().optional(),
   limit: z.coerce.number().int().positive().max(500).optional(),
 })

@@ -24,23 +24,33 @@ const nav: Item[] = [
   { to: '/aesthetic/user-management', label: 'User Management', icon: UserCog },
   { to: '/aesthetic/notifications', label: 'Notifications', icon: Bell },
   { to: '/aesthetic/consent-templates', label: 'Consent Templates', icon: FileText },
-  
+
   { to: '/aesthetic/settings', label: 'Settings', icon: Cog },
 ]
 
 export default function Aesthetic_Sidebar({ collapsed = false }: { collapsed?: boolean }) {
   const navigate = useNavigate()
   const [username, setUsername] = useState<string>('')
-  useEffect(()=>{
-    try { const raw = localStorage.getItem('aesthetic.session'); if (raw) { const s = JSON.parse(raw||'{}'); setUsername(String(s?.username||'')) } } catch {}
+  useEffect(() => {
+    try { const raw = localStorage.getItem('aesthetic.session'); if (raw) { const s = JSON.parse(raw || '{}'); setUsername(String(s?.username || '')) } } catch { }
   }, [])
   const logout = async () => {
-    try { await aestheticApi.logout() } catch {}
+    try { await aestheticApi.logout() } catch { }
     try {
+      localStorage.removeItem('token')
+      localStorage.removeItem('hospital.session')
+      localStorage.removeItem('hospital.token')
       localStorage.removeItem('aesthetic.session')
       localStorage.removeItem('aesthetic.token')
-      localStorage.removeItem('token')
-    } catch {}
+
+      const portals = ['doctor', 'reception', 'finance', 'diagnostic', 'lab', 'pharmacy', 'therapy', 'therapyLab', 'counselling']
+      portals.forEach(p => {
+        localStorage.removeItem(`${p}.session`)
+        localStorage.removeItem(`${p}.token`)
+        localStorage.removeItem(`${p}.user`)
+      })
+      localStorage.removeItem('pharma_user')
+    } catch { }
     navigate('/aesthetic/login')
   }
   const width = collapsed ? 'md:w-16' : 'md:w-64'
@@ -51,7 +61,7 @@ export default function Aesthetic_Sidebar({ collapsed = false }: { collapsed?: b
     >
       <div className="h-16 px-4 flex items-center border-b" style={{ borderColor: 'rgba(255,255,255,0.12)' }}>
         {!collapsed && <div className="font-semibold">Aesthetic</div>}
-        <div className={`ml-auto text-xs opacity-80 ${collapsed?'hidden':''}`}>{username || 'user'}</div>
+        <div className={`ml-auto text-xs opacity-80 ${collapsed ? 'hidden' : ''}`}>{username || 'user'}</div>
       </div>
       <nav className="flex-1 overflow-y-auto p-3 space-y-1">
         {nav.map(item => {
@@ -61,7 +71,7 @@ export default function Aesthetic_Sidebar({ collapsed = false }: { collapsed?: b
               key={item.to}
               to={item.to}
               title={collapsed ? item.label : undefined}
-              className={({ isActive }) => `rounded-md px-3 py-2 text-sm font-medium flex items-center ${collapsed?'justify-center gap-0':'gap-2'} ${isActive ? 'bg-white/10 text-white' : 'text-white/80 hover:bg-white/5'}`}
+              className={({ isActive }) => `rounded-md px-3 py-2 text-sm font-medium flex items-center ${collapsed ? 'justify-center gap-0' : 'gap-2'} ${isActive ? 'bg-white/10 text-white' : 'text-white/80 hover:bg-white/5'}`}
               end={item.end}
             >
               <Icon className="h-4 w-4" />

@@ -15,6 +15,9 @@ export type Customer = {
   cnic?: string
   mrNumber?: string
   totalSpent?: number
+  totalCreditAmount?: number
+  totalPaid?: number
+  totalRemaining?: number
   salesCount?: number
   lastPurchaseAt?: string | null
 }

@@ -3,6 +3,15 @@ import { Schema, model, models } from 'mongoose'
 const PrescriptionSchema = new Schema({
   patientId: { type: Schema.Types.ObjectId, ref: 'Lab_Patient', required: true, index: true },
   encounterId: { type: Schema.Types.ObjectId, ref: 'Hospital_Encounter', required: true, index: true },
+  historyTakingId: { type: Schema.Types.ObjectId, ref: 'Hospital_HistoryTaking', index: true },
+  labReportsEntryId: { type: Schema.Types.ObjectId, ref: 'Hospital_LabReportsEntry', index: true },
+  medicine: [{
+    name: { type: String, required: true },
+    dose: { type: String },
+    frequency: { type: String },
+    duration: { type: String },
+    notes: { type: String },
+  }],
   items: [{
     name: { type: String, required: true },
     dose: { type: String },
@@ -16,6 +25,12 @@ const PrescriptionSchema = new Schema({
   diagnosticNotes: { type: String },
   therapyTests: [{ type: String }],
   therapyNotes: { type: String },
+  therapyPlan: { type: Schema.Types.Mixed, default: {} },
+  therapyMachines: { type: Schema.Types.Mixed, default: {} },
+  counselling: { type: Schema.Types.Mixed, default: {} },
+  diagnosticDiscount: { type: Number, default: 0 },
+  therapyDiscount: { type: Number, default: 0 },
+  counsellingDiscount: { type: Number, default: 0 },
   primaryComplaint: { type: String },
   primaryComplaintHistory: { type: String },
   familyHistory: { type: String },
@@ -45,13 +60,22 @@ export type HospitalPrescriptionDoc = {
   _id: string
   patientId: string
   encounterId: string
-  items: Array<{ name: string; dose?: string; frequency?: string; duration?: string; notes?: string }>
+  historyTakingId?: string
+  labReportsEntryId?: string
+  medicine: Array<{ name: string; dose?: string; frequency?: string; duration?: string; notes?: string }>
+  items?: Array<{ name: string; dose?: string; frequency?: string; duration?: string; notes?: string }>
   labTests?: string[]
   labNotes?: string
   diagnosticTests?: string[]
   diagnosticNotes?: string
   therapyTests?: string[]
   therapyNotes?: string
+  therapyPlan?: any
+  therapyMachines?: any
+  counselling?: any
+  diagnosticDiscount?: number
+  therapyDiscount?: number
+  counsellingDiscount?: number
   primaryComplaint?: string
   primaryComplaintHistory?: string
   familyHistory?: string

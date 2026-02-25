@@ -3,7 +3,6 @@ import { Schema, model, models } from 'mongoose'
 const LineSchema = new Schema({
   medicineId: { type: String },
   name: { type: String, required: true },
-  company: { type: String },
   genericName: { type: String },
   unitsPerPack: { type: Number, default: 1 },
   packs: { type: Number, default: 0 },
@@ -26,6 +25,8 @@ const PurchaseSchema = new Schema({
   invoice: { type: String, required: true, index: true },
   supplierId: { type: String },
   supplierName: { type: String },
+  companyId: { type: String },
+  companyName: { type: String },
   totals: {
     gross: { type: Number, default: 0 },
     discount: { type: Number, default: 0 },
@@ -44,12 +45,13 @@ export type PurchaseDoc = {
   invoice: string
   supplierId?: string
   supplierName?: string
+  companyId?: string
+  companyName?: string
   totals?: { gross:number; discount:number; taxable:number; lineTaxes:number; invoiceTaxes:number; net:number }
   totalAmount: number
   lines: {
     medicineId?: string
     name: string
-    company?: string
     genericName?: string
     unitsPerPack: number
     packs: number

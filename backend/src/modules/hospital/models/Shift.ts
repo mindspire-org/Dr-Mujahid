@@ -7,6 +7,7 @@ const ShiftSchema = new Schema({
   absentCharges: { type: Number, default: 0 },
   lateDeduction: { type: Number, default: 0 },
   earlyOutDeduction: { type: Number, default: 0 },
+  weekendDays: { type: [Number], default: [] },
 }, { timestamps: true })
 
 export type HospitalShiftDoc = {
@@ -17,6 +18,7 @@ export type HospitalShiftDoc = {
   absentCharges?: number
   lateDeduction?: number
   earlyOutDeduction?: number
+  weekendDays?: number[]
 }
 
 export const HospitalShift = models.Hospital_Shift || model('Hospital_Shift', ShiftSchema)

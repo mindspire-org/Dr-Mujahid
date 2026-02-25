@@ -37,17 +37,18 @@ export default function Pharmacy_ReturnSlipDialog({ open, onClose, billNo, custo
   if (!open) return null
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 px-4 py-6 print:static print:p-0 print:bg-white">
+    <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 p-4 print:static print:p-0 print:bg-white">
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap');
         #pharmacy-return-slip { font-family: 'Poppins', Arial, sans-serif }
         .tabular-nums { font-variant-numeric: tabular-nums }
         @media print {
           @page { size: 58mm auto; margin: 0 }
-          body { -webkit-print-color-adjust: exact; print-color-adjust: exact }
+          html, body { -webkit-print-color-adjust: exact; print-color-adjust: exact }
+          body { margin: 0 !important; padding: 0 !important }
           body * { visibility: hidden !important }
           #pharmacy-return-slip, #pharmacy-return-slip * { visibility: visible !important }
-          #pharmacy-return-slip { position: absolute !important; left: 0; right: 0; top: 0; margin: 0 auto !important; padding: 0 6px !important; width: 384px !important; box-sizing: content-box !important; line-height: 1.25; z-index: 2147483647 }
+          #pharmacy-return-slip { position: absolute !important; left: 0; right: 0; top: 0; margin: 0 auto !important; padding: 10px 10px 0 10px !important; width: 300px !important; box-sizing: border-box !important; line-height: 1.45; z-index: 2147483647; font-size: 14px !important }
           .no-print { display: none !important }
           #pharmacy-return-slip hr { border-color: #000 !important }
           #pharmacy-return-slip, #pharmacy-return-slip * { color: #000 !important }
@@ -56,7 +57,7 @@ export default function Pharmacy_ReturnSlipDialog({ open, onClose, billNo, custo
           #pharmacy-return-slip .qty { text-align: center; font-variant-numeric: tabular-nums }
         }
       `}</style>
-      <div className="w-full max-w-2xl overflow-hidden rounded-xl bg-white shadow-2xl ring-1 ring-black/5 print:shadow-none print:ring-0 print:rounded-none print:max-w-none">
+      <div className="flex max-h-[90vh] w-full max-w-sm flex-col overflow-hidden rounded-md border border-slate-200 bg-white shadow-2xl ring-1 ring-black/5 print:shadow-none print:ring-0 print:rounded-none print:max-w-none print:border-0">
         <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3 print:hidden no-print">
           <div className="font-medium">Return Slip · {billNo}</div>
           <div className="flex items-center gap-2">
@@ -65,8 +66,8 @@ export default function Pharmacy_ReturnSlipDialog({ open, onClose, billNo, custo
           </div>
         </div>
 
-        <div className="max-h-[75vh] overflow-y-auto px-6 py-6 print:p-0 print:overflow-visible">
-          <div id="pharmacy-return-slip" className="mx-auto w-[384px] print:w-[384px]">
+        <div className="overflow-y-auto p-4 print:p-0 print:overflow-visible">
+          <div id="pharmacy-return-slip" className="mx-auto w-[300px] print:w-[300px]">
             <div className="text-center">
               {info.logo ? <img src={info.logo} alt="Logo" className="mx-auto mb-2 h-12 w-12 object-contain" /> : null}
               <div className="text-xl font-bold tracking-wide print:tracking-normal print:text-black">{info.name}</div>

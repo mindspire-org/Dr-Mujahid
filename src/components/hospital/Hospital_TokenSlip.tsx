@@ -16,8 +16,20 @@ export type TokenSlipData = {
   address?: string
   paymentStatus?: 'paid'|'unpaid'
   receptionistName?: string
+  receivedToAccountCode?: string
   paymentMethod?: string
   accountNumberIban?: string
+  amountReceived?: number
+  payPreviousDues?: boolean
+  useAdvance?: boolean
+  advanceApplied?: number
+  duesBefore?: number
+  advanceBefore?: number
+  duesPaid?: number
+  paidForToday?: number
+  advanceAdded?: number
+  duesAfter?: number
+  advanceAfter?: number
   amount: number
   discount: number
   payable: number
@@ -40,6 +52,7 @@ function getCurrentUser(){
 
 export default function Hospital_TokenSlip({ open, onClose, data, autoPrint = false, user }: { open: boolean; onClose: ()=>void; data: TokenSlipData; autoPrint?: boolean; user?: string }){
   const [settings, setSettings] = useState({ name: 'Hospital Name', phone: '', address: '', logoDataUrl: '', slipFooter: 'Powered by Hospital MIS' })
+  const [payToNameMap, setPayToNameMap] = useState<Record<string, string>>({})
   const printedRef = useRef(false)
 
   useEffect(() => { printedRef.current = false }, [open])
@@ -65,6 +78,50 @@ export default function Hospital_TokenSlip({ open, onClose, data, autoPrint = fa
     return () => { cancelled = true }
   }, [open])
 
+  useEffect(()=>{
+    let cancelled = false
+    async function loadPayTo(){
+      try {
+        const [bankRes, pettyRes] = await Promise.all([
+          hospitalApi.listBankAccounts(),
+          hospitalApi.listPettyCashAccounts(),
+        ]) as any
+        const map: Record<string, string> = {}
+        const add = (code?: string, nameOnly?: string) => {
+          const c = String(code || '').trim().toUpperCase()
+          if (!c) return
+          const nm = String(nameOnly || '').trim()
+          if (!nm) return
+          map[c] = nm
+        }
+
+        const petty: any[] = pettyRes?.accounts || []
+        for (const p of petty){
+          const code = String(p?.code || '').trim().toUpperCase()
+          if (!code) continue
+          if (String(p?.status || 'Active') !== 'Active') continue
+          add(code, String(p?.name || code).trim())
+        }
+
+        const banks: any[] = bankRes?.accounts || []
+        for (const b of banks){
+          const an = String(b?.accountNumber || '')
+          const last4 = an ? an.slice(-4) : ''
+          const code = String(b?.financeAccountCode || (last4 ? `BANK_${last4}` : '')).trim().toUpperCase()
+          if (!code) continue
+          const bankLabel = `${String(b?.bankName || '').trim()} - ${String(b?.accountTitle || '').trim()}${last4 ? ` (${last4})` : ''}`.trim()
+          add(code, bankLabel || code)
+        }
+
+        if (!cancelled) setPayToNameMap(map)
+      } catch {
+        if (!cancelled) setPayToNameMap({})
+      }
+    }
+    if (open) loadPayTo()
+    return ()=>{ cancelled = true }
+  }, [open])
+
   useEffect(() => {
     if (!open || !autoPrint || printedRef.current) return
     const t = setTimeout(() => { window.print(); printedRef.current = true }, 300)
@@ -73,6 +130,91 @@ export default function Hospital_TokenSlip({ open, onClose, data, autoPrint = fa
 
   if (!open) return null
   const dt = data.createdAt ? new Date(data.createdAt) : new Date()
+  const receivedCode = String(data.receivedToAccountCode || '').trim().toUpperCase()
+  const payedToName = (receivedCode && payToNameMap[receivedCode]) ? payToNameMap[receivedCode] : (data.receptionistName || '')
+
+  const clamp0 = (n: any) => Math.max(0, Number(n || 0))
+  const payable = Math.max(0, Number(data.payable || 0))
+  const isUnpaid = String(data.paymentStatus || 'paid').toLowerCase() === 'unpaid'
+
+  const paidNowSimple = isUnpaid ? 0 : clamp0(data.amountReceived)
+  const remainingSimple = Math.max(0, payable - paidNowSimple)
+
+  const computed = (() => {
+    const duesBefore = clamp0(data.duesBefore)
+    const advanceBefore = clamp0(data.advanceBefore)
+    const payPreviousDues = isUnpaid ? false : !!data.payPreviousDues
+    const useAdvance = isUnpaid ? false : !!data.useAdvance
+    let amountReceived = isUnpaid ? 0 : clamp0(data.amountReceived)
+    const net = clamp0(payable)
+
+    if (data.duesAfter != null || data.advanceAfter != null || data.duesPaid != null || data.paidForToday != null || data.advanceAdded != null){
+      const advanceApplied = clamp0(data.advanceApplied)
+      const paidForToday = clamp0(data.paidForToday)
+      const paidToday = isUnpaid ? 0 : Math.min(net, paidForToday + advanceApplied)
+      return {
+        duesBefore,
+        advanceBefore,
+        payPreviousDues,
+        useAdvance,
+        advanceApplied,
+        amountReceived,
+        duesPaid: clamp0(data.duesPaid),
+        paidForToday,
+        advanceAdded: clamp0(data.advanceAdded),
+        duesAfter: clamp0(data.duesAfter),
+        advanceAfter: clamp0(data.advanceAfter),
+        paidToday,
+        remaining: Math.max(0, net - paidToday),
+      }
+    }
+
+    let advanceApplied = 0
+    let duesPaid = 0
+    let paidForToday = 0
+    let advanceAdded = 0
+    let duesAfter = duesBefore
+    let advanceAfter = advanceBefore
+    let amt = amountReceived
+
+    if (payPreviousDues) {
+      duesPaid = Math.min(duesAfter, amt)
+      duesAfter = Math.max(0, duesAfter - duesPaid)
+      amt -= duesPaid
+    }
+
+    if (useAdvance) {
+      advanceApplied = Math.min(advanceAfter, Math.max(0, net - paidForToday))
+      advanceAfter = Math.max(0, advanceAfter - advanceApplied)
+      paidForToday += advanceApplied
+    }
+
+    const paidNow = Math.min(Math.max(0, net - paidForToday), amt)
+    paidForToday += paidNow
+    amt -= paidNow
+    if (amt > 0) {
+      advanceAdded = amt
+      advanceAfter += advanceAdded
+      amt = 0
+    }
+
+    const paidToday = isUnpaid ? 0 : Math.min(net, paidForToday)
+    return {
+      duesBefore,
+      advanceBefore,
+      payPreviousDues,
+      useAdvance,
+      advanceApplied,
+      amountReceived,
+      duesPaid,
+      paidForToday,
+      advanceAdded,
+      duesAfter,
+      advanceAfter,
+      paidToday,
+      remaining: Math.max(0, net - paidToday),
+    }
+  })()
 
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 p-4 print:bg-white print:static">
@@ -113,14 +255,56 @@ export default function Hospital_TokenSlip({ open, onClose, data, autoPrint = fa
           <div className="my-3 rounded border border-slate-800 p-3 text-center text-xl font-extrabold tracking-widest">{data.tokenNo}</div>
 
           <div className="space-y-1 text-sm text-slate-800">
-            <Row label="Total Amount:" value={data.amount.toFixed(2)} />
-            <Row label="Discount:" value={(data.discount || 0).toFixed(2)} />
-            <Row label="Payable Amount:" value={data.payable.toFixed(2)} boldValue />
-            <Row label="Payment Status:" value={(data.paymentStatus || 'paid').toUpperCase()} />
-            {data.receptionistName && <Row label="Payed to (Receptionist):" value={data.receptionistName} />}
-            {data.paymentMethod && <Row label="Payment Method:" value={data.paymentMethod} />}
-            {data.accountNumberIban && <Row label="Account Number/IBAN:" value={data.accountNumberIban} />}
+            <Row label="Total Amount:" value={`PKR ${Number(data.amount||0).toLocaleString()}`} />
+            <Row label="Discount:" value={`PKR ${Number(data.discount||0).toLocaleString()}`} />
+            <Row label="Payable:" value={`PKR ${payable.toLocaleString()}`} boldValue />
+            <Row label="Paid:" value={`PKR ${paidNowSimple.toLocaleString()}`} />
+            <Row label="Remaining:" value={`PKR ${remainingSimple.toLocaleString()}`} />
+            <Row label="Pay. Status:" value={String(data.paymentStatus || 'paid').toUpperCase()} />
+            {payedToName && <Row label="Payed to:" value={payedToName} />}
+            {data.paymentMethod && <Row label="Pay. Method:" value={data.paymentMethod} />}
+            {data.accountNumberIban && <Row label="Account#/IBAN:" value={data.accountNumberIban} />}
           </div>
+
+          {(!isUnpaid ||
+            data.amountReceived != null ||
+            data.duesBefore != null ||
+            data.advanceBefore != null ||
+            data.duesAfter != null ||
+            data.advanceAfter != null ||
+            data.advanceApplied != null) && (
+            <>
+              <hr className="my-2 border-dashed" />
+              <div className="mb-1 text-sm font-semibold">Payment Summary</div>
+              <div className="space-y-1 text-sm text-slate-800">
+                <Row label="Prev. Dues:" value={`PKR ${computed.duesBefore.toLocaleString()}`} />
+                <Row label="Prev. Adv.:" value={`PKR ${computed.advanceBefore.toLocaleString()}`} />
+                {computed.useAdvance && computed.advanceApplied > 0 && <Row label="Adv. Used:" value={`PKR ${computed.advanceApplied.toLocaleString()}`} />}
+                <Row label="Received Now:" value={`PKR ${computed.amountReceived.toLocaleString()}`} boldValue />
+                <Row label="Dues After:" value={`PKR ${computed.duesAfter.toLocaleString()}`} />
+                <Row label="Adv. After:" value={`PKR ${computed.advanceAfter.toLocaleString()}`} />
+              </div>
+            </>
+          )}
+
+          {(!isUnpaid ||
+            data.payPreviousDues != null ||
+            data.useAdvance != null ||
+            data.duesPaid != null ||
+            data.paidForToday != null ||
+            data.advanceAdded != null) && (
+            <>
+              <hr className="my-2 border-dashed" />
+              <div className="mb-1 text-sm font-semibold">Payment Details</div>
+              <div className="space-y-1 text-sm text-slate-800">
+                {computed.payPreviousDues && <Row label="Pay Prev. Dues:" value="YES" />}
+                {computed.useAdvance && <Row label="Use Adv.:" value="YES" />}
+                <Row label="Dues Paid:" value={`PKR ${computed.duesPaid.toLocaleString()}`} />
+                <Row label="Paid For Today:" value={`PKR ${computed.paidForToday.toLocaleString()}`} />
+                <Row label="Adv. Added:" value={`PKR ${computed.advanceAdded.toLocaleString()}`} />
+              </div>
+            </>
+          )}
 
           <hr className="my-2 border-dashed" />
 

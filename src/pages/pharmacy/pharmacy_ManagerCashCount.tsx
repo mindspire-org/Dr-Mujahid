@@ -91,7 +91,7 @@ export default function Pharmacy_ManagerCashCount(){
   const print = (e: CashCountEntry) => { setSlipEntry(e); setOpenSlip(true) }
 
   function exportCSV(){
-    const rows = [['Date','Amount','Receiver','Handover By','Note','User','Entry ID'], ...list.map(e=>[e.date, String(amountOf(e)), e.receiver||'', e.handoverBy||'', e.note||'', e.user||'', e.id])]
+    const rows = [['Date','Amount','Receiver','Handover By','Note'], ...list.map(e=>[e.date, String(amountOf(e)), e.receiver||'', e.handoverBy||'', e.note||''])]
     const csv = rows.map(r=> r.map(v=>`"${String(v).replace(/"/g,'""')}"`).join(',')).join('\n')
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
     const url = URL.createObjectURL(blob)
@@ -100,70 +100,69 @@ export default function Pharmacy_ManagerCashCount(){
 
   return (
     <div className="w-full p-3 sm:p-4">
-      <div className="text-xl font-semibold text-slate-800 dark:text-slate-100">Manager Cash Count</div>
+      <div className="text-xl font-semibold text-slate-800">Manager Cash Count</div>
 
-      <div className="mt-3 rounded-xl border border-slate-200 bg-white p-3 sm:p-4 dark:border-slate-700 dark:bg-slate-900">
+      <div className="mt-3 rounded-xl border border-slate-200 bg-white p-3 sm:p-4">
         <div className="grid gap-2 sm:grid-cols-6">
           <div>
-            <label className="mb-1 block text-xs text-slate-600 dark:text-slate-300">Date</label>
-            <input type="date" value={date} onChange={e=>setDate(e.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-800" />
+            <label className="mb-1 block text-xs text-slate-600">Date</label>
+            <input type="date" value={date} onChange={e=>setDate(e.target.value)} className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900" />
           </div>
           <div>
-            <label className="mb-1 block text-xs text-slate-600 dark:text-slate-300">Amount</label>
-            <input value={amount} onChange={e=>setAmount(e.target.value)} placeholder="0" className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-800" />
+            <label className="mb-1 block text-xs text-slate-600">Amount</label>
+            <input value={amount} onChange={e=>setAmount(e.target.value)} placeholder="0" className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900" />
           </div>
           <div>
-            <label className="mb-1 block text-xs text-slate-600 dark:text-slate-300">Receiver</label>
-            <input value={receiver} onChange={e=>setReceiver(e.target.value)} placeholder="Manager name" className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-800" />
+            <label className="mb-1 block text-xs text-slate-600">Receiver</label>
+            <input value={receiver} onChange={e=>setReceiver(e.target.value)} placeholder="Manager name" className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900" />
           </div>
           <div>
-            <label className="mb-1 block text-xs text-slate-600 dark:text-slate-300">Handover By</label>
-            <input value={handoverBy} onChange={e=>setHandoverBy(e.target.value)} placeholder="Manager handing over" className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-800" />
+            <label className="mb-1 block text-xs text-slate-600">Handover By</label>
+            <input value={handoverBy} onChange={e=>setHandoverBy(e.target.value)} placeholder="Manager handing over" className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900" />
           </div>
           <div className="sm:col-span-2">
-            <label className="mb-1 block text-xs text-slate-600 dark:text-slate-300">Note</label>
-            <input value={note} onChange={e=>setNote(e.target.value)} placeholder="Optional" className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-800" />
+            <label className="mb-1 block text-xs text-slate-600">Note</label>
+            <input value={note} onChange={e=>setNote(e.target.value)} placeholder="Optional" className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900" />
           </div>
         </div>
         <div className="mt-2">
-          <button onClick={add} className="rounded-md bg-emerald-600 px-3 py-2 text-sm font-medium text-white hover:bg-emerald-700">Add Count</button>
+          <button type="button" onClick={add} className="rounded-md bg-emerald-600 px-3 py-2 text-sm font-medium text-white hover:bg-emerald-700">Add Count</button>
         </div>
       </div>
 
-      <div className="mt-4 rounded-xl border border-slate-200 bg-white p-3 sm:p-4 dark:border-slate-700 dark:bg-slate-900">
+      <div className="mt-4 rounded-xl border border-slate-200 bg-white p-3 sm:p-4">
         <div className="flex flex-wrap items-center gap-2">
           <div className="text-sm font-medium">Cash Count History</div>
           <div className="ml-auto flex items-center gap-2">
-            <input type="date" value={from} onChange={e=>setFrom(e.target.value)} className="rounded-md border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-800" />
-            <input type="date" value={to} onChange={e=>setTo(e.target.value)} className="rounded-md border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-800" />
-            <input placeholder="date, amount, receiver, handover, note, user" value={search} onChange={e=>setSearch(e.target.value)} className="rounded-md border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-800" />
-            <select value={limit} onChange={e=>{ setLimit(parseInt(e.target.value)||20); setPage(1) }} className="rounded-md border border-slate-300 px-2 py-2 text-xs dark:border-slate-600 dark:bg-slate-800">
+            <input type="date" value={from} onChange={e=>setFrom(e.target.value)} className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900" />
+            <input type="date" value={to} onChange={e=>setTo(e.target.value)} className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900" />
+            <input placeholder="date, amount, receiver, handover, note" value={search} onChange={e=>setSearch(e.target.value)} className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900" />
+            <select value={limit} onChange={e=>{ setLimit(parseInt(e.target.value)||20); setPage(1) }} className="rounded-md border border-slate-300 bg-white px-2 py-2 text-xs text-slate-900">
               <option value={10}>10</option>
               <option value={20}>20</option>
               <option value={50}>50</option>
             </select>
-            <div className="text-xs text-slate-600 dark:text-slate-300">Page {page} / {totalPages}</div>
-            <button disabled={page<=1} onClick={()=>setPage(p=>Math.max(1,p-1))} className="rounded-md border border-slate-300 px-2 py-1 text-xs disabled:opacity-50 dark:border-slate-600">Prev</button>
-            <button disabled={page>=totalPages} onClick={()=>setPage(p=>Math.min(totalPages,p+1))} className="rounded-md border border-slate-300 px-2 py-1 text-xs disabled:opacity-50 dark:border-slate-600">Next</button>
-            <button onClick={exportCSV} className="rounded-md border border-slate-300 px-2 py-1 text-xs hover:bg-slate-50 dark:border-slate-600 dark:hover:bg-slate-800">CSV</button>
+            <div className="text-xs text-slate-600">Page {page} / {totalPages}</div>
+            <button type="button" disabled={page<=1} onClick={()=>setPage(p=>Math.max(1,p-1))} className="rounded-md border border-slate-300 px-2 py-1 text-xs disabled:opacity-50">Prev</button>
+            <button type="button" disabled={page>=totalPages} onClick={()=>setPage(p=>Math.min(totalPages,p+1))} className="rounded-md border border-slate-300 px-2 py-1 text-xs disabled:opacity-50">Next</button>
+            <button type="button" onClick={exportCSV} className="rounded-md border border-slate-300 px-2 py-1 text-xs hover:bg-slate-50">CSV</button>
           </div>
         </div>
         <div className="mt-2 overflow-x-auto">
           <table className="min-w-full text-left text-sm">
-            <thead className="border-b border-slate-200 bg-slate-50 text-xs font-medium text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300">
+            <thead className="border-b border-slate-200 bg-slate-50 text-xs font-medium text-slate-600">
               <tr>
                 <th className="px-3 py-2">Date</th>
                 <th className="px-3 py-2 text-right">Amount</th>
                 <th className="px-3 py-2">Receiver</th>
                 <th className="px-3 py-2">Handover By</th>
                 <th className="px-3 py-2">Note</th>
-                <th className="px-3 py-2">User</th>
                 <th className="px-3 py-2">Print Slip</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-200 dark:divide-slate-700">
+            <tbody className="divide-y divide-slate-200 text-slate-700">
               {filtered.length === 0 && (
-                <tr><td colSpan={7} className="px-3 py-6 text-center text-slate-500">{loading? 'Loading...' : 'No records yet.'}</td></tr>
+                <tr><td colSpan={6} className="px-3 py-6 text-center text-slate-500">{loading? 'Loading...' : 'No records yet.'}</td></tr>
               )}
               {filtered.map(e => (
                 <tr key={e.id}>
@@ -172,14 +171,13 @@ export default function Pharmacy_ManagerCashCount(){
                   <td className="px-3 py-2">{e.receiver || '-'}</td>
                   <td className="px-3 py-2">{e.handoverBy || '-'}</td>
                   <td className="px-3 py-2">{e.note || ''}</td>
-                  <td className="px-3 py-2">{e.user || '-'}</td>
-                  <td className="px-3 py-2"><button onClick={()=>print(e)} className="rounded-md border border-slate-300 px-2 py-1 text-xs hover:bg-slate-50 dark:border-slate-600 dark:hover:bg-slate-800">Slip</button></td>
+                  <td className="px-3 py-2"><button type="button" onClick={()=>print(e)} className="rounded-md border border-slate-300 px-2 py-1 text-xs hover:bg-slate-50">Slip</button></td>
                 </tr>
               ))}
             </tbody>
             <tfoot>
-              <tr className="border-t border-slate-200 bg-slate-50 text-xs font-medium text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300">
-                <td className="px-3 py-2" colSpan={7}>Page Total — PKR {filtered.reduce((s,e)=> s + amountOf(e), 0).toFixed(2)} | Grand Total — PKR {summary.amount.toFixed(2)} (Entries: {summary.count})</td>
+              <tr className="border-t border-slate-200 bg-slate-50 text-xs font-medium text-slate-700">
+                <td className="px-3 py-2" colSpan={6}>Page Total — PKR {filtered.reduce((s,e)=> s + amountOf(e), 0).toFixed(2)} | Grand Total — PKR {summary.amount.toFixed(2)} (Entries: {summary.count})</td>
               </tr>
             </tfoot>
           </table>

@@ -9,19 +9,32 @@ type Props = {
   method: 'cash' | 'credit'
   lines: Line[]
   discountPct?: number
+  lineDiscountRs?: number
   customer?: string
   autoPrint?: boolean
+  taxPct?: number
+  currency?: string
 }
 
-export default function Pharmacy_POSReceiptDialog({ open, onClose, receiptNo, method, lines, discountPct = 0, customer, autoPrint }: Props) {
+export default function Pharmacy_POSReceiptDialog({ open, onClose, receiptNo, method, lines, discountPct = 0, lineDiscountRs = 0, customer, autoPrint, taxPct: taxPctOverride, currency: currencyOverride }: Props) {
   if (!open) return null
 
+  const customerLabel = (() => {
+    const c = String(customer || '').trim()
+    return c ? c : 'Walk-in'
+  })()
+
   const subtotal = lines.reduce((s, l) => s + l.price * l.qty, 0)
-  const discount = (subtotal * discountPct) / 100
-  const taxPct = 0
-  const tax = (subtotal - discount) * (taxPct / 100)
-  const total = subtotal - discount + tax
+  const lineDisc = Math.max(0, Number(lineDiscountRs||0))
+  const billDisc = Math.max(0, ((subtotal - lineDisc) * (discountPct || 0)) / 100)
+  const [sys, setSys] = useState<{ taxRate: number; currency: string }>({ taxRate: 0, currency: 'PKR' })
+  const taxPct = Math.max(0, Math.min(100, Number((taxPctOverride ?? sys.taxRate) || 0)))
+  const currency = String(currencyOverride || sys.currency || 'PKR')
+  const tax = (subtotal - lineDisc - billDisc) * (taxPct / 100)
+  const total = subtotal - lineDisc - billDisc + tax
   const [info, setInfo] = useState<{ name: string; phone: string; address: string; footer: string; logo: string }>({ name: 'PHARMACY', phone: '', address: '', footer: 'Thank you for your purchase!', logo: '' })
+  const [pharmacySettingsLoaded, setPharmacySettingsLoaded] = useState(false)
+  const [systemSettingsLoaded, setSystemSettingsLoaded] = useState(false)
 
   useEffect(() => {
     let mounted = true
@@ -37,6 +50,24 @@ export default function Pharmacy_POSReceiptDialog({ open, onClose, receiptNo, me
           logo: s.logoDataUrl || '',
         })
       } catch (e) { console.error(e) }
+      finally {
+        if (mounted) setPharmacySettingsLoaded(true)
+      }
+    })()
+    return ()=>{ mounted = false }
+  }, [])
+
+  useEffect(() => {
+    let mounted = true
+    ;(async () => {
+      try {
+        const s: any = await (pharmacyApi as any).getSystemSettings()
+        if (!mounted || !s) return
+        setSys({ taxRate: Number(s.taxRate || 0), currency: String(s.currency || 'PKR') })
+      } catch {}
+      finally {
+        if (mounted) setSystemSettingsLoaded(true)
+      }
     })()
     return ()=>{ mounted = false }
   }, [])
@@ -44,11 +75,12 @@ export default function Pharmacy_POSReceiptDialog({ open, onClose, receiptNo, me
   useEffect(() => {
     if (!open) return
     if (!autoPrint) return
+    if (!pharmacySettingsLoaded || !systemSettingsLoaded) return
     const t = setTimeout(() => {
       try { window.print() } catch {}
-    }, 150)
+    }, 50)
     return () => clearTimeout(t)
-  }, [open, autoPrint])
+  }, [open, autoPrint, pharmacySettingsLoaded, systemSettingsLoaded])
 
   return (
     <>
@@ -58,10 +90,11 @@ export default function Pharmacy_POSReceiptDialog({ open, onClose, receiptNo, me
         .tabular-nums { font-variant-numeric: tabular-nums }
         @media print {
           @page { size: 58mm auto; margin: 0 }
-          body { -webkit-print-color-adjust: exact; print-color-adjust: exact }
+          html, body { -webkit-print-color-adjust: exact; print-color-adjust: exact }
+          body { margin: 0 !important; padding: 0 !important }
           body * { visibility: hidden !important }
           #pharmacy-receipt, #pharmacy-receipt * { visibility: visible !important }
-          #pharmacy-receipt { position: absolute !important; left: 0; right: 0; top: 0; margin: 0 auto !important; padding: 0 6px !important; width: 384px !important; box-sizing: content-box !important; line-height: 1.25; overflow: visible !important; z-index: 2147483647 }
+          #pharmacy-receipt { position: absolute !important; left: 0; right: 0; top: 0; margin: 0 auto !important; padding: 10px 10px 0 10px !important; width: 300px !important; box-sizing: border-box !important; line-height: 1.45; overflow: visible !important; z-index: 2147483647; font-size: 14px !important }
           .no-print { display: none !important }
           .only-print { display: block !important }
           #pharmacy-receipt hr { border-color: #000 !important }
@@ -71,18 +104,18 @@ export default function Pharmacy_POSReceiptDialog({ open, onClose, receiptNo, me
           #pharmacy-receipt .qty { text-align: center; font-variant-numeric: tabular-nums }
         }
       `}</style>
-      <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 px-4 py-6 print:static print:p-0 print:bg-white">
-        <div className="w-full max-w-2xl overflow-hidden rounded-xl bg-white shadow-2xl ring-1 ring-black/5 print:shadow-none print:ring-0 print:rounded-none print:max-w-none">
-          <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3 print:hidden no-print">
-          <div className="font-medium">Receipt {receiptNo}</div>
+      <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 p-4 print:static print:p-0 print:bg-white" role="dialog" aria-modal="true">
+        <div className="flex max-h-[90vh] w-full max-w-sm flex-col overflow-hidden rounded-md border border-slate-200 bg-white shadow-2xl ring-1 ring-black/5 dark:bg-white dark:ring-white/10 print:shadow-none print:ring-0 print:rounded-none print:max-w-none print:border-0 print:bg-white">
+          <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3 print:hidden no-print dark:border-slate-800">
+          <div className="font-medium text-slate-900 dark:text-slate-100">Receipt {receiptNo}</div>
           <div className="flex items-center gap-2">
             <button onClick={() => window.print()} className="btn-outline-navy">Print (Ctrl+P)</button>
             <button onClick={onClose} className="btn-outline-navy">Close (Ctrl+D)</button>
           </div>
           </div>
 
-          <div className="max-h-[75vh] overflow-y-auto px-6 py-6 print:p-0 print:overflow-visible">
-            <div id="pharmacy-receipt" className="mx-auto w-[384px] print:w-[384px]">
+          <div className="overflow-y-auto bg-white p-4 text-slate-900 print:p-0 print:overflow-visible">
+            <div id="pharmacy-receipt" className="mx-auto w-[300px] rounded-md bg-white print:w-[300px]">
               <div className="text-center">
                 {info.logo ? <img src={info.logo} alt="Logo" className="mx-auto mb-2 h-12 w-12 object-contain" /> : null}
                 <div className="text-xl font-bold tracking-wide print:tracking-normal print:text-black">{info.name}</div>
@@ -94,7 +127,7 @@ export default function Pharmacy_POSReceiptDialog({ open, onClose, receiptNo, me
               <div className="text-center font-medium print:text-black">Retail Invoice</div>
               <div className="mt-2 text-xs text-slate-700 print:text-black">
                 <div>Date : {new Date().toLocaleString()}</div>
-                <div>Walk-in{customer ? ` - ${customer}` : ''}</div>
+                <div>Customer: {customerLabel}</div>
                 <div>Bill No: {receiptNo}</div>
                 <div>Payment Mode: {method}</div>
               </div>
@@ -117,13 +150,17 @@ export default function Pharmacy_POSReceiptDialog({ open, onClose, receiptNo, me
 
                 <div className="mt-2 grid grid-cols-6 border-t border-dashed pt-2">
                   <div className="col-span-4">Sub Total</div>
-                  <div className="col-span-2 amount tabular-nums">{subtotal.toFixed(2)}</div>
-                  <div className="col-span-4">(-) Discount ({discountPct}%)</div>
-                  <div className="col-span-2 amount tabular-nums">{discount.toFixed(2)}</div>
+                  <div className="col-span-2 amount tabular-nums">{currency} {subtotal.toFixed(2)}</div>
+                  {lineDisc>0 && (<>
+                    <div className="col-span-4">(-) Line Discounts</div>
+                    <div className="col-span-2 amount tabular-nums">{currency} {lineDisc.toFixed(2)}</div>
+                  </>)}
+                  <div className="col-span-4">(-) Bill Discount ({discountPct}%)</div>
+                  <div className="col-span-2 amount tabular-nums">{currency} {billDisc.toFixed(2)}</div>
                   <div className="col-span-4">GST ({taxPct}%)</div>
-                  <div className="col-span-2 amount tabular-nums">{tax.toFixed(2)}</div>
+                  <div className="col-span-2 amount tabular-nums">{currency} {tax.toFixed(2)}</div>
                   <div className="col-span-4 font-semibold">TOTAL</div>
-                  <div className="col-span-2 amount font-semibold tabular-nums">Rs {total.toFixed(2)}</div>
+                  <div className="col-span-2 amount font-semibold tabular-nums">{currency} {total.toFixed(2)}</div>
                 </div>
               </div>
 

@@ -31,6 +31,10 @@ export default function Pharmacy_EditInventoryItem({ open, onClose, medicine }: 
   const [suppliers, setSuppliers] = useState<any[]>([])
   const [supplierId, setSupplierId] = useState('')
   const [supplierName, setSupplierName] = useState('')
+  const [companies, setCompanies] = useState<any[]>([])
+  const [companyId, setCompanyId] = useState('')
+  const [companyName, setCompanyName] = useState('')
+  const [defaultDiscountPct, setDefaultDiscountPct] = useState<number>(0)
 
   useEffect(()=>{
     if (!open) return
@@ -55,6 +59,7 @@ export default function Pharmacy_EditInventoryItem({ open, onClose, medicine }: 
       setUnitsPerPack((it.unitsPerPack!=null && it.unitsPerPack>0)? it.unitsPerPack : 1)
       setOnHand(Number(it.onHand||0))
       if (it.lastSalePerUnit != null) setSalePerUnit(Number(it.lastSalePerUnit))
+      if (it.defaultDiscountPct != null) setDefaultDiscountPct(Number(it.defaultDiscountPct))
       if (it.lastExpiry) setExpiry(onlyDate(String(it.lastExpiry)))
       if (it.lastInvoice) setInvoice(String(it.lastInvoice))
       if (it.lastInvoiceDate) setDate(onlyDate(String(it.lastInvoiceDate)))
@@ -63,6 +68,8 @@ export default function Pharmacy_EditInventoryItem({ open, onClose, medicine }: 
         const s = (suppliers||[]).find((x:any)=> String(x.name||'') === String(it.lastSupplier||''))
         if (s) setSupplierId(s._id)
       }
+      if (it.lastCompany) setCompanyName(String(it.lastCompany))
+      if (it.lastCompanyId) setCompanyId(String(it.lastCompanyId))
     }).catch(()=>{})
     return ()=>{ mounted = false }
   }, [open, medicine])
@@ -74,6 +81,37 @@ export default function Pharmacy_EditInventoryItem({ open, onClose, medicine }: 
       if (s) setSupplierId(s._id)
     }
   }, [open, suppliers, supplierName])
+
+  // Load companies for the selected supplier and preserve/auto-select like Add Invoice
+  useEffect(()=>{
+    if (!open) return
+    let mounted = true
+    ;(async()=>{
+      try {
+        if (!supplierId){ setCompanies([]); setCompanyId(''); setCompanyName(''); return }
+        const res: any = await pharmacyApi.listCompanies({ distributorId: supplierId })
+        if (!mounted) return
+        const list = res?.items ?? res ?? []
+        setCompanies(list)
+        const found = companyId ? list.find((x: any) => String(x._id) === String(companyId)) : null
+        if (found){
+          setCompanyName(found.name || '')
+        } else if (list.length === 1){
+          setCompanyId(String(list[0]._id))
+          setCompanyName(String(list[0].name || ''))
+        } else {
+          setCompanyId('')
+          setCompanyName('')
+        }
+      } catch {
+        if (!mounted) return
+        setCompanies([])
+        setCompanyId('')
+        setCompanyName('')
+      }
+    })()
+    return ()=>{ mounted = false }
+  }, [open, supplierId])
 
   if (!open) return null
   return (
@@ -120,6 +158,10 @@ export default function Pharmacy_EditInventoryItem({ open, onClose, medicine }: 
                 <label className="mb-1 block text-sm font-medium text-slate-700">Sale Price / Pack (auto)</label>
                 <input disabled value={unitsPerPack? (salePerUnit*unitsPerPack).toFixed(3): ''} className="w-full rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm" />
               </div>
+              <div>
+                <label className="mb-1 block text-sm font-medium text-slate-700">Default Discount (%)</label>
+                <input type="number" min={0} max={100} step={0.01} value={defaultDiscountPct||0} onChange={e=> setDefaultDiscountPct(Math.max(0, Math.min(100, Number(e.target.value||0))))} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
+              </div>
             </div>
             <div className="grid gap-4 sm:grid-cols-2">
               <div>
@@ -132,14 +174,29 @@ export default function Pharmacy_EditInventoryItem({ open, onClose, medicine }: 
               </div>
               <div>
                 <label className="mb-1 block text-sm font-medium text-slate-700">Supplier</label>
-                <select value={supplierId} onChange={e=>{ setSupplierId(e.target.value); const s = suppliers.find((x:any)=>x._id===e.target.value); setSupplierName(s?.name||'') }} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm">
+                <select value={supplierId} onChange={e=>{ setSupplierId(e.target.value); const s = suppliers.find((x:any)=>x._id===e.target.value); setSupplierName(s?.name||''); }} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm">
                   <option value="">Select supplier...</option>
-                  {suppliers.map((s:any)=>(<option key={s._id} value={s._id}>{s.name}{s.company?` — ${s.company}`:''}</option>))}
+                  {suppliers.map((s:any)=>(<option key={s._id} value={s._id}>{s.name}</option>))}
                 </select>
               </div>
               <div>
                 <label className="mb-1 block text-sm font-medium text-slate-700">Invoice No.</label>
                 <input value={invoice} onChange={e=>setInvoice(e.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
+              </div>
+              <div className="sm:col-span-2">
+                <label className="mb-1 block text-sm font-medium text-slate-700">Company</label>
+                <select
+                  value={companyId}
+                  onChange={e=>{ setCompanyId(e.target.value); const c = companies.find((x:any)=>x._id===e.target.value); setCompanyName(c?.name||'') }}
+                  disabled={!supplierId}
+                  className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+                >
+                  <option value="">Select company</option>
+                  {supplierId && companies.length === 0 && (
+                    <option value="" disabled>No assigned companies</option>
+                  )}
+                  {companies.map((c:any)=>(<option key={c._id} value={c._id}>{c.name}</option>))}
+                </select>
               </div>
             </div>
           </div>
@@ -159,11 +216,14 @@ export default function Pharmacy_EditInventoryItem({ open, onClose, medicine }: 
                   unitsPerPack: unitsPerPack || 1,
                   onHand: onHand || 0,
                   salePerUnit: salePerUnit || 0,
+                  defaultDiscountPct: defaultDiscountPct || 0,
                   expiry: onlyDate(expiry) || undefined,
                   invoice: (invoice||'').trim() || undefined,
                   date: onlyDate(date) || undefined,
                   supplierId: supplierId || undefined,
                   supplierName: supplierName || undefined,
+                  companyId: companyId || undefined,
+                  companyName: companyName || undefined,
                 })
                 onClose()
               } catch {}

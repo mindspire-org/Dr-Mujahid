@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useLocation } from 'react-router-dom'
 import { pharmacyApi } from '../../utils/api'
 import Pharmacy_ConfirmDialog from '../../components/pharmacy/pharmacy_ConfirmDialog'
 import Pharmacy_PurchaseSlipDialog from '../../components/pharmacy/pharmacy_PurchaseSlipDialog'
@@ -7,7 +8,6 @@ type Row = {
   id: string
   date: string // yyyy-mm-dd
   medicine: string
-  company?: string
   supplier: string
   unitsPerPack: number
   totalItems: number
@@ -21,11 +21,10 @@ type Row = {
 }
 
 export default function Pharmacy_PurchaseHistory() {
+  const location = useLocation()
   const [from, setFrom] = useState('')
   const [to, setTo] = useState('')
   const [search, setSearch] = useState('')
-  const [company, setCompany] = useState('')
-  const [companyOptions, setCompanyOptions] = useState<string[]>([])
   const [limit, setLimit] = useState(10)
   const [page, setPage] = useState(1)
   const [total, setTotal] = useState(0)
@@ -38,10 +37,23 @@ export default function Pharmacy_PurchaseHistory() {
   const [toDelete, setToDelete] = useState<Row | null>(null)
   const [exporting, setExporting] = useState(false)
 
+  // Read filters from URL (?from=YYYY-MM-DD&to=YYYY-MM-DD&search=...)
+  useEffect(() => {
+    const sp = new URLSearchParams(location.search)
+    const nextFrom = String(sp.get('from') || '')
+    const nextTo = String(sp.get('to') || '')
+    const nextSearch = String(sp.get('search') || '')
+    let changed = false
+    if (nextFrom !== from) { setFrom(nextFrom); changed = true }
+    if (nextTo !== to) { setTo(nextTo); changed = true }
+    if (nextSearch !== search) { setSearch(nextSearch); changed = true }
+    if (changed) { setPage(1); setSearchTick(t => t + 1) }
+  }, [location.search])
+
   useEffect(() => {
     const load = async () => {
       try {
-        const res: any = await pharmacyApi.listPurchases({ from: from || undefined, to: to || undefined, search: search || undefined, company: company || undefined, page, limit })
+        const res: any = await pharmacyApi.listPurchases({ from: from || undefined, to: to || undefined, search: search || undefined, page, limit })
         const items: any[] = res?.items ?? res ?? []
         const mapped: Row[] = items.map((p: any) => {
           const l = (p.lines && p.lines[0]) || {}
@@ -51,7 +63,6 @@ export default function Pharmacy_PurchaseHistory() {
             id: p._id,
             date: p.date,
             medicine: l.name || '-',
-            company: l.company || '-',
             supplier: p.supplierName || '-',
             unitsPerPack: l.unitsPerPack || 1,
             totalItems: l.totalItems || ((l.unitsPerPack || 1) * (l.packs || 0)) || 0,
@@ -65,18 +76,12 @@ export default function Pharmacy_PurchaseHistory() {
           }
         })
         setRows(mapped)
-        try {
-          const all = await pharmacyApi.listPurchases({ from: from || undefined, to: to || undefined, search: search || undefined, company: company || undefined, page: 1, limit: 500 }) as any
-          const allItems: any[] = all?.items ?? []
-          const opts = Array.from(new Set(allItems.map((p:any)=> String(((p.lines||[])[0]||{}).company || '').trim()).filter(Boolean))).sort()
-          setCompanyOptions(opts)
-        } catch {}
         setTotal(Number(res.total || mapped.length || 0))
         setTotalPages(Number(res.totalPages || 1))
       } catch {}
     }
     load()
-  }, [searchTick, from, to, search, company, page, limit])
+  }, [searchTick, from, to, search, page, limit])
 
   const openPrint = (row: Row) => {
     setSelected(row)
@@ -87,16 +92,16 @@ export default function Pharmacy_PurchaseHistory() {
     try {
       setExporting(true)
       const pageLimit = 1000
-      const first: any = await pharmacyApi.listPurchases({ from: from || undefined, to: to || undefined, search: search || undefined, company: company || undefined, page: 1, limit: pageLimit })
+      const first: any = await pharmacyApi.listPurchases({ from: from || undefined, to: to || undefined, search: search || undefined, page: 1, limit: pageLimit })
       let items: any[] = (first.items || first || [])
       const tp = Number(first.totalPages || 1)
       if (tp > 1) {
         const pages = Array.from({ length: tp - 1 }, (_, i) => i + 2)
-        const results = await Promise.all(pages.map(p => pharmacyApi.listPurchases({ from: from || undefined, to: to || undefined, search: search || undefined, company: company || undefined, page: p, limit: pageLimit })))
+        const results = await Promise.all(pages.map(p => pharmacyApi.listPurchases({ from: from || undefined, to: to || undefined, search: search || undefined, page: p, limit: pageLimit })))
         for (const r of results) items = items.concat(((r as any).items || r || []))
       }
       const headers = [
-        'Date','Medicine','Company','Supplier','Units/Pack','Total Items','Buy/Pack','Buy/Unit','Total Amount','Sale/Pack','Sale/Unit','Invoice #','Expiry'
+        'Date','Medicine','Supplier','Units/Pack','Total Items','Buy/Pack','Buy/Unit','Total Amount','Sale/Pack','Sale/Unit','Invoice #','Expiry'
       ]
       const esc = (v: any) => `"${String(v ?? '').replace(/"/g, '""')}"`
       const toRow = (p: any) => {
@@ -107,7 +112,6 @@ export default function Pharmacy_PurchaseHistory() {
         return [
           p.date,
           l.name || '-',
-          l.company || '-',
           p.supplierName || '-',
           l.unitsPerPack || 1,
           totalItems,
@@ -180,13 +184,6 @@ export default function Pharmacy_PurchaseHistory() {
             <label className="mb-1 block text-sm text-slate-700">Search</label>
             <input value={search} onChange={e=>setSearch(e.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" placeholder="medicine, supplier, invoice" />
           </div>
-          <div>
-            <label className="mb-1 block text-sm text-slate-700">Company</label>
-            <select value={company} onChange={e=>{ setCompany(e.target.value); setPage(1) }} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm">
-              <option value="">All Companies</option>
-              {companyOptions.map(c => <option key={c} value={c}>{c}</option>)}
-            </select>
-          </div>
           <div className="flex items-end gap-2">
             <button onClick={()=>{ setPage(1); setSearchTick(t=>t+1) }} className="btn">Apply</button>
             <button type="button" onClick={exportCsv} disabled={exporting} className="btn-outline-navy disabled:opacity-60">{exporting? 'Exporting...' : 'Download'}</button>
@@ -208,7 +205,6 @@ export default function Pharmacy_PurchaseHistory() {
               <tr>
                 <th className="px-4 py-2 font-medium">Date</th>
                 <th className="px-4 py-2 font-medium">Medicine</th>
-                <th className="px-4 py-2 font-medium">Company</th>
                 <th className="px-4 py-2 font-medium">Supplier</th>
                 <th className="px-4 py-2 font-medium">Units/Pack</th>
                 <th className="px-4 py-2 font-medium">Total Items</th>
@@ -227,7 +223,6 @@ export default function Pharmacy_PurchaseHistory() {
                 <tr key={r.id} className="hover:bg-slate-50/50">
                   <td className="px-4 py-2">{r.date}</td>
                   <td className="px-4 py-2">{r.medicine}</td>
-                  <td className="px-4 py-2">{r.company || '-'}</td>
                   <td className="px-4 py-2">{r.supplier}</td>
                   <td className="px-4 py-2">{r.unitsPerPack}</td>
                   <td className="px-4 py-2">{r.totalItems}</td>

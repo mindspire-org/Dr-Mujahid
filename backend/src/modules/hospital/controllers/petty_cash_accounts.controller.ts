@@ -1,6 +1,7 @@
 import { Request, Response } from 'express'
 import { z } from 'zod'
 import { PettyCashAccount } from '../models/PettyCashAccount'
+import { HospitalUser } from '../models/User'
 
 const createSchema = z.object({
   code: z.string().min(1).transform(s=> s.trim().toUpperCase()),
@@ -41,6 +42,14 @@ export async function create(req: Request, res: Response){
     status: data.status || 'Active',
     financeAccountCode: data.code,
   })
+
+  const rs = String(data.responsibleStaff || '').trim()
+  if (rs) {
+    try {
+      const username = rs.toLowerCase()
+      await HospitalUser.updateOne({ username }, { $set: { pettyCashAccountCode: doc.code } }).exec()
+    } catch {}
+  }
   res.status(201).json({ account: { id: String(doc._id), code: doc.code, name: doc.name, department: doc.department, responsibleStaff: doc.responsibleStaff, status: doc.status || 'Active' } })
 }
 
@@ -54,6 +63,16 @@ export async function update(req: Request, res: Response){
   if (data.status != null) patch.status = data.status
   const doc: any = await PettyCashAccount.findByIdAndUpdate(id, patch, { new: true }).lean()
   if (!doc) return res.status(404).json({ error: 'Petty cash account not found' })
+
+  if (data.responsibleStaff != null) {
+    const rs = String(data.responsibleStaff || '').trim()
+    if (rs) {
+      try {
+        const username = rs.toLowerCase()
+        await HospitalUser.updateOne({ username }, { $set: { pettyCashAccountCode: doc.code } }).exec()
+      } catch {}
+    }
+  }
   res.json({ account: { id: String(doc._id), code: doc.code, name: doc.name, department: doc.department, responsibleStaff: doc.responsibleStaff, status: doc.status || 'Active' } })
 }
 

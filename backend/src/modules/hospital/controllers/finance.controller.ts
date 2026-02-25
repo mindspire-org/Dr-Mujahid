@@ -2,6 +2,8 @@ import { Request, Response } from 'express'
 import { z } from 'zod'
 import { FinanceJournal } from '../models/FinanceJournal'
 import { createDoctorPayout, manualDoctorEarning, computeDoctorBalance, reverseJournalById } from './finance_ledger'
+import jwt from 'jsonwebtoken'
+import { env } from '../../../config/env'
 
 const manualDoctorEarningSchema = z.object({
   doctorId: z.string().min(1),
@@ -20,7 +22,20 @@ const doctorPayoutSchema = z.object({
   amount: z.number().positive(),
   method: z.enum(['Cash','Bank']).default('Cash'),
   memo: z.string().optional(),
+  fromAccountCode: z.string().optional(),
 })
+
+function resolveCreatedBy(req: Request){
+  const direct = (req as any)?.user?.sub
+  if (direct) return String(direct)
+  try {
+    const auth = String(req.headers['authorization']||'')
+    const token = auth.startsWith('Bearer ')? auth.slice(7) : ''
+    if (!token) return undefined
+    const payload: any = jwt.verify(token, env.JWT_SECRET)
+    return payload?.sub ? String(payload.sub) : undefined
+  } catch { return undefined }
+}
 
 export async function postManualDoctorEarning(req: Request, res: Response){
   const data = manualDoctorEarningSchema.parse(req.body)
@@ -108,7 +123,8 @@ export async function listDoctorEarnings(req: Request, res: Response){
 
 export async function postDoctorPayout(req: Request, res: Response){
   const data = doctorPayoutSchema.parse(req.body)
-  const j = await createDoctorPayout(data.doctorId, data.amount, data.method, data.memo)
+  const createdBy = resolveCreatedBy(req)
+  const j: any = await createDoctorPayout(data.doctorId, data.amount, data.method, data.memo, data.fromAccountCode, createdBy)
   res.status(201).json({ journal: j })
 }
 
@@ -122,7 +138,13 @@ export async function listDoctorPayouts(req: Request, res: Response){
   const id = String(req.params.id)
   const limit = Math.min(parseInt(String((req.query as any)?.limit || '20')) || 20, 100)
   const rows = await FinanceJournal.find({ refType: 'doctor_payout', refId: id }).sort({ createdAt: -1 }).limit(limit).lean()
-  const items = rows.map((j: any) => {
+  const ids = rows.map((r: any) => String(r._id))
+  const revs = ids.length
+    ? await FinanceJournal.find({ refType: { $regex: /_reversal$/ }, refId: { $in: ids } }).select({ refId: 1 }).lean()
+    : []
+  const reversed = new Set((revs || []).map((r: any) => String(r.refId || '')))
+  const filteredRows = rows.filter((r: any) => !reversed.has(String(r._id)))
+  const items = filteredRows.map((j: any) => {
     const cash = (j.lines || [])
       .filter((l: any) => l.account === 'CASH' || l.account === 'BANK')
       .reduce((s: number, l: any) => s + (l.credit || 0), 0)
@@ -130,6 +152,36 @@ export async function listDoctorPayouts(req: Request, res: Response){
       .filter((l: any) => l.account === 'DOCTOR_PAYABLE')
       .reduce((s: number, l: any) => s + (l.debit || 0), 0)
     return { id: String(j._id), refId: j.refId, dateIso: j.dateIso, memo: j.memo, amount }
+  })
+  res.json({ payouts: items })
+}
+
+export async function listPayouts(req: Request, res: Response){
+  const doctorId = (req.query as any)?.doctorId ? String((req.query as any).doctorId) : undefined
+  const from = String((req.query as any)?.from || '')
+  const to = String((req.query as any)?.to || '')
+  const limit = Math.min(parseInt(String((req.query as any)?.limit || '200')) || 200, 500)
+
+  const filter: any = { refType: 'doctor_payout' }
+  if (doctorId) filter.refId = doctorId
+  if (from && to) filter.dateIso = { $gte: from, $lte: to }
+
+  const rows = await FinanceJournal.find(filter).sort({ dateIso: -1, createdAt: -1 }).limit(limit).lean()
+  const ids = rows.map((r: any) => String(r._id))
+  const revs = ids.length
+    ? await FinanceJournal.find({ refType: { $regex: /_reversal$/ }, refId: { $in: ids } }).select({ refId: 1 }).lean()
+    : []
+  const reversed = new Set((revs || []).map((r: any) => String(r.refId || '')))
+  const filteredRows = rows.filter((r: any) => !reversed.has(String(r._id)))
+
+  const items = filteredRows.map((j: any) => {
+    const cash = (j.lines || [])
+      .filter((l: any) => l.account === 'CASH' || l.account === 'BANK')
+      .reduce((s: number, l: any) => s + (l.credit || 0), 0)
+    const amount = cash || (j.lines || [])
+      .filter((l: any) => l.account === 'DOCTOR_PAYABLE')
+      .reduce((s: number, l: any) => s + (l.debit || 0), 0)
+    return { id: String(j._id), doctorId: String(j.refId || ''), dateIso: j.dateIso, memo: j.memo, amount }
   })
   res.json({ payouts: items })
 }

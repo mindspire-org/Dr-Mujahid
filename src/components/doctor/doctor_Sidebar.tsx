@@ -1,32 +1,75 @@
-import { NavLink, useNavigate } from 'react-router-dom'
+import { NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { hospitalApi } from '../../utils/api'
-import { LayoutDashboard, Users, Stethoscope, ScrollText, Bell, Search, FileText, Settings as SettingsIcon, LogOut } from 'lucide-react'
-import { useState } from 'react'
+import { LayoutDashboard, Users, Stethoscope, ScrollText, Bell, Search, FileText, Settings as SettingsIcon, LogOut, Landmark } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import PortalSwitcher from '../PortalSwitcher'
 
 type NavItem = { to: string; label: string; end?: boolean; icon: any }
 
-const nav: NavItem[] = [
+export const doctorSidebarNav: NavItem[] = [
   { to: '/doctor', label: 'Dashboard', end: true, icon: LayoutDashboard },
   { to: '/doctor/patients', label: 'Patients', icon: Users },
   { to: '/doctor/patient-search', label: 'Patient History', icon: Search },
   { to: '/doctor/prescription', label: 'Prescription', icon: Stethoscope },
   { to: '/doctor/prescription-history', label: 'Prescription History', icon: ScrollText },
   { to: '/doctor/reports', label: 'Reports', icon: FileText },
+  { to: '/doctor/manage-petty-cash', label: 'Manage Petty Cash', icon: Landmark },
+  { to: '/doctor/manage-bank-balance', label: 'Manage Bank Balance', icon: Landmark },
   { to: '/doctor/notifications', label: 'Notifications', icon: Bell },
   { to: '/doctor/settings', label: 'Settings', icon: SettingsIcon },
 ]
 
 export default function Doctor_Sidebar({ collapsed = false, onExpand, collapseSignal: _collapseSignal }: { collapsed?: boolean; onExpand?: () => void; collapseSignal?: number }) {
   const navigate = useNavigate()
+  const { pathname } = useLocation()
   const [logoutConfirmOpen, setLogoutConfirmOpen] = useState(false)
+  const [allowed, setAllowed] = useState<string[] | null>(null)
+
+  const isAllowed = (to: string) => {
+    if (!allowed) return false
+    if (allowed.includes('*')) return true
+    return allowed.includes(to)
+  }
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem('doctor.session') || localStorage.getItem('hospital.session')
+      if (!raw) {
+        setAllowed([])
+        return
+      }
+      const s = JSON.parse(raw)
+      const role = String(s?.role || '')
+
+      if (role.toLowerCase() === 'admin') {
+        setAllowed(['*'])
+        return
+      }
+
+      const perms = s?.permissions
+      const a = perms?.doctor
+      if (Array.isArray(a)) setAllowed(a)
+      else setAllowed([])
+    } catch {
+      setAllowed([])
+    }
+  }, [pathname])
   const logout = async () => {
     try {
       const raw = localStorage.getItem('doctor.session')
       const u = raw ? JSON.parse(raw) : null
-      await hospitalApi.logoutHospitalUser(u?.username||'doctor')
-    } catch {}
-    try { localStorage.removeItem('doctor.session') } catch {}
-    navigate('/hospital/login')
+      await hospitalApi.logoutHospitalUser(u?.username || 'doctor')
+    } catch { }
+    try {
+      const doctorToken = localStorage.getItem('doctor.token')
+      localStorage.removeItem('doctor.session')
+      localStorage.removeItem('doctor.token')
+      // Keep legacy token key only if it was written by doctor login
+      if (doctorToken && localStorage.getItem('token') === doctorToken) {
+        localStorage.removeItem('token')
+      }
+    } catch { }
+    navigate('/doctor/login')
   }
   return (
     <aside
@@ -34,7 +77,7 @@ export default function Doctor_Sidebar({ collapsed = false, onExpand, collapseSi
       style={{ background: 'linear-gradient(180deg, var(--navy) 0%, var(--navy-700) 100%)', borderColor: 'rgba(255,255,255,0.12)' }}
     >
       <nav className="hospital-sidebar-scroll flex-1 min-h-0 overflow-y-auto p-3 space-y-1">
-        {nav.map(item => {
+        {doctorSidebarNav.filter(i => isAllowed(i.to)).map(item => {
           const Icon = item.icon
           return (
             <NavLink
@@ -54,6 +97,7 @@ export default function Doctor_Sidebar({ collapsed = false, onExpand, collapseSi
         })}
 
         <div className="pt-2">
+          <PortalSwitcher collapsed={collapsed} onExpand={onExpand} />
           <div className="mx-2 border-t" style={{ borderColor: 'rgba(255,255,255,0.12)' }} />
           <button
             onClick={() => setLogoutConfirmOpen(true)}

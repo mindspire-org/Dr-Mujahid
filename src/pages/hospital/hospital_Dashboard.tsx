@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { DollarSign, Users, Activity, RefreshCw, Clock, Filter, RotateCcw, BarChart3 } from 'lucide-react'
-import { hospitalApi, financeApi, labApi } from '../../utils/api'
+import { hospitalApi, financeApi } from '../../utils/api'
 
 function iso(d: Date){ return d.toISOString().slice(0,10) }
 function startOfMonth(d: Date){ const x = new Date(d); x.setDate(1); return x }
@@ -72,31 +72,10 @@ export default function Hospital_Dashboard() {
       setExpenses(expensesArr)
       setDoctorEarnRows([])
 
-      // Fallback to Lab source if no hospital attendance
-      if ((attendance?.length||0) === 0){
-        try {
-          const [attLab, shiftsLab, staffLab] = await Promise.all([
-            labApi.listAttendance({ from: fromDate, to: toDate, limit: 5000 }) as any,
-            labApi.listShifts() as any,
-            labApi.listStaff({ limit: 1000 }) as any,
-          ])
-          attendance = (attLab?.items || attLab || [])
-          shifts = (shiftsLab?.items || shiftsLab || [])
-          staffArr = (staffLab?.items || [])
-            .map((x:any)=> ({ _id: x._id, id: x._id, name: x.name, role: x.position || 'other', phone: x.phone, salary: x.salary, shiftId: x.shiftId, active: x.status !== 'inactive' }))
-        } catch {}
-      }
-
-      // Doctor payouts sum across all doctors in range
+      // Doctor payouts sum (DB-backed list)
       try {
-        const doctors: any[] = (doctorsRes?.doctors || doctorsRes?.items || doctorsRes || []).map((d:any)=> ({ id: String(d._id||d.id) }))
-        const payoutsLists = await Promise.all(doctors.map(async d => {
-          try { const r:any = await financeApi.doctorPayouts(d.id, 200); return (r?.payouts || []) } catch { return [] }
-        }))
-        const payouts = ([] as any[]).concat(...payoutsLists)
-        const total = payouts
-          .filter(p=>{ const dt = String(p.dateIso||p.date||p.createdAt||'').slice(0,10); return dt>=fromDate && dt<=toDate })
-          .reduce((s,p)=> s + money(p.amount), 0)
+        const resp: any = await financeApi.listPayouts({ from: fromDate, to: toDate, limit: 5000 })
+        const total = ((resp?.payouts || []) as any[]).reduce((s, p) => s + money(p.amount), 0)
         setDoctorPayoutsTotal(total)
       } catch { setDoctorPayoutsTotal(0) }
 
@@ -123,8 +102,15 @@ export default function Hospital_Dashboard() {
   }
 
   // Department map no longer needed after removing dept-wise widget
-  const tokensPaid = useMemo(()=> tokens.filter(t=> t.status!=='returned' && t.status!=='cancelled'), [tokens])
-  const opdRevenue = useMemo(()=> tokensPaid.reduce((s,t)=> s + money(t.net ?? (money(t.fee)-money(t.discount))), 0), [tokensPaid])
+  const tokensPaid = useMemo(()=> tokens.filter(t=> {
+    const st = String(t?.status || '').toLowerCase()
+    return st !== 'returned' && st !== 'cancelled'
+  }), [tokens])
+  const opdRevenue = useMemo(()=> tokensPaid.reduce((s,t)=> {
+    // Newer tokens store `fee` as the payable amount (discount already applied).
+    // Prefer explicit net/payable when available.
+    return s + money(t.net ?? t.payable ?? t.fee)
+  }, 0), [tokensPaid])
   const expensesTotal = useMemo(()=> expenses.reduce((s,e)=> s + money(e.amount), 0), [expenses])
   const doctorPayouts = useMemo(()=> (doctorEarnRows||[]).filter((r:any)=>{
     const t = String(r.type||'').toLowerCase()
@@ -187,10 +173,10 @@ export default function Hospital_Dashboard() {
           <div key={title} className={`rounded-xl border ${tone} p-4`}>
             <div className="flex items-start justify-between">
               <div>
-                <div className="text-sm text-slate-600">{title}</div>
-                <div className="mt-1 text-xl font-semibold text-slate-900">{value}</div>
+                <div className="text-sm ">{title}</div>
+                <div className="mt-1 text-xl font-semibold ">{value}</div>
               </div>
-              <div className="rounded-md bg-white/60 p-2 text-slate-700 shadow-sm">
+              <div className="rounded-md bg-white/60 p-2 shadow-sm">
                 <Icon className="h-4 w-4" />
               </div>
             </div>

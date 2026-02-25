@@ -1,7 +1,11 @@
+import { useEffect, useState } from 'react'
+import { pharmacyApi } from '../../utils/api'
+
 export type Supplier = {
   id: string
   name: string
   company?: string
+  companyIds?: string[]
   phone?: string
   address?: string
   taxId?: string
@@ -21,6 +25,30 @@ type Props = {
 }
 
 export default function Pharmacy_AddSupplierDialog({ open, onClose, onSave, initial = null, title = 'Add Supplier', submitLabel = 'Save' }: Props) {
+  const [companies, setCompanies] = useState<Array<{ _id: string; name: string; distributorId?: string | null }>>([])
+  const [selectedCompanyId, setSelectedCompanyId] = useState<string>('')
+
+  useEffect(() => {
+    let mounted = true
+    if (!open) return
+    ;(async () => {
+      try {
+        const res: any = await pharmacyApi.listCompanies()
+        if (!mounted) return
+        const all: Array<any> = (res?.items ?? res ?? [])
+        // Show only unassigned companies, plus the one already assigned to this supplier (when editing)
+        const list = all.filter((c: any) => !c.distributorId || (initial?.id && String(c.distributorId) === String(initial.id)))
+        setCompanies(list)
+        const found = list.find((c: any) => String(c.name || '') === String(initial?.company || ''))
+        if (found) setSelectedCompanyId(String(found._id))
+      } catch {
+        if (!mounted) return
+        setCompanies([])
+      }
+    })()
+    return () => { mounted = false }
+  }, [open])
+
   if (!open) return null
 
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
@@ -29,7 +57,8 @@ export default function Pharmacy_AddSupplierDialog({ open, onClose, onSave, init
     const s: Supplier = {
       id: initial?.id ?? crypto.randomUUID(),
       name: String(fd.get('name') || ''),
-      company: String(fd.get('company') || ''),
+      company: (companies.find(c => String(c._id) === String(selectedCompanyId))?.name) || '',
+      companyIds: selectedCompanyId ? [selectedCompanyId] : undefined,
       phone: String(fd.get('phone') || ''),
       address: String(fd.get('address') || ''),
       taxId: String(fd.get('taxId') || ''),
@@ -55,8 +84,13 @@ export default function Pharmacy_AddSupplierDialog({ open, onClose, onSave, init
             <input name="name" defaultValue={initial?.name} required className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
           </div>
           <div>
-            <label className="mb-1 block text-sm text-slate-700">Company Name</label>
-            <input name="company" defaultValue={initial?.company} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
+            <label className="mb-1 block text-sm text-slate-700">Company</label>
+            <select value={selectedCompanyId} onChange={e=>setSelectedCompanyId(e.target.value)} className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900">
+              <option value="">— None —</option>
+              {companies.map(c => (
+                <option key={c._id} value={c._id}>{c.name}</option>
+              ))}
+            </select>
           </div>
           <div>
             <label className="mb-1 block text-sm text-slate-700">Phone Number</label>

@@ -14,6 +14,9 @@ const schema = z.object({
 export async function postOpeningBalance(req: Request, res: Response){
   const { dateIso, account, amount, memo } = schema.parse(req.body)
 
+  const payload: any = (req as any).user
+  const createdBy = payload?.sub ? String(payload.sub) : undefined
+
   const code = String(account||'').trim().toUpperCase()
   if (!code) return res.status(400).json({ error: 'Account not found' })
 
@@ -36,6 +39,7 @@ export async function postOpeningBalance(req: Request, res: Response){
   // Debit selected account, credit OPENING_EQUITY
   const j = await FinanceJournal.create({
     dateIso,
+    createdBy,
     refType: 'OPENING_BALANCE',
     refId: account,
     memo: memo || `Opening balance for ${account}`,

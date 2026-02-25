@@ -3,7 +3,6 @@ import { Schema, model, models } from 'mongoose'
 const InventoryItemSchema = new Schema({
   key: { type: String, required: true, index: true, unique: true }, // normalized lower-case name
   name: { type: String, required: true },
-  company: { type: String, index: true },
   genericName: { type: String },
   category: { type: String },
   unitsPerPack: { type: Number, default: 1 },
@@ -14,6 +13,11 @@ const InventoryItemSchema = new Schema({
   lastSupplier: { type: String },
   lastSalePerUnit: { type: Number, default: 0 },
   lastSupplierId: { type: String },
+  // Track last company associated with this item (for convenience when editing)
+  lastCompany: { type: String },
+  lastCompanyId: { type: String },
+  // Link to the most recently approved Purchase record that updated this item
+  lastPurchaseId: { type: String },
   lastInvoiceDate: { type: String },
   lastExpiry: { type: String },
   lastPacksReceived: { type: Number, default: 0 },
@@ -27,13 +31,14 @@ const InventoryItemSchema = new Schema({
   lastLineTaxValue: { type: Number, default: 0 },
   lastMedicineId: { type: String },
   avgCostPerUnit: { type: Number, default: 0 },
+  // New: default line discount (%) to auto-apply in POS cart
+  defaultDiscountPct: { type: Number, default: 0 },
 }, { timestamps: true, collection: 'pharmacy_inventoryitems' })
 
 export type InventoryItemDoc = {
   _id: string
   key: string
   name: string
-  company?: string
   genericName?: string
   category?: string
   unitsPerPack: number
@@ -44,6 +49,9 @@ export type InventoryItemDoc = {
   lastSupplier?: string
   lastSalePerUnit?: number
   lastSupplierId?: string
+  lastCompany?: string
+  lastCompanyId?: string
+  lastPurchaseId?: string
   lastInvoiceDate?: string
   lastExpiry?: string
   lastPacksReceived?: number
@@ -57,6 +65,7 @@ export type InventoryItemDoc = {
   lastLineTaxValue?: number
   lastMedicineId?: string
   avgCostPerUnit?: number
+  defaultDiscountPct?: number
 }
 
 export const InventoryItem = models.Pharmacy_InventoryItem || model('Pharmacy_InventoryItem', InventoryItemSchema)

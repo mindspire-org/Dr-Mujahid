@@ -1,18 +1,23 @@
 import { NavLink, useNavigate } from 'react-router-dom'
-import { LayoutDashboard, ListChecks, FlaskConical, FileText, BarChart3, ScrollText, LogOut, Settings as Cog, Ticket, UserCog } from 'lucide-react'
-import { diagnosticApi } from '../../utils/api'
+import { LayoutDashboard, ListChecks, FlaskConical, FileText, BarChart3, ScrollText, LogOut, Settings as Cog, Ticket, Wallet, CalendarDays, Users, Bell } from 'lucide-react'
+import { hospitalApi } from '../../utils/api'
 import { useState } from 'react'
+import PortalSwitcher from '../PortalSwitcher'
 
 type Item = { to: string; label: string; end?: boolean; icon: any }
-const nav: Item[] = [
+export const diagnosticSidebarNav: Item[] = [
   { to: '/diagnostic', label: 'Dashboard', end: true, icon: LayoutDashboard },
   { to: '/diagnostic/token-generator', label: 'Token Generator', icon: Ticket },
-  { to: '/diagnostic/tests', label: 'Tests', icon: FlaskConical },
-  { to: '/diagnostic/sample-tracking', label: 'Sample Tracking', icon: ListChecks },
+  { to: '/diagnostic/sample-tracking', label: 'Sample Management', icon: ListChecks },
+  { to: '/diagnostic/credit-patients', label: 'Credit Patients', icon: Users },
   { to: '/diagnostic/result-entry', label: 'Result Entry', icon: FileText },
   { to: '/diagnostic/report-generator', label: 'Report Generator', icon: BarChart3 },
+  { to: '/diagnostic/appointments', label: 'Appointments', icon: CalendarDays },
+  { to: '/diagnostic/tests', label: 'Tests Catalog', icon: FlaskConical },
+  { to: '/diagnostic/manage-petty-cash', label: 'Manage Petty Cash', icon: Wallet },
+  { to: '/diagnostic/manage-bank-balance', label: 'Manage Bank Balance', icon: Wallet },
+  { to: '/diagnostic/notifications', label: 'Notifications', icon: Bell },
   { to: '/diagnostic/referrals', label: 'Referrals', icon: ListChecks },
-  { to: '/diagnostic/user-management', label: 'User Management', icon: UserCog },
   { to: '/diagnostic/audit-logs', label: 'Audit Logs', icon: ScrollText },
   { to: '/diagnostic/settings', label: 'Settings', icon: Cog },
 ]
@@ -20,6 +25,36 @@ const nav: Item[] = [
 export default function Diagnostic_Sidebar({ collapsed = false, onExpand, collapseSignal: _collapseSignal }: { collapsed?: boolean; onExpand?: () => void; collapseSignal?: number }) {
   const navigate = useNavigate()
   const [logoutConfirmOpen, setLogoutConfirmOpen] = useState(false)
+  const allowed = (() => {
+    try {
+      const raw = localStorage.getItem('hospital.session')
+      if (!raw) return null
+      const s = JSON.parse(raw)
+      const role = String(s?.role || '')
+      if (role.toLowerCase() === 'admin') return ['*'] as string[]
+      const perms = s?.permissions
+      const arr = perms?.diagnostic
+      return Array.isArray(arr) ? arr.map(String) : null
+    } catch {
+      return null
+    }
+  })()
+
+  const normalizePath = (p: string) => {
+    const v = String(p || '').trim()
+    if (!v) return v
+    if (v.length > 1 && v.endsWith('/')) return v.slice(0, -1)
+    return v
+  }
+
+  const canSee = (to: string) => {
+    if (!allowed) return true
+    if (allowed.includes('*')) return true
+    const t = normalizePath(to)
+    return allowed.map(normalizePath).includes(t)
+  }
+
+  const items = diagnosticSidebarNav.filter(it => canSee(it.to))
   const width = collapsed ? 'md:w-16' : 'md:w-64'
   return (
     <aside
@@ -27,14 +62,14 @@ export default function Diagnostic_Sidebar({ collapsed = false, onExpand, collap
       style={{ background: 'linear-gradient(180deg, var(--navy) 0%, var(--navy-700) 100%)', borderColor: 'rgba(255,255,255,0.12)' }}
     >
       <nav className="hospital-sidebar-scroll flex-1 min-h-0 overflow-y-auto p-3 space-y-1">
-        {nav.map(item => {
+        {items.map(item => {
           const Icon = item.icon
           return (
             <NavLink
               key={item.to}
               to={item.to}
               title={collapsed ? item.label : undefined}
-              className={({ isActive }) => `rounded-md px-3 py-2 text-sm font-medium flex items-center ${collapsed?'justify-center gap-0':'gap-2'} ${isActive ? 'bg-white/10 text-white' : 'text-white/80 hover:bg-white/5'}`}
+              className={({ isActive }) => `rounded-md px-3 py-2 text-sm font-medium flex items-center ${collapsed ? 'justify-center gap-0' : 'gap-2'} ${isActive ? 'bg-white/10 text-white' : 'text-white/80 hover:bg-white/5'}`}
               end={item.end}
               onClick={() => {
                 if (collapsed) onExpand?.()
@@ -47,6 +82,7 @@ export default function Diagnostic_Sidebar({ collapsed = false, onExpand, collap
         })}
 
         <div className="pt-2">
+          <PortalSwitcher collapsed={collapsed} onExpand={onExpand} />
           <div className="mx-2 border-t" style={{ borderColor: 'rgba(255,255,255,0.12)' }} />
           <button
             onClick={() => setLogoutConfirmOpen(true)}
@@ -81,8 +117,27 @@ export default function Diagnostic_Sidebar({ collapsed = false, onExpand, collap
                 type="button"
                 onClick={async () => {
                   setLogoutConfirmOpen(false)
-                  try { await diagnosticApi.logout() } catch {}
-                  try { localStorage.removeItem('token'); localStorage.removeItem('diagnostic.user') } catch {}
+                  try {
+                    const raw = localStorage.getItem('hospital.session')
+                    const s = raw ? JSON.parse(raw) : null
+                    await hospitalApi.logoutHospitalUser(s?.username || '')
+                  } catch { }
+                  try {
+                    localStorage.removeItem('token')
+                    localStorage.removeItem('hospital.session')
+                    localStorage.removeItem('hospital.token')
+                    localStorage.removeItem('diagnostic.session')
+                    localStorage.removeItem('diagnostic.token')
+                    localStorage.removeItem('diagnostic.user')
+
+                    const portals = ['doctor', 'reception', 'finance', 'lab', 'pharmacy', 'aesthetic', 'therapy', 'therapyLab', 'counselling']
+                    portals.forEach(p => {
+                      localStorage.removeItem(`${p}.session`)
+                      localStorage.removeItem(`${p}.token`)
+                      localStorage.removeItem(`${p}.user`)
+                    })
+                    localStorage.removeItem('pharma_user')
+                  } catch { }
                   navigate('/diagnostic/login')
                 }}
                 className="rounded-md bg-rose-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-rose-700"

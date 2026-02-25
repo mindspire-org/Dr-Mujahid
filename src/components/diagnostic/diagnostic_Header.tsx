@@ -1,9 +1,68 @@
 import { Link } from 'react-router-dom'
 import { Menu } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { diagnosticApi } from '../../utils/api'
 
 type Props = { onToggleSidebar?: ()=>void; collapsed?: boolean; onToggleTheme?: ()=>void; theme?: 'light'|'dark' }
 
 export default function Diagnostic_Header({ onToggleSidebar, collapsed, onToggleTheme, theme }: Props) {
+  const DEFAULT_NAME = 'Diagnostic'
+  const [displayName, setDisplayName] = useState<string>('—')
+  const [brand, setBrand] = useState<{ name: string; logoDataUrl?: string }>(() => {
+    try {
+      const raw = localStorage.getItem('diagnostic.settings')
+      const s = raw ? JSON.parse(raw) : null
+      const name = String(s?.diagnosticName || s?.name || '').trim()
+      return { name: name || DEFAULT_NAME, logoDataUrl: s?.logoDataUrl }
+    } catch {
+      return { name: DEFAULT_NAME, logoDataUrl: undefined }
+    }
+  })
+
+  useEffect(() => {
+    let mounted = true
+    ;(async () => {
+      try {
+        const s: any = await diagnosticApi.getSettings()
+        if (!mounted) return
+        const name = String(s?.diagnosticName || '').trim()
+        const next = { name: name || DEFAULT_NAME, logoDataUrl: s?.logoDataUrl || undefined }
+        setBrand(next)
+        try { localStorage.setItem('diagnostic.settings', JSON.stringify({ diagnosticName: next.name, logoDataUrl: next.logoDataUrl })) } catch {}
+      } catch {
+        // Best-effort
+      }
+    })()
+    return () => { mounted = false }
+  }, [])
+
+  useEffect(() => {
+    const onUpd = (e: any) => {
+      const d = e?.detail || {}
+      const name = String(d?.diagnosticName || d?.name || '').trim()
+      const next = { name: name || DEFAULT_NAME, logoDataUrl: d?.logoDataUrl || undefined }
+      setBrand(next)
+      try { localStorage.setItem('diagnostic.settings', JSON.stringify({ diagnosticName: next.name, logoDataUrl: next.logoDataUrl })) } catch {}
+    }
+    try { window.addEventListener('diagnostic:settings-updated', onUpd as any) } catch {}
+    return () => { try { window.removeEventListener('diagnostic:settings-updated', onUpd as any) } catch {} }
+  }, [])
+
+  useEffect(() => {
+    try {
+      const raw =
+        localStorage.getItem('diagnostic.user') ||
+        localStorage.getItem('hospital.session') ||
+        localStorage.getItem('user') ||
+        '{}'
+      const s = JSON.parse(raw)
+      const name = String(s?.username || s?.fullName || s?.name || '').trim()
+      setDisplayName(name || '—')
+    } catch {
+      setDisplayName('—')
+    }
+  }, [])
+
   function handleToggleTheme(){
     const next = theme === 'dark' ? 'light' : 'dark'
     try { localStorage.setItem('diagnostic.theme', next) } catch {}
@@ -40,10 +99,14 @@ export default function Diagnostic_Header({ onToggleSidebar, collapsed, onToggle
           </button>
 
           <Link to="/diagnostic" className="ml-3 flex items-center gap-2">
-            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-violet-100 text-violet-600 shadow-inner">
-              <svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='currentColor' className='h-5 w-5'><path d='M4.5 12a5.5 5.5 0 0 1 9.9-3.3l.4.5 3 3a5.5 5.5 0 0 1-7.8 7.8l-3-3-.5-.4A5.48 5.48 0 0 1 4.5 12Zm4.9-3.6L7.1 10l6.9 6.9 2.3-2.3-6.9-6.9Z'/></svg>
+            <div className="flex h-8 w-8 items-center justify-center overflow-hidden rounded-full bg-violet-100 text-violet-600 shadow-inner">
+              {brand.logoDataUrl ? (
+                <img src={brand.logoDataUrl} alt="logo" className="h-full w-full object-cover" />
+              ) : (
+                <svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='currentColor' className='h-5 w-5'><path d='M4.5 12a5.5 5.5 0 0 1 9.9-3.3l.4.5 3 3a5.5 5.5 0 0 1-7.8 7.8l-3-3-.5-.4A5.48 5.48 0 0 1 4.5 12Zm4.9-3.6L7.1 10l6.9 6.9 2.3-2.3-6.9-6.9Z'/></svg>
+              )}
             </div>
-            <div className="font-semibold text-white">Diagnostic</div>
+            <div className="font-semibold text-white">{brand.name}</div>
             <span className="ml-2 rounded-full bg-sky-100 px-2 py-0.5 text-xs font-medium text-sky-700">Online</span>
           </Link>
 
@@ -57,7 +120,7 @@ export default function Diagnostic_Header({ onToggleSidebar, collapsed, onToggle
               <svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='currentColor' className='h-4 w-4'><path d='M7.5 3h9A2.5 2.5 0 0 1 19 5.5v13A2.5 2.5 0 0 1 16.5 21h-9A2.5 2.5 0 0 1 5 18.5v-13A2.5 2.5 0 0 1 7.5 3Zm0 2A.5.5 0 0 0 7 5.5v13a.5.5 0 0 0 .5.5h9a.5.5 0 0 0 .5-.5v-13a.5.5 0 0 0-.5-.5h-9Z'/></svg>
               {theme === 'dark' ? 'Dark: On' : 'Dark: Off'}
             </button>
-            <div className="rounded-md border border-white/15 px-3 py-1.5 text-white">admin</div>
+            <div className="rounded-md border border-white/15 px-3 py-1.5 text-white">{displayName}</div>
           </div>
         </div>
       </div>

@@ -3,7 +3,34 @@ import { Dispense } from '../models/Dispense'
 import { dispenseCreateSchema, salesQuerySchema } from '../validators/dispense'
 import { InventoryItem } from '../models/InventoryItem'
 import { AuditLog } from '../models/AuditLog'
+import { Settings } from '../models/Settings'
 import mongoose from 'mongoose'
+
+function parseDateForRange(input?: string, endOfDay?: boolean) {
+  if (!input) return undefined
+  const s = String(input)
+  const dateOnly = /^\d{4}-\d{2}-\d{2}$/.test(s)
+  if (dateOnly) {
+    const [y, m, d] = s.split('-').map(n => Number(n))
+    const dt = new Date(
+      y,
+      (m || 1) - 1,
+      d || 1,
+      endOfDay ? 23 : 0,
+      endOfDay ? 59 : 0,
+      endOfDay ? 59 : 0,
+      endOfDay ? 999 : 0,
+    )
+    return isNaN(dt.getTime()) ? undefined : dt
+  }
+  const dt = new Date(s)
+  if (isNaN(dt.getTime())) return undefined
+  if (endOfDay) {
+    const hasTime = /T\d{2}:\d{2}/.test(s)
+    if (!hasTime) dt.setHours(23, 59, 59, 999)
+  }
+  return dt
+}
 
 function todayKey(){
   const d = new Date()
@@ -20,8 +47,16 @@ export async function create(req: Request, res: Response){
   const countToday = await Dispense.countDocuments({ billNo: new RegExp(`^B-${key}-`) })
   const billNo = `B-${key}-${String(countToday+1).padStart(3,'0')}`
   const subtotal = data.lines.reduce((s: number, l: { unitPrice: number; qty: number })=> s + l.unitPrice*l.qty, 0)
-  const discount = (subtotal * (data.discountPct || 0)) / 100
-  const total = subtotal - discount
+  const lineDiscount = Number((data as any).lineDiscountTotal || 0)
+  const billDiscount = ((Math.max(0, subtotal - lineDiscount)) * (data.discountPct || 0)) / 100
+  let taxPct = 0
+  try {
+    const st: any = await Settings.findOne().lean()
+    taxPct = Math.max(0, Math.min(100, Number(st?.taxRate || 0)))
+  } catch {}
+  const taxableBase = Math.max(0, subtotal - lineDiscount - billDiscount)
+  const taxAmount = taxableBase * (taxPct / 100)
+  const total = subtotal - lineDiscount - billDiscount + taxAmount
   const linesWithCost: any[] = []
   let profit = 0
   for (const line of data.lines){
@@ -32,11 +67,13 @@ export async function create(req: Request, res: Response){
     if (!item && name) item = await InventoryItem.findOne({ key: name.toLowerCase() }).lean()
     if (!item && id) item = await InventoryItem.findOne({ lastMedicineId: id }).lean()
     const costPerUnit = Number(item?.avgCostPerUnit || item?.lastBuyPerUnitAfterTax || item?.lastBuyPerUnit || 0)
-    linesWithCost.push({ ...line, costPerUnit })
+    linesWithCost.push({ ...line, costPerUnit, discountRs: Number((line as any)?.discountRs||0) })
     profit += (Number(line.unitPrice||0) - costPerUnit) * Number(line.qty||0)
   }
   // subtract discount from profit (discount reduces revenue)
-  profit -= Number(discount || 0)
+  profit -= Number(lineDiscount || 0)
+  profit -= Number(billDiscount || 0)
+  // tax does not change profit here (it is collected and later paid to govt)
   const doc = await Dispense.create({
     datetime,
     billNo,
@@ -44,10 +81,14 @@ export async function create(req: Request, res: Response){
     customer: data.customer || 'Walk-in',
     payment: data.payment,
     discountPct: data.discountPct || 0,
+    lineDiscountTotal: lineDiscount,
+    taxPct: Number(taxPct.toFixed(2)),
+    taxAmount: Number(taxAmount.toFixed(2)),
     subtotal: Number(subtotal.toFixed(2)),
     total: Number(total.toFixed(2)),
     lines: linesWithCost,
     profit: Number(profit.toFixed(2)),
+    createdBy: String((data as any)?.createdBy || '').trim() || undefined,
   })
 
   for (const line of data.lines){
@@ -76,7 +117,7 @@ export async function create(req: Request, res: Response){
     }
   }
   try {
-    const actor = (req as any).user?.name || (req as any).user?.email || 'system'
+    const actor = String((data as any)?.createdBy || (req as any).user?.name || (req as any).user?.email || 'system')
     await AuditLog.create({
       actor,
       action: 'Sale',
@@ -92,20 +133,20 @@ export async function create(req: Request, res: Response){
 
 export async function list(req: Request, res: Response){
   const parsed = salesQuerySchema.safeParse(req.query)
-  const { bill, customer, customerId, payment, medicine, from, to, page, limit } = parsed.success ? parsed.data as any : {}
+  const { bill, customer, customerId, payment, medicine, user, from, to, page, limit } = parsed.success ? parsed.data : {}
   const filter: any = {}
   if (bill) filter.billNo = new RegExp(bill, 'i')
   if (customer) filter.customer = new RegExp(customer, 'i')
   if (customerId) filter.customerId = customerId
   if (payment && payment !== 'Any') filter.payment = payment
   if (medicine) filter['lines.name'] = new RegExp(medicine, 'i')
+  if (user) filter.createdBy = new RegExp(user, 'i')
   if (from || to){
     filter.datetime = {}
-    if (from) filter.datetime.$gte = new Date(from).toISOString()
-    if (to) {
-      const end = new Date(to); end.setHours(23,59,59,999)
-      filter.datetime.$lte = end.toISOString()
-    }
+    const start = parseDateForRange(from, false)
+    const end = parseDateForRange(to, true)
+    if (start) filter.datetime.$gte = start.toISOString()
+    if (end) filter.datetime.$lte = end.toISOString()
   }
   const effectiveLimit = Number(limit || 10)
   const currentPage = Math.max(1, Number(page || 1))
@@ -123,11 +164,10 @@ export async function summary(req: Request, res: Response){
   if (payment && payment !== 'Any') match.payment = payment
   if (from || to){
     match.datetime = {}
-    if (from) match.datetime.$gte = new Date(from).toISOString()
-    if (to) {
-      const end = new Date(to); end.setHours(23,59,59,999)
-      match.datetime.$lte = end.toISOString()
-    }
+    const start = parseDateForRange(from, false)
+    const end = parseDateForRange(to, true)
+    if (start) match.datetime.$gte = start.toISOString()
+    if (end) match.datetime.$lte = end.toISOString()
   }
   const agg = await Dispense.aggregate([
     { $match: match },

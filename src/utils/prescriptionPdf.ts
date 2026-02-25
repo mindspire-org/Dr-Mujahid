@@ -6,6 +6,14 @@ export type PrescriptionPdfData = {
   settings?: { name?: string; address?: string; phone?: string; logoDataUrl?: string }
   patient?: { name?: string; mrn?: string; gender?: string; fatherName?: string; age?: string; phone?: string; address?: string }
   items?: Array<{ name?: string; frequency?: string; duration?: string; dose?: string; instruction?: string; route?: string }>
+  historyTaking?: {
+    personalInfo?: any
+    maritalStatus?: any
+    coitus?: any
+    health?: any
+    sexualHistory?: any
+    previousMedicalHistory?: any
+  }
   primaryComplaint?: string
   primaryComplaintHistory?: string
   familyHistory?: string
@@ -32,8 +40,14 @@ export type PrescriptionPdfData = {
   labNotes?: string
   diagnosticTests?: string[]
   diagnosticNotes?: string
+  diagnosticDiscount?: number
   therapyTests?: string[]
   therapyNotes?: string
+  therapyDiscount?: number
+  therapyPlan?: any
+  therapyMachines?: any
+  counselling?: any
+  counsellingDiscount?: number
   createdAt?: string | Date
 }
 

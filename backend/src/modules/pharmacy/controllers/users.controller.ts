@@ -1,10 +1,8 @@
 import { Request, Response } from 'express'
 import bcrypt from 'bcryptjs'
-import jwt from 'jsonwebtoken'
 import { PharmacyUser } from '../models/User'
 import { userCreateSchema, userUpdateSchema } from '../validators/user'
 import { AuditLog } from '../models/AuditLog'
-import { env } from '../../../config/env'
 
 export async function list(_req: Request, res: Response){
   const items = await PharmacyUser.find().sort({ username: 1 }).lean()
@@ -55,13 +53,11 @@ export async function remove(req: Request, res: Response){
 
 export async function login(req: Request, res: Response){
   const { username, password } = (req.body || {}) as { username?: string; password?: string }
-  if (!username || !password) return res.status(400).json({ error: 'Username and password are required' })
   const u: any = await PharmacyUser.findOne({ username }).lean()
   if (!u) return res.status(401).json({ error: 'Invalid credentials' })
   const pass = String(password || '')
   const ok = pass ? await bcrypt.compare(pass, u.passwordHash || '') : false
   if (!ok) return res.status(401).json({ error: 'Invalid credentials' })
-  const token = jwt.sign({ sub: u._id, username: u.username, role: u.role, scope: 'pharmacy' }, env.JWT_SECRET, { expiresIn: '1d' })
   try {
     const actor = u.username || 'system'
     await AuditLog.create({
@@ -74,7 +70,7 @@ export async function login(req: Request, res: Response){
       detail: `User ${u.username} login`,
     })
   } catch {}
-  res.json({ token, user: { id: String(u._id), username: u.username, role: u.role } })
+  res.json({ user: { id: String(u._id), username: u.username, role: u.role } })
 }
 
 export async function logout(req: Request, res: Response){

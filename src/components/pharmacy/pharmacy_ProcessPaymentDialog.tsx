@@ -5,16 +5,16 @@ import { pharmacyApi } from '../../utils/api'
 type Props = {
   open: boolean
   onClose: () => void
-  onConfirm: (data: { method: 'cash' | 'credit'; discountPct: number; customer?: string; customerId?: string }) => void
+  onConfirm: (data: { method: 'cash' | 'credit'; customer?: string; customerId?: string }) => void
 }
 
 export default function Pharmacy_ProcessPaymentDialog({ open, onClose, onConfirm }: Props) {
   const [method, setMethod] = useState<'cash' | 'credit'>('cash')
-  const [discountPct, setDiscountPct] = useState<number>(0)
   const [form, setForm] = useState<{ name: string; phone: string; address: string; cnic: string; mrNumber: string }>({ name: '', phone: '', address: '', cnic: '', mrNumber: '' })
   const [suggestions, setSuggestions] = useState<Customer[]>([])
   const [selectedId, setSelectedId] = useState<string>('')
-  const discountRef = useRef<HTMLInputElement>(null)
+  const [customers, setCustomers] = useState<Customer[]>([])
+  const dummyRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     if (!open) return
@@ -46,26 +46,53 @@ export default function Pharmacy_ProcessPaymentDialog({ open, onClose, onConfirm
   useEffect(() => {
     if (!open) return
     setMethod('cash')
-    setDiscountPct(0)
     setForm({ name: '', phone: '', address: '', cnic: '', mrNumber: '' })
     setSuggestions([])
     setSelectedId('')
+    setCustomers([])
     const t = setTimeout(() => {
       try {
-        discountRef.current?.focus()
-        discountRef.current?.select()
+        dummyRef.current?.focus()
       } catch {}
     }, 0)
     return () => clearTimeout(t)
   }, [open])
 
+  useEffect(() => {
+    if (!open) return
+    if (method !== 'credit') return
+    let mounted = true
+    ;(async () => {
+      try {
+        const res: any = await pharmacyApi.listCustomers({ page: 1, limit: 200 })
+        if (!mounted) return
+        const items: Customer[] = (res.items || []).map((it: any) => ({
+          id: it._id || '',
+          name: it.name || '',
+          company: it.company || '',
+          phone: it.phone || '',
+          address: it.address || '',
+          cnic: it.cnic || '',
+          mrNumber: it.mrNumber || '',
+        }))
+        setCustomers(items)
+      } catch {
+        setCustomers([])
+      }
+    })()
+    return () => { mounted = false }
+  }, [open, method])
+
   if (!open) return null
 
   const confirm = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
-    const customer = method === 'credit' ? (form.name || form.phone || form.cnic || form.mrNumber || undefined) : undefined
+    const cashCustomer = (form.name || '').trim()
+    const customer = method === 'credit'
+      ? (form.name || form.phone || form.cnic || form.mrNumber || undefined)
+      : (cashCustomer ? cashCustomer : undefined)
     const customerId = method === 'credit' ? (selectedId || undefined) : undefined
-    onConfirm({ method, discountPct: Number(discountPct) || 0, customer, customerId })
+    onConfirm({ method, customer, customerId })
   }
 
   const pick = (c: Customer) => {
@@ -77,50 +104,68 @@ export default function Pharmacy_ProcessPaymentDialog({ open, onClose, onConfirm
   const showCredit = method === 'credit'
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
-      <form onSubmit={confirm} className="w-full max-w-md overflow-hidden rounded-xl bg-white shadow-2xl ring-1 ring-black/5">
-        <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4">
-          <h3 className="text-lg font-semibold text-slate-800">Process Payment</h3>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-3 sm:px-4" role="dialog" aria-modal="true">
+      <form onSubmit={confirm} className="flex w-full max-w-md max-h-[85vh] flex-col overflow-hidden rounded-xl bg-white shadow-2xl ring-1 ring-black/5 dark:bg-slate-900 dark:ring-white/10">
+        <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3 sm:px-6 sm:py-4 dark:border-slate-800">
+          <h3 className="text-lg font-semibold text-slate-800 dark:text-slate-100">Process Payment</h3>
           <button type="button" onClick={onClose} className="btn-outline-navy">Cancel</button>
         </div>
-        <div className="px-6 py-5 space-y-4">
+        <div className="flex-1 overflow-y-auto px-4 py-4 sm:px-6 sm:py-5 space-y-4">
           <div className="flex gap-2">
-            <button type="button" onClick={()=> setMethod('cash')} className={`flex-1 rounded-md border px-3 py-2 text-center text-sm ${method==='cash' ? 'border-navy bg-navy text-white' : 'border-slate-300'}`}>Cash</button>
-            <button type="button" onClick={()=> setMethod('credit')} className={`flex-1 rounded-md border px-3 py-2 text-center text-sm ${method==='credit' ? 'border-navy bg-navy text-white' : 'border-slate-300'}`}>Credit</button>
+            <button type="button" onClick={()=> setMethod('cash')} className={`flex-1 rounded-md border px-3 py-2 text-center text-sm ${method==='cash' ? 'border-navy bg-navy text-white' : 'border-slate-300 text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800'}`}>Cash</button>
+            <button type="button" onClick={()=> setMethod('credit')} className={`flex-1 rounded-md border px-3 py-2 text-center text-sm ${method==='credit' ? 'border-navy bg-navy text-white' : 'border-slate-300 text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800'}`}>Credit</button>
           </div>
 
-          <div>
-            <label className="mb-1 block text-sm text-slate-700">Discount (%)</label>
-            <input ref={discountRef} value={discountPct} onChange={e=> setDiscountPct(parseFloat(e.target.value)||0)} type="number" className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
-          </div>
+          <input ref={dummyRef} className="hidden" />
 
           {showCredit ? (
             <div className="space-y-3">
               <div>
-                <label className="mb-1 block text-sm text-slate-700">Customer Name</label>
-                <input value={form.name} onChange={e=> setForm({ ...form, name: e.target.value })} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
+                <label className="mb-1 block text-sm text-slate-700 dark:text-slate-300">Select Credit Customer</label>
+                <select
+                  value={selectedId}
+                  onChange={e => {
+                    const id = e.target.value
+                    setSelectedId(id)
+                    const c = customers.find(x => x.id === id)
+                    if (c) {
+                      setForm({ name: c.name || '', phone: c.phone || '', address: c.address || '', cnic: c.cnic || '', mrNumber: c.mrNumber || '' })
+                      setSuggestions([])
+                    }
+                  }}
+                  className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                >
+                  <option value="">-- Select --</option>
+                  {customers.map(c => (
+                    <option key={c.id} value={c.id}>{c.name}{c.phone ? ` · ${c.phone}` : ''}{c.cnic ? ` · ${c.cnic}` : ''}</option>
+                  ))}
+                </select>
               </div>
               <div>
-                <label className="mb-1 block text-sm text-slate-700">Phone Number</label>
-                <input value={form.phone} onChange={e=> setForm({ ...form, phone: e.target.value })} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
+                <label className="mb-1 block text-sm text-slate-700 dark:text-slate-300">Customer Name</label>
+                <input value={form.name} onChange={e=> setForm({ ...form, name: e.target.value })} className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100" />
               </div>
               <div>
-                <label className="mb-1 block text-sm text-slate-700">Address</label>
-                <textarea rows={3} value={form.address} onChange={e=> setForm({ ...form, address: e.target.value })} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
+                <label className="mb-1 block text-sm text-slate-700 dark:text-slate-300">Phone Number</label>
+                <input value={form.phone} onChange={e=> setForm({ ...form, phone: e.target.value })} className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100" />
               </div>
               <div>
-                <label className="mb-1 block text-sm text-slate-700">CNIC</label>
-                <input value={form.cnic} onChange={e=> setForm({ ...form, cnic: e.target.value })} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
+                <label className="mb-1 block text-sm text-slate-700 dark:text-slate-300">Address</label>
+                <textarea rows={3} value={form.address} onChange={e=> setForm({ ...form, address: e.target.value })} className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100" />
               </div>
               <div>
-                <label className="mb-1 block text-sm text-slate-700">MR #</label>
-                <input value={form.mrNumber} onChange={e=> setForm({ ...form, mrNumber: e.target.value })} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
+                <label className="mb-1 block text-sm text-slate-700 dark:text-slate-300">CNIC</label>
+                <input value={form.cnic} onChange={e=> setForm({ ...form, cnic: e.target.value })} className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100" />
+              </div>
+              <div>
+                <label className="mb-1 block text-sm text-slate-700 dark:text-slate-300">MR #</label>
+                <input value={form.mrNumber} onChange={e=> setForm({ ...form, mrNumber: e.target.value })} className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100" />
               </div>
 
               {suggestions.length > 1 && (
-                <div className="rounded-md border border-slate-200 bg-slate-50">
+                <div className="rounded-md border border-slate-200 bg-slate-50 dark:border-slate-800 dark:bg-slate-950">
                   {suggestions.slice(0,5).map(c => (
-                    <button type="button" key={c.id} onClick={()=> pick(c)} className="block w-full px-3 py-2 text-left text-sm hover:bg-white">
+                    <button type="button" key={c.id} onClick={()=> pick(c)} className="block w-full px-3 py-2 text-left text-sm text-slate-700 hover:bg-white dark:text-slate-200 dark:hover:bg-slate-800">
                       {c.name} {c.phone? `· ${c.phone}`:''} {c.cnic? `· ${c.cnic}`:''} {c.mrNumber? `· ${c.mrNumber}`:''}
                     </button>
                   ))}
@@ -129,12 +174,12 @@ export default function Pharmacy_ProcessPaymentDialog({ open, onClose, onConfirm
             </div>
           ) : (
             <div>
-              <label className="mb-1 block text-sm text-slate-700">Customer Name (optional)</label>
-              <input value={form.name} onChange={e=> setForm({ ...form, name: e.target.value })} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
+              <label className="mb-1 block text-sm text-slate-700 dark:text-slate-300">Customer Name (optional)</label>
+              <input value={form.name} onChange={e=> setForm({ ...form, name: e.target.value })} className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100" />
             </div>
           )}
         </div>
-        <div className="flex items-center justify-end gap-2 border-t border-slate-200 px-6 py-4">
+        <div className="flex items-center justify-end gap-2 border-t border-slate-200 px-6 py-4 dark:border-slate-800">
           <button type="button" onClick={onClose} className="btn-outline-navy">Cancel</button>
           <button type="submit" className="btn">Confirm Payment</button>
         </div>

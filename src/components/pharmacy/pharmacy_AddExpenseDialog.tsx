@@ -2,6 +2,7 @@ import { useState } from 'react'
 
 export type AddExpensePayload = {
   date: string
+  time?: string
   type: 'Rent' | 'Utilities' | 'Supplies' | 'Salaries' | 'Maintenance' | 'Other'
   note: string
   amount: number
@@ -18,6 +19,7 @@ export default function Pharmacy_AddExpenseDialog({ open, onClose, onSave }: Pro
   const [type, setType] = useState<AddExpensePayload['type']>('Other')
   const [note, setNote] = useState<string>('')
   const [amount, setAmount] = useState<string>('')
+  const [time, setTime] = useState<string>('')
 
   if (!open) return null
 
@@ -25,7 +27,7 @@ export default function Pharmacy_AddExpenseDialog({ open, onClose, onSave }: Pro
 
   const save = () => {
     if (!canSave) return
-    onSave({ date, type, note: note.trim(), amount: parseFloat(amount) })
+    onSave({ date, time: time || undefined, type, note: note.trim(), amount: parseFloat(amount) })
   }
 
   return (
@@ -39,6 +41,10 @@ export default function Pharmacy_AddExpenseDialog({ open, onClose, onSave }: Pro
           <div>
             <label className="mb-1 block text-slate-700">Date</label>
             <input type="date" value={date} onChange={e=>setDate(e.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-2" />
+          </div>
+          <div>
+            <label className="mb-1 block text-slate-700">Time (optional)</label>
+            <input type="time" value={time} onChange={e=>setTime(e.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-2" />
           </div>
           <div>
             <label className="mb-1 block text-slate-700">Type</label>

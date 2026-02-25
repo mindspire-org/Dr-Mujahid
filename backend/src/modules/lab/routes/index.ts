@@ -10,6 +10,7 @@ import * as Expenses from '../controllers/expenses.controller'
 import * as Users from '../controllers/users.controller'
 import * as Audit from '../controllers/audit.controller'
 import * as Settings from '../controllers/settings.controller'
+import * as SystemSettings from '../controllers/system_settings.controller'
 import * as Patients from '../controllers/patients.controller'
 import * as Tests from '../controllers/tests.controller'
 import * as Orders from '../controllers/orders.controller'
@@ -114,6 +115,10 @@ r.post('/audit-logs', Audit.create)
 // Settings
 r.get('/settings', Settings.get)
 r.put('/settings', Settings.update)
+
+// System Settings (DB-driven)
+r.get('/system-settings', SystemSettings.get)
+r.put('/system-settings', SystemSettings.update)
 
 // Patients (MRN find-or-create)
 r.post('/patients/find-or-create', Patients.findOrCreate)

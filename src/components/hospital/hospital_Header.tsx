@@ -1,9 +1,44 @@
 import { Link } from 'react-router-dom'
 import { Menu } from 'lucide-react'
+import { useEffect, useState } from 'react'
 
 type Props = { onToggleSidebar?: () => void; collapsed?: boolean; onToggleTheme?: () => void; theme?: 'light'|'dark' }
 
 export default function Hospital_Header({ onToggleSidebar, collapsed, onToggleTheme, theme }: Props) {
+  const DEFAULT_HOSPITAL_NAME = "Men's Care Clinic"
+  const [displayName, setDisplayName] = useState<string>('—')
+  const [brand, setBrand] = useState<{ name?: string; logoDataUrl?: string }>(() => {
+    try {
+      const raw = localStorage.getItem('hospital.settings')
+      const s = raw ? JSON.parse(raw) : null
+      const name = String(s?.name || '').trim()
+      return { name: name || DEFAULT_HOSPITAL_NAME, logoDataUrl: s?.logoDataUrl }
+    } catch {
+      return { name: DEFAULT_HOSPITAL_NAME, logoDataUrl: undefined }
+    }
+  })
+
+  useEffect(() => {
+    const onUpd = (e: any) => {
+      const d = e?.detail || {}
+      const name = String(d?.name || '').trim()
+      setBrand({ name: name || DEFAULT_HOSPITAL_NAME, logoDataUrl: d?.logoDataUrl })
+    }
+    try { window.addEventListener('hospital:settings-updated', onUpd as any) } catch {}
+    return () => { try { window.removeEventListener('hospital:settings-updated', onUpd as any) } catch {} }
+  }, [])
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem('hospital.session') || localStorage.getItem('user') || '{}'
+      const s = JSON.parse(raw)
+      const name = String(s?.username || s?.fullName || s?.name || '').trim()
+      setDisplayName(name || '—')
+    } catch {
+      setDisplayName('—')
+    }
+  }, [])
+
   function handleToggleTheme(){
     const next = theme === 'dark' ? 'light' : 'dark'
     try { localStorage.setItem('hospital.theme', next) } catch {}
@@ -42,10 +77,16 @@ export default function Hospital_Header({ onToggleSidebar, collapsed, onToggleTh
           </button>
 
           <Link to="/hospital" className="flex items-center gap-2">
-          <div className="flex h-8 w-8 items-center justify-center rounded-full bg-violet-100 text-violet-600 shadow-inner">
-            <svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='currentColor' className='h-5 w-5'><path d='M4.5 12a5.5 5.5 0 0 1 9.9-3.3l.4.5 3 3a5.5 5.5 0 0 1-7.8 7.8l-3-3-.5-.4A5.48 5.48 0 0 1 4.5 12Zm4.9-3.6L7.1 10l6.9 6.9 2.3-2.3-6.9-6.9Z'/></svg>
+          <div className="flex h-8 w-8 items-center justify-center overflow-hidden rounded-full bg-white/10 ring-1 ring-white/15">
+            {brand.logoDataUrl ? (
+              <img src={brand.logoDataUrl} alt="Logo" className="h-full w-full object-cover" />
+            ) : (
+              <div className="flex h-full w-full items-center justify-center bg-violet-100 text-violet-600 shadow-inner">
+                <svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='currentColor' className='h-5 w-5'><path d='M4.5 12a5.5 5.5 0 0 1 9.9-3.3l.4.5 3 3a5.5 5.5 0 0 1-7.8 7.8l-3-3-.5-.4A5.48 5.48 0 0 1 4.5 12Zm4.9-3.6L7.1 10l6.9 6.9 2.3-2.3-6.9-6.9Z'/></svg>
+              </div>
+            )}
           </div>
-          <div className="font-semibold text-white">HospitalCare</div>
+          <div className="font-semibold text-white">{String(brand.name || '').trim() || DEFAULT_HOSPITAL_NAME}</div>
           <span className="ml-2 rounded-full bg-sky-100 px-2 py-0.5 text-xs font-medium text-sky-700">Online</span>
           </Link>
 
@@ -59,7 +100,7 @@ export default function Hospital_Header({ onToggleSidebar, collapsed, onToggleTh
             <svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='currentColor' className='h-4 w-4'><path d='M7.5 3h9A2.5 2.5 0 0 1 19 5.5v13A2.5 2.5 0 0 1 16.5 21h-9A2.5 2.5 0 0 1 5 18.5v-13A2.5 2.5 0 0 1 7.5 3Zm0 2A.5.5 0 0 0 7 5.5v13a.5.5 0 0 0 .5.5h9a.5.5 0 0 0 .5-.5v-13a.5.5 0 0 0-.5-.5h-9Z'/></svg>
             {theme === 'dark' ? 'Dark: On' : 'Dark: Off'}
           </button>
-          <div className="rounded-md border border-white/15 px-3 py-1.5 text-white">admin</div>
+          <div className="rounded-md border border-white/15 px-3 py-1.5 text-white">{displayName}</div>
           </div>
         </div>
       </div>

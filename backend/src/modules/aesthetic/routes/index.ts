@@ -2,6 +2,7 @@ import { Router } from 'express'
 import * as Suppliers from '../controllers/suppliers.controller'
 import * as Expenses from '../controllers/expenses.controller'
 import * as Settings from '../controllers/settings.controller'
+import * as SystemSettings from '../controllers/system_settings.controller'
 import * as Purchases from '../controllers/purchases.controller'
 import * as Returns from '../controllers/returns.controller'
 import * as Audit from '../controllers/audit.controller'
@@ -46,6 +47,10 @@ r.get('/expenses/summary', Expenses.summary)
 // Settings
 r.get('/settings', Settings.get)
 r.put('/settings', Settings.update)
+
+// System Settings (DB-driven)
+r.get('/system-settings', SystemSettings.get)
+r.put('/system-settings', SystemSettings.update)
 
 // Purchases
 r.get('/purchases', Purchases.list)

@@ -4,141 +4,18 @@ import Diagnostic_TokenSlip from '../../components/diagnostic/Diagnostic_TokenSl
 import type { DiagnosticTokenSlipData } from '../../components/diagnostic/Diagnostic_TokenSlip'
 import { diagnosticApi, corporateApi, hospitalApi } from '../../utils/api'
 
-export default function Diagnostic_TokenGenerator(){
+export default function Diagnostic_TokenGenerator() {
   const location = useLocation() as any
-  const navState = (location && (location.state||null)) || null
+  const navState = (location && (location.state || null)) || null
   // Patient details
   const [fullName, setFullName] = useState('')
   const [phone, setPhone] = useState('')
-  const [mrn, setMrn] = useState('')
   const [age, setAge] = useState('')
   const [gender, setGender] = useState('')
   const [guardianRel, setGuardianRel] = useState('')
   const [guardianName, setGuardianName] = useState('')
   const [cnic, setCnic] = useState('')
   const [address, setAddress] = useState('')
-  // Referral context (optional)
-  const [fromReferralId, setFromReferralId] = useState<string>('')
-  const [requestedTests, setRequestedTests] = useState<string[]>([])
-  const [referringConsultant, setReferringConsultant] = useState('')
-
-  // Tests (from backend)
-  type Test = { id: string; name: string; price: number }
-  const [tests, setTests] = useState<Test[]>([])
-  const [query, setQuery] = useState('')
-  const [selected, setSelected] = useState<string[]>([])
-  useEffect(()=>{
-    let mounted = true
-    ;(async()=>{
-      try {
-        const res = await diagnosticApi.listTests({ limit: 1000 }) as any
-        const arr = (res?.items || res || []).map((t:any)=>({ id: String(t._id||t.id), name: t.name, price: Number(t.price||0) }))
-        if (mounted) setTests(arr)
-      } catch { if (mounted) setTests([]) }
-    })()
-    return ()=>{ mounted = false }
-  }, [])
-  // Apply navState patient autofill and requested tests
-  useEffect(()=>{
-    try{
-      const st = navState || {}
-      if (st?.patient){
-        const p = st.patient
-        if (p.fullName) setFullName(String(p.fullName))
-        if (p.phone) setPhone(String(p.phone))
-        if (p.mrn) setMrn(String(p.mrn))
-        if (p.gender) setGender(String(p.gender))
-        if (p.address) setAddress(String(p.address))
-        if (p.fatherName) setGuardianName(String(p.fatherName))
-        if (p.guardianRelation) setGuardianRel(String(p.guardianRelation))
-        if (p.cnic) setCnic(String(p.cnic))
-      }
-      if (Array.isArray(st?.requestedTests)) setRequestedTests(st.requestedTests.map((x:any)=>String(x)))
-      if (st?.fromReferralId) setFromReferralId(String(st.fromReferralId))
-      if (st?.referringConsultant) setReferringConsultant(String(st.referringConsultant))
-    } catch {}
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [location?.key])
-  // When tests list is loaded or requestedTests changes, preselect those tests
-  useEffect(()=>{
-    if (!requestedTests.length || !tests.length) return
-    const set = new Set(requestedTests.map(s=>String(s).trim().toLowerCase()))
-    const ids = tests.filter(t=> set.has(String(t.name).trim().toLowerCase())).map(t=>t.id)
-    if (ids.length){
-      // don't duplicate existing selections
-      setSelected(prev=> Array.from(new Set([...prev, ...ids])))
-    }
-  }, [requestedTests, tests])
-  // Corporate billing (declare early so it's available to pricing helpers)
-  const [companies, setCompanies] = useState<Array<{ id: string; name: string }>>([])
-  const [corpCompanyId, setCorpCompanyId] = useState('')
-  const [corpPreAuthNo, setCorpPreAuthNo] = useState('')
-  const [corpCoPayPercent, setCorpCoPayPercent] = useState('')
-  const [corpCoverageCap, setCorpCoverageCap] = useState('')
-  // Corporate effective pricing map for DIAG tests
-  const [corpTestPriceMap, setCorpTestPriceMap] = useState<Record<string, number>>({})
-  
-
-  const getEffectivePrice = (id: string): number => {
-    const base = Number((tests.find(t=>t.id===id)?.price) || 0)
-    if (!corpCompanyId) return base
-    const v = corpTestPriceMap[id]
-    return v != null ? v : base
-  }
-
-  const filtered = useMemo(()=>{
-    const q = query.trim().toLowerCase()
-    return tests.filter(t=>!selected.includes(t.id)).filter(t=> !q || t.name.toLowerCase().includes(q)).slice(0, 30)
-  }, [tests, query, selected])
-  const selectedTests = useMemo(()=> selected.map(id => tests.find(t=>t.id===id)).filter(Boolean) as Test[], [selected, tests])
-  const subtotal = useMemo(()=> selectedTests.reduce((s,t)=> s + getEffectivePrice(t.id), 0), [selectedTests, corpCompanyId, corpTestPriceMap])
-  const [discount, setDiscount] = useState('0')
-  const net = Math.max(0, subtotal - (Number(discount)||0))
-
-  // Corporate billing (load companies)
-  // Recompute corporate pricing after corpCompanyId is declared
-  useEffect(()=>{
-    let cancelled = false
-    async function load(){
-      if (!corpCompanyId){ setCorpTestPriceMap({}); return }
-      try {
-        const r = await corporateApi.listRateRules({ companyId: corpCompanyId, scope: 'DIAG' }) as any
-        const rules: any[] = (r?.rules || []).filter((x:any)=> x && x.active !== false)
-        const today = new Date().toISOString().slice(0,10)
-        const valid = rules.filter((x:any)=> (!x.effectiveFrom || String(x.effectiveFrom).slice(0,10) <= today) && (!x.effectiveTo || today <= String(x.effectiveTo).slice(0,10)))
-        const def = valid.filter(x=>x.ruleType==='default').sort((a:any,b:any)=> (a.priority??100) - (b.priority??100))[0] || null
-        const apply = (base:number, rule:any)=>{
-          const mode = rule?.mode; const val = Number(rule?.value||0)
-          if (mode==='fixedPrice') return Math.max(0, val)
-          if (mode==='percentDiscount') return Math.max(0, base - (base*(val/100)))
-          if (mode==='fixedDiscount') return Math.max(0, base - val)
-          return base
-        }
-        const map: Record<string, number> = {}
-        for (const t of tests){
-          const base = Number(t.price||0)
-          const specific = valid.filter(x=> x.ruleType==='test' && String(x.refId)===String(t.id)).sort((a:any,b:any)=> (a.priority??100) - (b.priority??100))[0] || null
-          const rule = specific || def
-          map[t.id] = rule ? apply(base, rule) : base
-        }
-        if (!cancelled) setCorpTestPriceMap(map)
-      } catch { if (!cancelled) setCorpTestPriceMap({}) }
-    }
-    load()
-    return ()=>{ cancelled = true }
-  }, [corpCompanyId, tests])
-  useEffect(()=>{
-    let mounted = true
-    ;(async()=>{
-      try {
-        const res = await corporateApi.listCompanies() as any
-        if (!mounted) return
-        const arr = (res?.companies||[]).map((c:any)=>({ id: String(c._id||c.id), name: c.name }))
-        setCompanies(arr)
-      } catch {}
-    })()
-    return ()=>{ mounted = false }
-  }, [])
 
   // Selected existing patient (from Lab_Patient collection)
   const [selectedPatient, setSelectedPatient] = useState<any | null>(null)
@@ -149,48 +26,374 @@ export default function Diagnostic_TokenGenerator(){
   const skipLookupKeyRef = useRef<string | null>(null)
   const lastPromptKeyRef = useRef<string | null>(null)
   const autoMrnAppliedRef = useRef<boolean>(false)
+  const [selectPatientOpen, setSelectPatientOpen] = useState(false)
+  const [phoneMatches, setPhoneMatches] = useState<any[]>([])
+  const lastPhonePromptRef = useRef<string | null>(null)
+  const [toast, setToast] = useState<null | { type: 'success' | 'error'; message: string }>(null)
+  const showToast = (type: 'success' | 'error', message: string) => {
+    setToast({ type, message })
+    setTimeout(() => setToast(null), 2500)
+  }
+  // Referral context (optional)
+  const [fromReferralId, setFromReferralId] = useState<string>('')
+  const [requestedTests, setRequestedTests] = useState<string[]>([])
+  const [referringConsultant, setReferringConsultant] = useState('')
 
-  // If coming from a referral and MRN is present, fetch full patient by MRN to prefill all fields
-  useEffect(()=>{
-    if (autoMrnAppliedRef.current) return
-    if (!fromReferralId || !mrn || selectedPatient) return
-    let cancelled = false
-    ;(async()=>{
-      try{
-        const r: any = await diagnosticApi.getPatientByMrn(mrn)
-        if (cancelled) return
-        const p = r?.patient || r
-        if (!p) return
-        setSelectedPatient(p)
-        setFullName(p.fullName || '')
-        setPhone(p.phoneNormalized || '')
-        setMrn(p.mrn || mrn)
-        setAge((p.age!=null && p.age!=='') ? String(p.age) : '')
-        if (p.gender) setGender(String(p.gender))
-        setGuardianName(p.fatherName || '')
-        if (p.guardianRel){
-          const g = String(p.guardianRel).toUpperCase()
-          const mapped = (g==='FATHER' || g==='S/O' || g==='SON') ? 'S/O' : ((g==='MOTHER' || g==='D/O' || g==='DAUGHTER') ? 'D/O' : g)
-          setGuardianRel(mapped)
+  // Tests (from backend)
+  type Test = { id: string; name: string; price: number }
+  const [tests, setTests] = useState<Test[]>([])
+  const [testsLoading, setTestsLoading] = useState(false)
+  const [testsLoadError, setTestsLoadError] = useState<string>('')
+  const [query, setQuery] = useState('')
+  const [selected, setSelected] = useState<string[]>([])
+  const [showTestDropdown, setShowTestDropdown] = useState(false)
+  const testPickerRef = useRef<HTMLDivElement | null>(null)
+  useEffect(() => {
+    let mounted = true
+      ; (async () => {
+        if (mounted) { setTestsLoading(true); setTestsLoadError('') }
+        try {
+          const res = await diagnosticApi.listTests({ limit: 1000 }) as any
+          const arr = (res?.items || res || []).map((t: any) => ({ id: String(t._id || t.id), name: t.name, price: Number(t.price || 0) }))
+          if (mounted) setTests(arr)
+        } catch (e: any) {
+          if (mounted) {
+            setTests([])
+            setTestsLoadError(String(e?.message || 'Failed to load tests'))
+          }
+        } finally {
+          if (mounted) setTestsLoading(false)
         }
-        setAddress(p.address || '')
-        setCnic(p.cnicNormalized || p.cnic || '')
-        autoMrnAppliedRef.current = true
-      } catch {}
+      })()
+    return () => { mounted = false }
+  }, [])
+  // Apply navState patient autofill and requested tests
+  useEffect(() => {
+    try {
+      const st = navState || {}
+      if (st?.patient) {
+        const p = st.patient
+        if (p.fullName) setFullName(String(p.fullName))
+        if (p.phone) setPhone(String(p.phone))
+        if (p.gender) setGender(String(p.gender))
+        if (p.address) setAddress(String(p.address))
+        if (p.fatherName) setGuardianName(String(p.fatherName))
+        if (p.guardianRelation) setGuardianRel(String(p.guardianRelation))
+        if (p.cnic) setCnic(String(p.cnic))
+
+        // If MRN is provided from referral context, fetch the canonical patient record and autofill
+        if (p.mrn && !selectedPatient && !autoMrnAppliedRef.current) {
+          const code = String(p.mrn || '').trim()
+          if (code) {
+            ; (async () => {
+              try {
+                const r: any = await diagnosticApi.getPatientByMrn(code)
+                const pat = r?.patient || r
+                if (!pat) return
+                setSelectedPatient(pat)
+                setFullName(pat.fullName || '')
+                setPhone(pat.phoneNormalized || '')
+                setAge((pat.age != null && pat.age !== '') ? String(pat.age) : '')
+                if (pat.gender) setGender(String(pat.gender))
+                setGuardianName(pat.fatherName || '')
+                if (pat.guardianRel) {
+                  const g = String(pat.guardianRel).toUpperCase()
+                  const mapped = (g === 'FATHER' || g === 'S/O' || g === 'SON') ? 'S/O' : ((g === 'MOTHER' || g === 'D/O' || g === 'DAUGHTER') ? 'D/O' : g)
+                  setGuardianRel(mapped)
+                }
+                setAddress(pat.address || '')
+                setCnic(pat.cnicNormalized || pat.cnic || '')
+                autoMrnAppliedRef.current = true
+              } catch { }
+            })()
+          }
+        }
+      }
+      if (Array.isArray(st?.requestedTests)) setRequestedTests(st.requestedTests.map((x: any) => String(x)))
+      if (st?.fromReferralId) setFromReferralId(String(st.fromReferralId))
+      if (st?.referringConsultant) setReferringConsultant(String(st.referringConsultant))
+    } catch { }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location?.key])
+  // When tests list is loaded or requestedTests changes, preselect those tests
+  useEffect(() => {
+    if (!requestedTests.length || !tests.length) return
+    const set = new Set(requestedTests.map(s => String(s).trim().toLowerCase()))
+    const ids = tests.filter(t => set.has(String(t.name).trim().toLowerCase())).map(t => t.id)
+    if (ids.length) {
+      // don't duplicate existing selections
+      setSelected(prev => Array.from(new Set([...prev, ...ids])))
+    }
+  }, [requestedTests, tests])
+  // Corporate billing (declare early so it's available to pricing helpers)
+  const [companies, setCompanies] = useState<Array<{ id: string; name: string }>>([])
+  const [corpCompanyId, setCorpCompanyId] = useState('')
+  const [corpPreAuthNo, setCorpPreAuthNo] = useState('')
+  const [corpCoPayPercent, setCorpCoPayPercent] = useState('')
+  const [corpCoverageCap, setCorpCoverageCap] = useState('')
+  // Corporate effective pricing map for DIAG tests
+  const [corpTestPriceMap, setCorpTestPriceMap] = useState<Record<string, number>>({})
+
+
+  const getEffectivePrice = (id: string): number => {
+    const base = Number((tests.find(t => t.id === id)?.price) || 0)
+    if (!corpCompanyId) return base
+    const v = corpTestPriceMap[id]
+    return v != null ? v : base
+  }
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase()
+    return tests.filter(t => !selected.includes(t.id)).filter(t => !q || t.name.toLowerCase().includes(q)).slice(0, 30)
+  }, [tests, query, selected])
+  const selectedTests = useMemo(() => selected.map(id => tests.find(t => t.id === id)).filter(Boolean) as Test[], [selected, tests])
+  const subtotal = useMemo(() => selectedTests.reduce((s, t) => s + getEffectivePrice(t.id), 0), [selectedTests, corpCompanyId, corpTestPriceMap])
+  const [discount, setDiscount] = useState('0')
+  const net = Math.max(0, subtotal - (Number(discount) || 0))
+
+  const [account, setAccount] = useState<{ dues: number; advance: number } | null>(null)
+  const [accountLoading, setAccountLoading] = useState(false)
+  const [payPreviousDues, setPayPreviousDues] = useState(false)
+  const [useAdvance, setUseAdvance] = useState(false)
+  const [amountReceivedNow, setAmountReceivedNow] = useState('0')
+
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      try {
+        if (!selectedPatient?._id) {
+          if (!cancelled) setAccount({ dues: 0, advance: 0 })
+          return
+        }
+        if (!cancelled) setAccountLoading(true)
+        const res: any = await diagnosticApi.getAccount(String(selectedPatient._id))
+        const a: any = res?.account || null
+        const dues = Math.max(0, Number(a?.dues || 0))
+        const advance = Math.max(0, Number(a?.advance || 0))
+        if (!cancelled) {
+          setAccount({ dues, advance })
+          if (dues <= 0) setPayPreviousDues(false)
+          if (advance <= 0) setUseAdvance(false)
+        }
+      } catch {
+        if (!cancelled) setAccount({ dues: 0, advance: 0 })
+      } finally {
+        if (!cancelled) setAccountLoading(false)
+      }
     })()
-    return ()=>{ cancelled = true }
-  }, [fromReferralId, mrn, selectedPatient])
+    return () => {
+      cancelled = true
+    }
+  }, [selectedPatient?._id])
+
+  const paymentPreview = useMemo(() => {
+    const duesBefore = Math.max(0, Number(account?.dues || 0))
+    const advanceBefore = Math.max(0, Number(account?.advance || 0))
+    const received = Math.max(0, Number(amountReceivedNow || 0))
+
+    let advanceApplied = 0
+    let netDueToday = net
+    let advanceLeft = advanceBefore
+    if (useAdvance) {
+      advanceApplied = Math.min(advanceBefore, netDueToday)
+      netDueToday = Math.max(0, netDueToday - advanceApplied)
+      advanceLeft = Math.max(0, advanceBefore - advanceApplied)
+    }
+
+    let amt = received
+    let duesPaidLocal = 0
+    let paidForTodayLocal = 0
+    let advanceAddedLocal = 0
+    let duesAfter = duesBefore
+
+    if (payPreviousDues) {
+      duesPaidLocal = Math.min(duesAfter, amt)
+      duesAfter = Math.max(0, duesAfter - duesPaidLocal)
+      amt -= duesPaidLocal
+    }
+
+    paidForTodayLocal = Math.min(netDueToday, amt)
+    netDueToday = Math.max(0, netDueToday - paidForTodayLocal)
+    amt -= paidForTodayLocal
+
+    advanceAddedLocal = Math.max(0, amt)
+    duesAfter = duesAfter + netDueToday
+    const advanceAfter = advanceLeft + advanceAddedLocal
+
+    return {
+      duesBefore,
+      advanceBefore,
+      advanceApplied,
+      amountReceived: received,
+      duesPaid: duesPaidLocal,
+      paidForToday: paidForTodayLocal,
+      advanceAdded: advanceAddedLocal,
+      duesAfter,
+      advanceAfter,
+    }
+  }, [account?.dues, account?.advance, amountReceivedNow, useAdvance, payPreviousDues, net])
+
+  // Payment (mirrors Hospital token generator)
+  const [paymentStatus, setPaymentStatus] = useState<'paid' | 'unpaid'>('paid')
+  const [receivedToAccountCode, setReceivedToAccountCode] = useState('')
+  const [payToAccounts, setPayToAccounts] = useState<Array<{ code: string; label: string }>>([])
+  const [paymentMethod, setPaymentMethod] = useState<'Cash' | 'Card'>('Cash')
+  const [accountNumberIban, setAccountNumberIban] = useState('')
+
+  useEffect(() => {
+    let mounted = true
+      ; (async () => {
+        try {
+          const [mineRes, bankRes, pettyRes] = await Promise.all([
+            hospitalApi.myPettyCash(),
+            hospitalApi.listBankAccounts(),
+            hospitalApi.listPettyCashAccounts(),
+          ]) as any
+
+          const opts: Array<{ code: string; label: string }> = []
+          const seen = new Set<string>()
+          const add = (code?: string, label?: string) => {
+            const c = String(code || '').trim().toUpperCase()
+            if (!c) return
+            if (seen.has(c)) return
+            seen.add(c)
+            opts.push({ code: c, label: String(label || c) })
+          }
+
+          const myCode = String(mineRes?.account?.code || '').trim().toUpperCase()
+          if (myCode) {
+            add(myCode, `${mineRes?.account?.name || 'My Petty Cash'} (${myCode})`)
+          }
+
+          const petty: any[] = pettyRes?.accounts || []
+          for (const p of petty) {
+            const code = String(p?.code || '').trim().toUpperCase()
+            if (!code) continue
+            const rs = String(p?.responsibleStaff || '').trim()
+            if (rs) continue
+            if (String(p?.status || 'Active') !== 'Active') continue
+            add(code, `${String(p?.name || code).trim()} (${code})`)
+          }
+
+          const banks: any[] = bankRes?.accounts || []
+          for (const b of banks) {
+            const an = String(b?.accountNumber || '')
+            const last4 = an ? an.slice(-4) : ''
+            const code = String(b?.financeAccountCode || (last4 ? `BANK_${last4}` : '')).trim().toUpperCase()
+            if (!code) continue
+            const bankLabel = `${String(b?.bankName || '').trim()} - ${String(b?.accountTitle || '').trim()}${last4 ? ` (${last4})` : ''}`.trim()
+            add(code, bankLabel ? `${bankLabel} (${code})` : code)
+          }
+
+          if (mounted) {
+            setPayToAccounts(opts)
+            setReceivedToAccountCode(prev => prev || myCode || '')
+          }
+        } catch {
+          if (mounted) setPayToAccounts([])
+        }
+      })()
+    return () => { mounted = false }
+  }, [])
+
+  useEffect(() => {
+    if (paymentStatus !== 'unpaid') return
+    setPaymentMethod('Cash')
+    setAccountNumberIban('')
+    setAmountReceivedNow('0')
+    setPayPreviousDues(false)
+    setUseAdvance(false)
+  }, [paymentStatus])
+
+  // Corporate billing (load companies)
+  // Recompute corporate pricing after corpCompanyId is declared
+  useEffect(() => {
+    let cancelled = false
+    async function load() {
+      if (!corpCompanyId) { setCorpTestPriceMap({}); return }
+      try {
+        const r = await corporateApi.listRateRules({ companyId: corpCompanyId, scope: 'DIAG' }) as any
+        const rules: any[] = (r?.rules || []).filter((x: any) => x && x.active !== false)
+        const today = new Date().toISOString().slice(0, 10)
+        const valid = rules.filter((x: any) => (!x.effectiveFrom || String(x.effectiveFrom).slice(0, 10) <= today) && (!x.effectiveTo || today <= String(x.effectiveTo).slice(0, 10)))
+        const def = valid.filter(x => x.ruleType === 'default').sort((a: any, b: any) => (a.priority ?? 100) - (b.priority ?? 100))[0] || null
+        const apply = (base: number, rule: any) => {
+          const mode = rule?.mode; const val = Number(rule?.value || 0)
+          if (mode === 'fixedPrice') return Math.max(0, val)
+          if (mode === 'percentDiscount') return Math.max(0, base - (base * (val / 100)))
+          if (mode === 'fixedDiscount') return Math.max(0, base - val)
+          return base
+        }
+        const map: Record<string, number> = {}
+        for (const t of tests) {
+          const base = Number(t.price || 0)
+          const specific = valid.filter(x => x.ruleType === 'test' && String(x.refId) === String(t.id)).sort((a: any, b: any) => (a.priority ?? 100) - (b.priority ?? 100))[0] || null
+          const rule = specific || def
+          map[t.id] = rule ? apply(base, rule) : base
+        }
+        if (!cancelled) setCorpTestPriceMap(map)
+      } catch { if (!cancelled) setCorpTestPriceMap({}) }
+    }
+    load()
+    return () => { cancelled = true }
+  }, [corpCompanyId, tests])
+  useEffect(() => {
+    let mounted = true
+      ; (async () => {
+        try {
+          const res = await corporateApi.listCompanies() as any
+          if (!mounted) return
+          const arr = (res?.companies || []).map((c: any) => ({ id: String(c._id || c.id), name: c.name }))
+          setCompanies(arr)
+        } catch { }
+      })()
+    return () => { mounted = false }
+  }, [])
+
+  // Selected existing patient (from Lab_Patient collection)
+  useEffect(() => {
+    function onDown(e: MouseEvent) {
+      const el = testPickerRef.current
+      if (!el) return
+      if (!el.contains(e.target as any)) setShowTestDropdown(false)
+    }
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') setShowTestDropdown(false)
+    }
+    document.addEventListener('mousedown', onDown)
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('mousedown', onDown)
+      document.removeEventListener('keydown', onKey)
+    }
+  }, [])
+
+  function applyPatientToForm(p: any) {
+    setSelectedPatient(p)
+    setFullName(p.fullName || '')
+    setPhone(p.phoneNormalized || '')
+    setAge((p.age != null && p.age !== '') ? String(p.age) : '')
+    if (p.gender) setGender(String(p.gender))
+    setGuardianName(p.fatherName || '')
+    if (p.guardianRel) {
+      const g = String(p.guardianRel).toUpperCase()
+      const mapped = (g === 'FATHER' || g === 'S/O' || g === 'SON') ? 'S/O' : ((g === 'MOTHER' || g === 'D/O' || g === 'DAUGHTER') ? 'D/O' : g)
+      setGuardianRel(mapped)
+    }
+    setAddress(p.address || '')
+    setCnic(p.cnicNormalized || p.cnic || '')
+  }
 
   // Slip modal
   const [slipOpen, setSlipOpen] = useState(false)
   const [slipData, setSlipData] = useState<DiagnosticTokenSlipData | null>(null)
 
-  async function lookupExistingByPhoneAndName(source: 'phone'|'name' = 'phone'){
-    const digits = (phone||'').replace(/\D+/g,'')
-    const nameEntered = (fullName||'').trim()
+  async function lookupExistingByPhoneAndName(source: 'phone' | 'name' = 'phone') {
+    const digits = (phone || '').replace(/\D+/g, '')
+    const nameEntered = (fullName || '').trim()
     if (!digits || !nameEntered) return
-    try{
-      const norm = (s: string)=> String(s||'').trim().toLowerCase().replace(/\s+/g,' ')
+    try {
+      const norm = (s: string) => String(s || '').trim().toLowerCase().replace(/\s+/g, ' ')
       const key = `${digits}|${norm(nameEntered)}`
       if (skipLookupKeyRef.current === key || lastPromptKeyRef.current === key) return
       const r: any = await diagnosticApi.searchPatients({ phone: digits, limit: 10 })
@@ -200,62 +403,57 @@ export default function Diagnostic_TokenGenerator(){
       if (!p) return // no exact name match; don't prompt
       const summary = [
         `Found existing patient. Apply details?`,
-        `MRN: ${p.mrn||'-'}`,
-        `Name: ${p.fullName||'-'}`,
-        `Phone: ${p.phoneNormalized||digits}`,
-        `Age: ${p.age ?? (age?.trim()||'-')}`,
-        p.gender? `Gender: ${p.gender}` : null,
-        p.address? `Address: ${p.address}` : null,
-        p.fatherName? `Guardian: ${p.fatherName}` : null,
-        `Guardian Relation: ${p.guardianRel || (guardianRel||'-')}`,
-        p.cnicNormalized? `CNIC: ${p.cnicNormalized}` : null,
+        `MRN: ${p.mrn || '-'}`,
+        `Name: ${p.fullName || '-'}`,
+        `Phone: ${p.phoneNormalized || digits}`,
+        `Age: ${p.age ?? (age?.trim() || '-')}`,
+        p.gender ? `Gender: ${p.gender}` : null,
+        p.address ? `Address: ${p.address}` : null,
+        p.fatherName ? `Guardian: ${p.fatherName}` : null,
+        `Guardian Relation: ${p.guardianRel || (guardianRel || '-')}`,
+        p.cnicNormalized ? `CNIC: ${p.cnicNormalized}` : null,
       ].filter(Boolean).join('\n')
-      setTimeout(()=> { setFocusAfterConfirm(source); lastPromptKeyRef.current = key; setConfirmPatient({ summary, patient: p, key }) }, 0)
-    } catch {}
+      setTimeout(() => { setFocusAfterConfirm(source); lastPromptKeyRef.current = key; setConfirmPatient({ summary, patient: p, key }) }, 0)
+    } catch { }
   }
 
-  async function onMrnKeyDown(e: any){
-    if (e.key !== 'Enter') return
-    e.preventDefault()
-    const code = (mrn || '').trim()
-    if (!code) return
-    try{
-      const r: any = await diagnosticApi.getPatientByMrn(code)
-      const p = r?.patient || r
-      if (!p){ alert('No patient found for this MR number'); return }
-      setSelectedPatient(p)
-      setFullName(p.fullName || '')
-      setPhone(p.phoneNormalized || '')
-      setMrn(p.mrn || code)
-      setAge((p.age!=null && p.age!=='') ? String(p.age) : '')
-      if (p.gender) setGender(String(p.gender))
-      setGuardianName(p.fatherName || '')
-      if (p.guardianRel){
-        const g = String(p.guardianRel).toUpperCase()
-        const mapped = (g==='FATHER' || g==='S/O' || g==='SON') ? 'S/O' : ((g==='MOTHER' || g==='D/O' || g==='DAUGHTER') ? 'D/O' : g)
-        setGuardianRel(mapped)
-      }
-      setAddress(p.address || '')
-      setCnic(p.cnicNormalized || p.cnic || '')
-    } catch {
-      alert('No patient found for this MR number')
+  async function onPhoneBlur() {
+    const ph = phone?.trim()
+    if (!ph) return
+    const digits = (ph || '').replace(/\D+/g, '')
+    if (!digits) return
+    // Avoid repeated prompts for the same phone unless user changes the input
+    if (lastPhonePromptRef.current === digits) {
+      if ((fullName || '').trim()) { await lookupExistingByPhoneAndName('phone') }
+      return
     }
+    try {
+      const r: any = await diagnosticApi.searchPatients({ phone: digits, limit: 25 })
+      const list: any[] = Array.isArray(r?.patients) ? r.patients : []
+      if (list.length >= 1) {
+        lastPhonePromptRef.current = digits
+        setPhoneMatches(list)
+        setSelectPatientOpen(true)
+        return
+      }
+    } catch { }
+    if ((fullName || '').trim()) { await lookupExistingByPhoneAndName('phone') }
   }
 
   const generateToken = async () => {
-    if (!fullName.trim() || !phone.trim() || selectedTests.length===0) return
+    if (!fullName.trim() || !phone.trim() || selectedTests.length === 0) return
     try {
       // Resolve patient in Lab_Patient collection
       let patient = selectedPatient
-      if (patient){
+      if (patient) {
         const patch: any = {}
-        if ((fullName||'') !== (patient.fullName||'')) patch.fullName = fullName
-        if ((guardianName||'') !== (patient.fatherName||'')) patch.fatherName = guardianName
-        if ((gender||'') !== (patient.gender||'')) patch.gender = gender
-        if ((address||'') !== (patient.address||'')) patch.address = address
-        if ((phone||'') !== (patient.phoneNormalized||'')) patch.phone = phone
-        if ((cnic||'') !== (patient.cnicNormalized||'')) patch.cnic = cnic
-        if (Object.keys(patch).length){
+        if ((fullName || '') !== (patient.fullName || '')) patch.fullName = fullName
+        if ((guardianName || '') !== (patient.fatherName || '')) patch.fatherName = guardianName
+        if ((gender || '') !== (patient.gender || '')) patch.gender = gender
+        if ((address || '') !== (patient.address || '')) patch.address = address
+        if ((phone || '') !== (patient.phoneNormalized || '')) patch.phone = phone
+        if ((cnic || '') !== (patient.cnicNormalized || '')) patch.cnic = cnic
+        if (Object.keys(patch).length) {
           const upd = await diagnosticApi.updatePatient(String(patient._id), patch) as any
           patient = upd?.patient || patient
         }
@@ -267,7 +465,7 @@ export default function Diagnostic_TokenGenerator(){
 
       // Create diagnostic order
       const testIds = selected
-      const slipRows = selectedTests.map(t=>({ name: t.name, price: getEffectivePrice(t.id) }))
+      const slipRows = selectedTests.map(t => ({ name: t.name, price: getEffectivePrice(t.id) }))
       const created = await diagnosticApi.createOrder({
         patientId: String(patient._id),
         patient: {
@@ -283,8 +481,15 @@ export default function Diagnostic_TokenGenerator(){
         },
         tests: testIds,
         subtotal,
-        discount: Number(discount)||0,
+        discount: Number(discount) || 0,
         net,
+        payPreviousDues: paymentStatus === 'unpaid' ? false : payPreviousDues,
+        useAdvance: paymentStatus === 'unpaid' ? false : useAdvance,
+        amountReceived: paymentStatus === 'unpaid' ? 0 : Math.max(0, Number(amountReceivedNow || 0)),
+        paymentStatus,
+        receivedToAccountCode: paymentStatus === 'paid' ? (receivedToAccountCode || undefined) : undefined,
+        paymentMethod: paymentStatus === 'paid' ? paymentMethod : undefined,
+        accountNumberIban: paymentStatus === 'paid' && paymentMethod === 'Card' ? (accountNumberIban || undefined) : undefined,
         referringConsultant: referringConsultant || undefined,
         ...(corpCompanyId ? { corporateId: corpCompanyId } : {}),
         ...(corpPreAuthNo ? { corporatePreAuthNo: corpPreAuthNo } : {}),
@@ -294,7 +499,7 @@ export default function Diagnostic_TokenGenerator(){
 
       // If we are processing a referral, mark it completed
       if (fromReferralId) {
-        try { await hospitalApi.updateReferralStatus(fromReferralId, 'completed') } catch {}
+        try { await hospitalApi.updateReferralStatus(fromReferralId, 'completed') } catch { }
       }
 
       const tokenNo = created?.tokenNo || created?.order?.tokenNo || 'N/A'
@@ -305,20 +510,36 @@ export default function Diagnostic_TokenGenerator(){
         phone: phone.trim(),
         age: age || undefined,
         gender: gender || undefined,
-        mrn: patient.mrn || mrn || undefined,
+        mrn: patient.mrn || undefined,
         guardianRel: guardianRel || undefined,
         guardianName: guardianName || undefined,
         cnic: cnic || undefined,
         address: address || undefined,
         tests: slipRows,
         subtotal,
-        discount: Number(discount)||0,
+        discount: Number(discount) || 0,
         payable: net,
+        paymentStatus,
+        amountReceived: paymentStatus === 'unpaid' ? 0 : Math.max(0, Number(amountReceivedNow || 0)),
+        payPreviousDues: paymentStatus === 'unpaid' ? false : payPreviousDues,
+        useAdvance: paymentStatus === 'unpaid' ? false : useAdvance,
+        advanceApplied: paymentStatus === 'unpaid' ? 0 : paymentPreview.advanceApplied,
+        duesBefore: paymentPreview.duesBefore,
+        advanceBefore: paymentPreview.advanceBefore,
+        duesPaid: paymentStatus === 'unpaid' ? 0 : paymentPreview.duesPaid,
+        paidForToday: paymentStatus === 'unpaid' ? 0 : paymentPreview.paidForToday,
+        advanceAdded: paymentStatus === 'unpaid' ? 0 : paymentPreview.advanceAdded,
+        duesAfter: paymentPreview.duesAfter,
+        advanceAfter: paymentPreview.advanceAfter,
+        receptionistName: (payToAccounts.find(x => x.code === String(receivedToAccountCode || '').trim().toUpperCase())?.label) || undefined,
+        receivedToAccountCode: paymentStatus === 'paid' ? (String(receivedToAccountCode || '').trim() || undefined) : undefined,
+        paymentMethod: paymentStatus === 'paid' ? paymentMethod : undefined,
+        accountNumberIban: paymentStatus === 'paid' && paymentMethod === 'Card' ? (accountNumberIban || undefined) : undefined,
         createdAt,
       }
       setSlipData(data)
       setSlipOpen(true)
-    } catch (e: any){
+    } catch (e: any) {
       alert(e?.message || 'Failed to create order')
     }
   }
@@ -329,28 +550,24 @@ export default function Diagnostic_TokenGenerator(){
       <div className="rounded-xl border border-slate-200 bg-white p-4">
         <div className="text-base font-semibold text-slate-800">Patient Details</div>
         <div className="text-xs text-slate-500">Fill all required details to generate a token</div>
-        <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-3">
+        <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2">
           <div>
             <label className="mb-1 block text-xs font-medium text-slate-600">Phone *</label>
-            <input value={phone} onChange={e=>{ setPhone(e.target.value); skipLookupKeyRef.current = null; lastPromptKeyRef.current = null }} ref={phoneRef} onBlur={()=>lookupExistingByPhoneAndName('phone')} className="w-full rounded-md border border-slate-300 px-3 py-2" placeholder="03XXXXXXXXX" />
+            <input value={phone} onChange={e => { setPhone(e.target.value); skipLookupKeyRef.current = null; lastPromptKeyRef.current = null; lastPhonePromptRef.current = null }} ref={phoneRef} onBlur={onPhoneBlur} className="w-full rounded-md border border-slate-300 px-3 py-2" placeholder="03XXXXXXXXX" />
           </div>
           <div>
             <label className="mb-1 block text-xs font-medium text-slate-600">Patient Name *</label>
-            <input value={fullName} onChange={e=>{ setFullName(e.target.value); skipLookupKeyRef.current = null; lastPromptKeyRef.current = null }} ref={nameRef} onBlur={()=>lookupExistingByPhoneAndName('name')} className="w-full rounded-md border border-slate-300 px-3 py-2" placeholder="e.g. Muhammad Zain" />
-          </div>
-          <div>
-            <label className="mb-1 block text-xs font-medium text-slate-600">MR Number</label>
-            <input value={mrn} onChange={e=>setMrn(e.target.value)} onKeyDown={onMrnKeyDown} className="w-full rounded-md border border-slate-300 px-3 py-2" placeholder="MR-2401-000001" />
+            <input value={fullName} onChange={e => { setFullName(e.target.value); skipLookupKeyRef.current = null; lastPromptKeyRef.current = null }} ref={nameRef} onBlur={() => lookupExistingByPhoneAndName('name')} className="w-full rounded-md border border-slate-300 px-3 py-2" placeholder="e.g. Muhammad Zain" />
           </div>
         </div>
         <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-3">
           <div>
             <label className="mb-1 block text-xs font-medium text-slate-600">Age</label>
-            <input value={age} onChange={e=>setAge(e.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-2" placeholder="e.g. 22" />
+            <input value={age} onChange={e => setAge(e.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-2" placeholder="e.g. 22" />
           </div>
           <div>
             <label className="mb-1 block text-xs font-medium text-slate-600">Gender</label>
-            <select value={gender} onChange={e=>setGender(e.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-2">
+            <select value={gender} onChange={e => setGender(e.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-2">
               <option value="">Select gender</option>
               <option>Male</option>
               <option>Female</option>
@@ -359,7 +576,7 @@ export default function Diagnostic_TokenGenerator(){
           </div>
           <div>
             <label className="mb-1 block text-xs font-medium text-slate-600">Guardian S/O or D/O</label>
-            <select value={guardianRel} onChange={e=>setGuardianRel(e.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-2">
+            <select value={guardianRel} onChange={e => setGuardianRel(e.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-2">
               <option value="">Select</option>
               <option value="S/O">S/O</option>
               <option value="D/O">D/O</option>
@@ -370,15 +587,15 @@ export default function Diagnostic_TokenGenerator(){
         <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-3">
           <div>
             <label className="mb-1 block text-xs font-medium text-slate-600">Guardian Name</label>
-            <input value={guardianName} onChange={e=>setGuardianName(e.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-2" placeholder="e.g. Arif" />
+            <input value={guardianName} onChange={e => setGuardianName(e.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-2" placeholder="e.g. Arif" />
           </div>
           <div>
             <label className="mb-1 block text-xs font-medium text-slate-600">CNIC</label>
-            <input value={cnic} onChange={e=>setCnic(e.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-2" placeholder="#####-#######-#" />
+            <input value={cnic} onChange={e => setCnic(e.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-2" placeholder="#####-#######-#" />
           </div>
           <div>
             <label className="mb-1 block text-xs font-medium text-slate-600">Address</label>
-            <input value={address} onChange={e=>setAddress(e.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-2" placeholder="Street, City" />
+            <input value={address} onChange={e => setAddress(e.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-2" placeholder="Street, City" />
           </div>
         </div>
       </div>
@@ -387,12 +604,31 @@ export default function Diagnostic_TokenGenerator(){
       <div className="rounded-xl border border-slate-200 bg-white p-4">
         <div className="text-base font-semibold text-slate-800">Select Tests</div>
         <div className="text-xs text-slate-500">Tests are loaded from the Diagnostics → Tests page</div>
-        <div className="mt-3 space-y-2">
-          <input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Search test by name/code..." className="w-full rounded-md border border-slate-300 px-3 py-2" />
-          {filtered.length > 0 && (
+        {(testsLoading || testsLoadError || tests.length === 0) && (
+          <div className="mt-2 text-xs">
+            {testsLoading && <div className="text-slate-500">Loading tests…</div>}
+            {!testsLoading && testsLoadError && <div className="text-rose-600">{testsLoadError}</div>}
+            {!testsLoading && !testsLoadError && tests.length === 0 && <div className="text-amber-700">No tests found in database.</div>}
+          </div>
+        )}
+        <div className="mt-3 space-y-2" ref={testPickerRef}>
+          <input
+            value={query}
+            onFocus={() => setShowTestDropdown(true)}
+            onClick={() => setShowTestDropdown(true)}
+            onChange={e => { setQuery(e.target.value); setShowTestDropdown(true) }}
+            placeholder="Search test by name/code..."
+            className="w-full rounded-md border border-slate-300 px-3 py-2"
+          />
+          {showTestDropdown && filtered.length > 0 && (
             <div className="max-h-64 overflow-y-auto rounded-md border border-slate-200 bg-white shadow-sm">
               {filtered.map(t => (
-                <button key={t.id} onClick={()=>setSelected(prev=>[...prev, t.id])} className="flex w-full items-center justify-between px-3 py-2 text-left hover:bg-slate-50">
+                <button
+                  key={t.id}
+                  type="button"
+                  onClick={() => setSelected(prev => [...prev, t.id])}
+                  className="flex w-full items-center justify-between px-3 py-2 text-left hover:bg-slate-50"
+                >
                   <div>
                     <div className="text-sm font-medium text-slate-800">{t.name}</div>
                   </div>
@@ -401,16 +637,63 @@ export default function Diagnostic_TokenGenerator(){
               ))}
             </div>
           )}
-
           {selectedTests.length > 0 && (
             <div className="flex flex-wrap gap-2">
               {selectedTests.map(t => (
                 <span key={t.id} className="inline-flex items-center gap-2 rounded-md bg-slate-100 px-2 py-1 text-sm">
                   {t.name}
-                  <button onClick={()=>setSelected(prev=>prev.filter(x=>x!==t.id))} className="text-slate-500 hover:text-slate-700">×</button>
+                  <button onClick={() => setSelected(prev => prev.filter(x => x !== t.id))} className="text-slate-500 hover:text-slate-700">×</button>
                 </span>
               ))}
             </div>
+          )}
+        </div>
+      </div>
+
+      {/* Payment */}
+      <div className="rounded-xl border border-slate-200 bg-white p-4">
+        <div className="text-base font-semibold text-slate-800">Payment</div>
+        <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
+          <div>
+            <label className="mb-1 block text-xs font-medium text-slate-600">Payed to (Account)</label>
+            <select value={receivedToAccountCode} onChange={e => setReceivedToAccountCode(e.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-2" disabled={paymentStatus === 'unpaid'}>
+              <option value="">Select account</option>
+              {payToAccounts.map(a => (
+                <option key={a.code} value={a.code}>{a.label}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="mb-1 block text-xs font-medium text-slate-600">Payment Status</label>
+            <div className="flex flex-wrap items-center gap-6 rounded-lg border border-slate-200 bg-white p-3">
+              <label className="flex items-center gap-2 text-sm text-slate-700">
+                <input type="checkbox" checked={paymentStatus === 'paid'} onChange={() => setPaymentStatus('paid')} className="h-4 w-4" />
+                Paid
+              </label>
+              <label className="flex items-center gap-2 text-sm text-slate-700">
+                <input type="checkbox" checked={paymentStatus === 'unpaid'} onChange={() => setPaymentStatus('unpaid')} className="h-4 w-4" />
+                Unpaid
+              </label>
+            </div>
+          </div>
+
+          {paymentStatus !== 'unpaid' && (
+            <>
+              <div>
+                <label className="mb-1 block text-xs font-medium text-slate-600">Payment Method</label>
+                <select value={paymentMethod} onChange={e => setPaymentMethod(e.target.value as any)} className="w-full rounded-md border border-slate-300 px-3 py-2">
+                  <option value="Cash">Cash</option>
+                  <option value="Card">Card</option>
+                </select>
+              </div>
+
+              {paymentMethod === 'Card' && (
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-slate-600">Account Number/IBAN</label>
+                  <input value={accountNumberIban} onChange={e => setAccountNumberIban(e.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-2" placeholder="Enter account number or IBAN" />
+                </div>
+              )}
+            </>
           )}
         </div>
       </div>
@@ -431,15 +714,80 @@ export default function Diagnostic_TokenGenerator(){
           </div>
           <div className="flex items-center justify-between py-2">
             <div className="text-slate-600">Discount</div>
-            <input value={discount} onChange={e=>setDiscount(e.target.value)} className="w-40 rounded-md border border-slate-300 px-3 py-1.5 text-right" placeholder="0" />
+            <input value={discount} onChange={e => setDiscount(e.target.value)} className="w-40 rounded-md border border-slate-300 px-3 py-1.5 text-right" placeholder="0" />
           </div>
           <div className="flex items-center justify-between py-2 font-semibold">
             <div>Net Amount</div>
             <div>PKR {net.toLocaleString()}</div>
           </div>
         </div>
+
+        <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-3">
+          <div className="mb-2 text-sm font-semibold text-slate-800">Payment</div>
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+            <div>
+              <div className="text-xs font-medium text-slate-600">Previous Dues</div>
+              <div className="mt-1 text-sm text-slate-900">{accountLoading ? 'Loading...' : `PKR ${Number(account?.dues || 0).toLocaleString()}`}</div>
+            </div>
+            <div>
+              <div className="text-xs font-medium text-slate-600">Previous Advance</div>
+              <div className="mt-1 text-sm text-slate-900">{accountLoading ? 'Loading...' : `PKR ${Number(account?.advance || 0).toLocaleString()}`}</div>
+            </div>
+          </div>
+
+          <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-3">
+            <div>
+              <label className="mb-1 block text-xs font-medium text-slate-600">Amount Received Now</label>
+              <input
+                value={amountReceivedNow}
+                onChange={(e) => setAmountReceivedNow(e.target.value)}
+                disabled={paymentStatus === 'unpaid'}
+                className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm"
+                placeholder="0"
+              />
+            </div>
+
+            <div className="flex items-end">
+              <label className="flex items-center gap-2 text-sm text-slate-800">
+                <input
+                  type="checkbox"
+                  checked={payPreviousDues}
+                  onChange={(e) => setPayPreviousDues(e.target.checked)}
+                  disabled={paymentStatus === 'unpaid' || Number(account?.dues || 0) <= 0}
+                  className="h-4 w-4 rounded border-slate-300"
+                />
+                Pay Previous Dues
+              </label>
+            </div>
+
+            <div className="flex items-end">
+              <label className="flex items-center gap-2 text-sm text-slate-800">
+                <input
+                  type="checkbox"
+                  checked={useAdvance}
+                  onChange={(e) => setUseAdvance(e.target.checked)}
+                  disabled={paymentStatus === 'unpaid' || Number(account?.advance || 0) <= 0}
+                  className="h-4 w-4 rounded border-slate-300"
+                />
+                Use Advance
+              </label>
+            </div>
+          </div>
+
+          <div className="mt-3 grid grid-cols-1 gap-2 text-sm md:grid-cols-2">
+            <div className="flex items-center justify-between rounded-md bg-white px-3 py-2 border border-slate-200">
+              <div className="text-slate-600">Dues After</div>
+              <div className="font-semibold">PKR {Number(paymentPreview.duesAfter || 0).toLocaleString()}</div>
+            </div>
+            <div className="flex items-center justify-between rounded-md bg-white px-3 py-2 border border-slate-200">
+              <div className="text-slate-600">Advance After</div>
+              <div className="font-semibold">PKR {Number(paymentPreview.advanceAfter || 0).toLocaleString()}</div>
+            </div>
+          </div>
+        </div>
+
         <div className="mt-4 flex items-center justify-end gap-2">
-          <button onClick={generateToken} disabled={!fullName || !phone || selectedTests.length===0} className="rounded-md bg-violet-700 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-40">Generate Token</button>
+          <button onClick={generateToken} disabled={!fullName || !phone || selectedTests.length === 0} className="rounded-md bg-violet-700 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-40">Generate Token</button>
         </div>
       </div>
 
@@ -449,7 +797,7 @@ export default function Diagnostic_TokenGenerator(){
           <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-4">
             <div>
               <label className="mb-1 block text-xs font-medium text-slate-600">Corporate Company</label>
-              <select value={corpCompanyId} onChange={e=>setCorpCompanyId(e.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-2">
+              <select value={corpCompanyId} onChange={e => setCorpCompanyId(e.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-2">
                 <option value="">None</option>
                 {companies.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
               </select>
@@ -458,15 +806,15 @@ export default function Diagnostic_TokenGenerator(){
               <>
                 <div>
                   <label className="mb-1 block text-xs font-medium text-slate-600">Pre-Auth No</label>
-                  <input value={corpPreAuthNo} onChange={e=>setCorpPreAuthNo(e.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-2" placeholder="Optional" />
+                  <input value={corpPreAuthNo} onChange={e => setCorpPreAuthNo(e.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-2" placeholder="Optional" />
                 </div>
                 <div>
                   <label className="mb-1 block text-xs font-medium text-slate-600">Co-Pay %</label>
-                  <input value={corpCoPayPercent} onChange={e=>setCorpCoPayPercent(e.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-2" placeholder="0-100" />
+                  <input value={corpCoPayPercent} onChange={e => setCorpCoPayPercent(e.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-2" placeholder="0-100" />
                 </div>
                 <div>
                   <label className="mb-1 block text-xs font-medium text-slate-600">Coverage Cap</label>
-                  <input value={corpCoverageCap} onChange={e=>setCorpCoverageCap(e.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-2" placeholder="e.g., 5000" />
+                  <input value={corpCoverageCap} onChange={e => setCorpCoverageCap(e.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-2" placeholder="e.g., 5000" />
                 </div>
               </>
             )}
@@ -476,23 +824,91 @@ export default function Diagnostic_TokenGenerator(){
 
       {/* Slip modal */}
       {slipOpen && slipData && (
-        <Diagnostic_TokenSlip open={slipOpen} onClose={()=>setSlipOpen(false)} data={slipData} />
+        <Diagnostic_TokenSlip
+          open={slipOpen}
+          onClose={() => setSlipOpen(false)}
+          data={slipData}
+          user={(() => {
+            try {
+              const raw = localStorage.getItem('reception.session') || localStorage.getItem('hospital.session') || localStorage.getItem('diagnostic.user')
+              if (!raw) return undefined
+              const u = JSON.parse(raw)
+              return u?.username || u?.name || undefined
+            } catch {
+              return undefined
+            }
+          })()}
+        />
       )}
+
+      {selectPatientOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+          <div className="w-full max-w-2xl overflow-hidden rounded-xl bg-white shadow-2xl ring-1 ring-black/5">
+            <div className="flex items-center justify-between border-b border-slate-200 px-5 py-3">
+              <div className="text-base font-semibold text-slate-800">Select Patient</div>
+              <button
+                onClick={() => { setSelectPatientOpen(false); setPhoneMatches([]); setTimeout(() => phoneRef.current?.focus(), 0) }}
+                className="rounded-md border border-slate-300 px-3 py-1.5 text-sm"
+              >
+                Close
+              </button>
+            </div>
+
+            <div className="max-h-[70vh] overflow-y-auto p-4">
+              <div className="mb-3 text-sm text-slate-600">Found {phoneMatches.length} patients on this phone number. Select one to autofill.</div>
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                {phoneMatches.map((p, idx) => (
+                  <button
+                    key={p._id || p.mrn || idx}
+                    type="button"
+                    onClick={() => {
+                      applyPatientToForm(p)
+                      setSelectPatientOpen(false)
+                      setPhoneMatches([])
+                      showToast('success', 'Patient selected and autofilled')
+                    }}
+                    className="w-full rounded-lg border border-slate-200 p-4 text-left hover:border-violet-300 hover:bg-violet-50"
+                  >
+                    <div className="text-sm font-semibold text-slate-800">{p.fullName || 'N/A'}</div>
+                    <div className="mt-1 text-xs text-slate-600">MRN: {p.mrn || '-'}</div>
+                    <div className="text-xs text-slate-600">Phone: {p.phoneNormalized || '-'}</div>
+                    <div className="text-xs text-slate-600">Age: {p.age || '-'}</div>
+                    <div className="text-xs text-slate-600">Gender: {p.gender || '-'}</div>
+                    <div className="mt-1 text-xs text-slate-600">Guardian: {p.fatherName || '-'}</div>
+                    <div className="text-xs text-slate-600">CNIC: {p.cnicNormalized || p.cnic || '-'}</div>
+                    <div className="text-xs text-slate-600">Address: {p.address || '-'}</div>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 border-t border-slate-200 px-5 py-3">
+              <button
+                type="button"
+                onClick={() => { setSelectPatientOpen(false); setPhoneMatches([]); setTimeout(() => nameRef.current?.focus(), 0) }}
+                className="rounded-md border border-slate-300 px-3 py-1.5 text-sm"
+              >
+                Enter New Patient
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {confirmPatient && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
           <div className="w-full max-w-md rounded-xl bg-white shadow-2xl ring-1 ring-black/5">
             <div className="border-b border-slate-200 px-5 py-3 text-base font-semibold text-slate-800">Confirm Patient</div>
             <div className="px-5 py-4 text-sm whitespace-pre-wrap text-slate-700">{confirmPatient.summary}</div>
             <div className="flex items-center justify-end gap-2 border-t border-slate-200 px-5 py-3">
-              <button onClick={()=> { if (confirmPatient) skipLookupKeyRef.current = confirmPatient.key; setConfirmPatient(null); setTimeout(()=>{ if (focusAfterConfirm==='phone') phoneRef.current?.focus(); else if (focusAfterConfirm==='name') nameRef.current?.focus(); setFocusAfterConfirm(null) }, 0) }} className="rounded-md border border-slate-300 px-3 py-1.5 text-sm">Cancel</button>
-              <button onClick={()=>{
+              <button onClick={() => { if (confirmPatient) skipLookupKeyRef.current = confirmPatient.key; setConfirmPatient(null); setTimeout(() => { if (focusAfterConfirm === 'phone') phoneRef.current?.focus(); else if (focusAfterConfirm === 'name') nameRef.current?.focus(); setFocusAfterConfirm(null) }, 0) }} className="rounded-md border border-slate-300 px-3 py-1.5 text-sm">Cancel</button>
+              <button onClick={() => {
                 const p = confirmPatient.patient
-                try{
+                try {
                   setSelectedPatient(p)
                   setFullName(p.fullName || '')
                   setPhone(p.phoneNormalized || '')
-                  setMrn(p.mrn || '')
-                  setAge((p.age!=null && p.age!=='') ? String(p.age) : '')
+                  setAge((p.age != null && p.age !== '') ? String(p.age) : '')
                   if (p.gender) setGender(String(p.gender))
                   setGuardianName(p.fatherName || '')
                   if (p.guardianRel) setGuardianRel(String(p.guardianRel))
@@ -502,6 +918,12 @@ export default function Diagnostic_TokenGenerator(){
               }} className="rounded-md bg-violet-700 px-3 py-1.5 text-sm font-medium text-white">Apply</button>
             </div>
           </div>
+        </div>
+      )}
+
+      {toast && (
+        <div className={`fixed bottom-4 right-4 z-50 rounded-md px-4 py-2 text-sm shadow-lg ${toast.type === 'success' ? 'bg-emerald-600 text-white' : 'bg-rose-600 text-white'}`}>
+          {toast.message}
         </div>
       )}
     </div>

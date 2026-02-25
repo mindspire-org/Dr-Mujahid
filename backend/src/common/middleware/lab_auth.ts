@@ -8,9 +8,24 @@ export function labAuth(req: Request, res: Response, next: NextFunction) {
   if (!token) return res.status(401).json({ message: 'Unauthorized' })
   try {
     const payload = jwt.verify(token, env.JWT_SECRET) as any
-    if (String(payload?.scope || '') !== 'lab') return res.status(401).json({ message: 'Invalid token' })
-    ;(req as any).user = payload
-    next()
+    const scope = String(payload?.scope || '')
+    if (scope === 'lab') {
+      ;(req as any).user = payload
+      next()
+      return
+    }
+    if (scope === 'hospital') {
+      const role = String(payload?.role || '')
+      const permissions = (payload?.permissions && typeof payload.permissions === 'object') ? payload.permissions : null
+      const labPerm = permissions ? (permissions as any).lab : null
+      const canLab = Array.isArray(labPerm) && labPerm.length > 0
+      if (!canLab && role !== 'Admin') return res.status(401).json({ message: 'Invalid token' })
+      ;(req as any).user = payload
+      next()
+      return
+    }
+
+    return res.status(401).json({ message: 'Invalid token' })
   } catch {
     return res.status(401).json({ message: 'Invalid token' })
   }

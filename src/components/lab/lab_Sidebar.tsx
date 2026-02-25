@@ -5,6 +5,8 @@ import {
   CalendarDays, UserCog, ScrollText, Receipt, Droplets, PackageOpen, UserPlus, Wallet, Calculator, LogOut
 } from 'lucide-react'
 import { useState } from 'react'
+import { hospitalApi } from '../../utils/api'
+import PortalSwitcher from '../PortalSwitcher'
 
 type Item = { to: string; label: string; end?: boolean; icon: any }
 const nav: Item[] = [
@@ -24,7 +26,7 @@ const nav: Item[] = [
   // Blood Bank
   { to: '/lab/bb/donors', label: 'BB • Donors', icon: UserPlus },
   { to: '/lab/bb/inventory', label: 'BB • Inventory', icon: PackageOpen },
-  { to: '/lab/bb/receivers', label: 'BB • Receivers', icon: Droplets }, 
+  { to: '/lab/bb/receivers', label: 'BB • Receivers', icon: Droplets },
   { to: '/lab/staff-attendance', label: 'Staff Attendance', icon: CalendarCheck },
   { to: '/lab/staff-management', label: 'Staff Management', icon: Users },
   { to: '/lab/staff-settings', label: 'Staff Settings', icon: Cog },
@@ -40,8 +42,27 @@ const nav: Item[] = [
 export default function Lab_Sidebar({ collapsed = false, onExpand, collapseSignal: _collapseSignal }: { collapsed?: boolean; onExpand?: () => void; collapseSignal?: number }) {
   const navigate = useNavigate()
   const [logoutConfirmOpen, setLogoutConfirmOpen] = useState(false)
-  const logout = () => {
-    try { localStorage.removeItem('lab.session') } catch {}
+  const logout = async () => {
+    try {
+      const raw = localStorage.getItem('lab.session') || localStorage.getItem('hospital.session')
+      const u = raw ? JSON.parse(raw) : null
+      await hospitalApi.logoutHospitalUser(u?.username || 'lab')
+    } catch { }
+    try {
+      localStorage.removeItem('token')
+      localStorage.removeItem('hospital.session')
+      localStorage.removeItem('hospital.token')
+      localStorage.removeItem('lab.session')
+      localStorage.removeItem('lab.token')
+
+      const portals = ['doctor', 'reception', 'finance', 'diagnostic', 'pharmacy', 'aesthetic', 'therapy', 'therapyLab', 'counselling']
+      portals.forEach(p => {
+        localStorage.removeItem(`${p}.session`)
+        localStorage.removeItem(`${p}.token`)
+        localStorage.removeItem(`${p}.user`)
+      })
+      localStorage.removeItem('pharma_user')
+    } catch { }
     navigate('/lab/login')
   }
   const width = collapsed ? 'md:w-16' : 'md:w-64'
@@ -58,7 +79,7 @@ export default function Lab_Sidebar({ collapsed = false, onExpand, collapseSigna
               key={item.to}
               to={item.to}
               title={collapsed ? item.label : undefined}
-              className={({ isActive }) => `rounded-md px-3 py-2 text-sm font-medium flex items-center ${collapsed?'justify-center gap-0':'gap-2'} ${isActive ? 'bg-white/10 text-white' : 'text-white/80 hover:bg-white/5'}`}
+              className={({ isActive }) => `rounded-md px-3 py-2 text-sm font-medium flex items-center ${collapsed ? 'justify-center gap-0' : 'gap-2'} ${isActive ? 'bg-white/10 text-white' : 'text-white/80 hover:bg-white/5'}`}
               end={item.end}
               onClick={() => {
                 if (collapsed) onExpand?.()
@@ -71,6 +92,7 @@ export default function Lab_Sidebar({ collapsed = false, onExpand, collapseSigna
         })}
 
         <div className="pt-2">
+          <PortalSwitcher collapsed={collapsed} onExpand={onExpand} />
           <div className="mx-2 border-t" style={{ borderColor: 'rgba(255,255,255,0.12)' }} />
           <button
             onClick={() => setLogoutConfirmOpen(true)}

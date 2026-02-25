@@ -4,20 +4,42 @@ import { useNavigate } from 'react-router-dom'
 
 export default function Hospital_Login() {
   const navigate = useNavigate()
+  const DEFAULT_HOSPITAL_NAME = "Men's Care Clinic"
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState('')
-  const [theme] = useState<'light'|'dark'>(()=>{
-    try { return (localStorage.getItem('hospital.theme') as 'light'|'dark') || 'light' } catch { return 'light' }
+  const [brand, setBrand] = useState<{ name?: string; logoDataUrl?: string }>(() => {
+    try {
+      const raw = localStorage.getItem('hospital.settings')
+      const s = raw ? JSON.parse(raw) : null
+      const name = String(s?.name || '').trim()
+      return { name: name || DEFAULT_HOSPITAL_NAME, logoDataUrl: s?.logoDataUrl }
+    } catch {
+      return { name: DEFAULT_HOSPITAL_NAME, logoDataUrl: undefined }
+    }
   })
-  useEffect(()=>{
+  const [theme] = useState<'light' | 'dark'>(() => {
+    try { return (localStorage.getItem('hospital.theme') as 'light' | 'dark') || 'light' } catch { return 'light' }
+  })
+  useEffect(() => {
     const html = document.documentElement
-    try { html.classList.toggle('dark', theme === 'dark') } catch {}
-    return () => { try { html.classList.remove('dark') } catch {} }
+    try { html.classList.toggle('dark', theme === 'dark') } catch { }
+    return () => { try { html.classList.remove('dark') } catch { } }
   }, [theme])
 
-  const logoSrc = `${(import.meta as any).env?.BASE_URL || '/'}hospital_icon.jpeg`
+  useEffect(() => {
+    const onUpd = (e: any) => {
+      const d = e?.detail || {}
+      const name = String(d?.name || '').trim()
+      setBrand({ name: name || DEFAULT_HOSPITAL_NAME, logoDataUrl: d?.logoDataUrl })
+    }
+    try { window.addEventListener('hospital:settings-updated', onUpd as any) } catch { }
+    return () => { try { window.removeEventListener('hospital:settings-updated', onUpd as any) } catch { } }
+  }, [])
+
+  const fallbackLogoSrc = `${(import.meta as any).env?.BASE_URL || '/'}hospital_icon.jpeg`
+  const logoSrc = brand.logoDataUrl || fallbackLogoSrc
 
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -34,28 +56,50 @@ export default function Hospital_Login() {
     try {
       const res: any = await hospitalApi.loginHospitalUser(uname, pwd)
       const u = res?.user
+      const token = res?.token
+      const permissions = (u?.permissions && typeof u.permissions === 'object') ? u.permissions : undefined
 
-      if (u?.role === 'Admin') {
-        localStorage.setItem('hospital.session', JSON.stringify({ username: u.username, role: u.role }))
+      // Restrict Hospital login: Finance and Reception must use their own login pages
+      const roleLower = String(u?.role || '').toLowerCase()
+      if (roleLower === 'finance') {
+        setError('Finance users must login from Finance portal')
+        return
+      }
+      if (roleLower === 'reception') {
+        setError('Reception users must login from Reception portal')
+        return
+      }
+      if (roleLower === 'doctor') {
+        setError('Doctor users must login from Doctor portal')
+        return
+      }
+
+      if (token) {
+        try {
+          localStorage.setItem('hospital.token', String(token))
+          localStorage.setItem('token', String(token))
+        } catch { }
+      }
+
+      // Master session
+      try {
+        localStorage.setItem('hospital.session', JSON.stringify({ username: u.username, role: u.role, permissions }))
+      } catch { }
+
+      const can = (key: string) => {
+        if (!permissions) return false
+        const arr = (permissions as any)?.[key]
+        return Array.isArray(arr) && arr.length > 0
+      }
+
+      if (can('hospital') || u?.role === 'Admin') {
         navigate('/hospital')
         return
       }
 
-      if (u?.role === 'Doctor') {
-        localStorage.setItem('doctor.session', JSON.stringify({ username: u.username, role: u.role }))
-        navigate('/doctor')
-        return
-      }
-
-      if (u?.role === 'Reception') {
-        localStorage.setItem('reception.session', JSON.stringify({ username: u.username, role: u.role }))
-        navigate('/reception')
-        return
-      }
-
-      if (u?.role === 'Finance') {
-        localStorage.setItem('finance.session', JSON.stringify({ username: u.username, role: u.role }))
-        navigate('/finance')
+      if (can('therapyLab') || u?.role === 'Therapy & Lab Reports Entry' || u?.role === 'Staff') {
+        try { localStorage.setItem('therapyLab.session', JSON.stringify({ username: u.username, role: u.role, permissions })) } catch { }
+        navigate('/therapy-lab/lab-reports-entry')
         return
       }
 
@@ -78,7 +122,7 @@ export default function Hospital_Login() {
           <div className="absolute top-1/3 right-1/4 h-20 w-20 bg-gradient-to-br from-indigo-400/10 to-sky-600/10 backdrop-blur-sm rounded-xl" style={{ transform: 'rotateX(60deg) rotateZ(-45deg)', animation: 'float 7s ease-in-out infinite', animationDelay: '2s' }} />
         </div>
 
-        <style>{`@keyframes float{0%,100%{transform:translateY(0px) rotateX(45deg) rotateZ(45deg)}50%{transform:translateY(-20px) rotateX(55deg) rotateZ(50deg)}}@keyframes rotate3d{0%{transform:perspective(1000px) rotateY(0deg) rotateX(10deg)}100%{transform:perspective(1000px) rotateY(360deg) rotateX(10deg)}}.card-3d{transform-style:preserve-3d;transition:transform .6s cubic-bezier(.23,1,.32,1)}.card-3d:hover{transform:perspective(1000px) rotateY(5deg) rotateX(-5deg) scale(1.02)}`}</style>
+        <style>{`@keyframes float{0%,100%{transform:translateY(0px) rotateX(45deg) rotateZ(45deg)}50%{transform:translateY(-20px) rotateX(55deg) rotateZ(50deg)}}@keyframes rotate3d{0%{transform:perspective(1000px) rotateY(0deg) rotateX(10deg)}100%{transform:perspective(1000px) rotateY(360deg) rotateX(10deg)}}.card-3d{transform-style:preserve-3d;transition:transform .6s cubic-bezier(.23,1,.32,1)}.card-3d:hover{transform:none}`}</style>
 
         <div className="card-3d relative w-full max-w-md overflow-hidden rounded-3xl border border-white/10 bg-white/5 shadow-2xl backdrop-blur-2xl">
           <div className="absolute inset-0 bg-gradient-to-br from-white/10 via-white/5 to-transparent" />
@@ -89,7 +133,7 @@ export default function Hospital_Login() {
                   <img src={logoSrc} alt="Healthspire" className="h-full w-full object-cover" />
                 </div>
               </div>
-              <h1 className="text-3xl font-black bg-gradient-to-r from-sky-200 via-blue-200 to-indigo-200 bg-clip-text text-transparent mb-2">HealthSpire</h1>
+              <h1 className="text-3xl font-black bg-gradient-to-r from-sky-200 via-blue-200 to-indigo-200 bg-clip-text text-transparent mb-2">{String(brand.name || '').trim() || DEFAULT_HOSPITAL_NAME}</h1>
               <p className="text-sm text-white/60 font-medium">Hospital Management System</p>
             </div>
 
@@ -99,9 +143,9 @@ export default function Hospital_Login() {
                   <label className="mb-2 block text-sm font-bold text-white/90">Username</label>
                   <div className="relative group">
                     <div className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-sky-300/60 transition-colors group-focus-within:text-sky-300">
-                      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="h-5 w-5"><path d="M12 12a4 4 0 1 0-4-4 4 4 0 0 0 4 4Zm0 2c-4.42 0-8 2-8 4.5V20h16v-1.5c0-2.5-3.58-4.5-8-4.5Z"/></svg>
+                      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="h-5 w-5"><path d="M12 12a4 4 0 1 0-4-4 4 4 0 0 0 4 4Zm0 2c-4.42 0-8 2-8 4.5V20h16v-1.5c0-2.5-3.58-4.5-8-4.5Z" /></svg>
                     </div>
-                    <input type="text" value={username} onChange={(e)=>setUsername(e.target.value)} className="w-full rounded-2xl border-2 border-white/10 bg-white/5 backdrop-blur-sm px-12 py-3.5 text-white placeholder-white/40 outline-none transition-all focus:border-sky-400/50 focus:bg-white/10 focus:ring-4 focus:ring-sky-400/20" placeholder="Enter your username" autoComplete="username" />
+                    <input type="text" value={username} onChange={(e) => setUsername(e.target.value)} className="w-full rounded-2xl border-2 border-white/10 bg-white/5 backdrop-blur-sm px-12 py-3.5 text-white placeholder-white/40 outline-none transition-all focus:border-sky-400/50 focus:bg-white/10 focus:ring-4 focus:ring-sky-400/20" placeholder="Enter your username" autoComplete="username" />
                   </div>
                 </div>
 
@@ -109,14 +153,14 @@ export default function Hospital_Login() {
                   <label className="mb-2 block text-sm font-bold text-white/90">Password</label>
                   <div className="relative group">
                     <div className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-blue-300/60 transition-colors group-focus-within:text-blue-300">
-                      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="h-5 w-5"><path d="M17 8h-1V6a4 4 0 0 0-8 0v2H7a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-8a2 2 0 0 0-2-2Zm-7-2a2 2 0 0 1 4 0v2h-4Z"/></svg>
+                      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="h-5 w-5"><path d="M17 8h-1V6a4 4 0 0 0-8 0v2H7a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-8a2 2 0 0 0-2-2Zm-7-2a2 2 0 0 1 4 0v2h-4Z" /></svg>
                     </div>
-                    <input type={showPassword ? 'text' : 'password'} value={password} onChange={(e)=>setPassword(e.target.value)} className="w-full rounded-2xl border-2 border-white/10 bg-white/5 backdrop-blur-sm px-12 py-3.5 pr-14 text-white placeholder-white/40 outline-none transition-all focus:border-blue-400/50 focus:bg-white/10 focus:ring-4 focus:ring-blue-400/20" placeholder="Enter your password" autoComplete="current-password" />
-                    <button type="button" onClick={()=>setShowPassword(s=>!s)} className="absolute right-4 top-1/2 -translate-y-1/2 text-white/50 hover:text-white" aria-label={showPassword ? 'Hide password' : 'Show password'}>
+                    <input type={showPassword ? 'text' : 'password'} value={password} onChange={(e) => setPassword(e.target.value)} className="w-full rounded-2xl border-2 border-white/10 bg-white/5 backdrop-blur-sm px-12 py-3.5 pr-14 text-white placeholder-white/40 outline-none transition-all focus:border-blue-400/50 focus:bg-white/10 focus:ring-4 focus:ring-blue-400/20" placeholder="Enter your password" autoComplete="current-password" />
+                    <button type="button" onClick={() => setShowPassword(s => !s)} className={`absolute right-4 top-1/2 -translate-y-1/2 ${theme === 'dark' ? 'text-white/50 hover:text-white' : 'text-slate-700 hover:text-slate-900'}`} aria-label={showPassword ? 'Hide password' : 'Show password'}>
                       {showPassword ? (
-                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="h-5 w-5"><path d="M3.53 2.47 2.47 3.53 5.3 6.36A11.6 11.6 0 0 0 1.4 12c2.1 4.4 6.33 7.5 10.6 7.5 2.07 0 4.1-.66 5.9-1.84l2.6 2.6 1.06-1.06L3.53 2.47ZM12 7.5c.63 0 1.22.18 1.72.48l-5.7 5.7A4.5 4.5 0 0 1 12 7.5Zm0-3c-4.27 0-8.5 3.1-10.6 7.5a12.8 12.8 0 0 0 3 4.05l2.14-2.14A6 6 0 0 1 18 12c0-.52-.06-1.02-.18-1.5H20c-2.1-4.4-6.33-7.5-10.6-7.5Z"/></svg>
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="h-5 w-5"><path d="M3.53 2.47 2.47 3.53 5.3 6.36A11.6 11.6 0 0 0 1.4 12c2.1 4.4 6.33 7.5 10.6 7.5 2.07 0 4.1-.66 5.9-1.84l2.6 2.6 1.06-1.06L3.53 2.47ZM12 7.5c.63 0 1.22.18 1.72.48l-5.7 5.7A4.5 4.5 0 0 1 12 7.5Zm0-3c-4.27 0-8.5 3.1-10.6 7.5a12.8 12.8 0 0 0 3 4.05l2.14-2.14A6 6 0 0 1 18 12c0-.52-.06-1.02-.18-1.5H20c-2.1-4.4-6.33-7.5-10.6-7.5Z" /></svg>
                       ) : (
-                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="h-5 w-5"><path d="M12 4.5c-4.27 0-8.5 3.1-10.6 7.5 2.1 4.4 6.33 7.5 10.6 7.5s8.5-3.1 10.6-7.5C20.5 7.6 16.27 4.5 12 4.5Zm0 12a4.5 4.5 0 1 1 0-9 4.5 4.5 0 0 1 0 9Zm0-2a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5Z"/></svg>
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="h-5 w-5"><path d="M12 4.5c-4.27 0-8.5 3.1-10.6 7.5 2.1 4.4 6.33 7.5 10.6 7.5s8.5-3.1 10.6-7.5C20.5 7.6 16.27 4.5 12 4.5Zm0 12a4.5 4.5 0 1 1 0-9 4.5 4.5 0 0 1 0 9Zm0-2a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5Z" /></svg>
                       )}
                     </button>
                   </div>
@@ -130,7 +174,7 @@ export default function Hospital_Login() {
                   <div className="absolute inset-0 bg-gradient-to-r from-sky-400 via-blue-400 to-indigo-500 opacity-0 transition-opacity group-hover:opacity-100" />
                   <span className="relative flex items-center justify-center gap-2">
                     Login
-                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="h-5 w-5 transition-transform group-hover:translate-x-1"><path d="M13.3 17.3 18.6 12l-5.3-5.3-1.4 1.4 3.2 3.2H4v2h11.1l-3.2 3.2 1.4 1.5Z"/></svg>
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="h-5 w-5 transition-transform group-hover:translate-x-1"><path d="M13.3 17.3 18.6 12l-5.3-5.3-1.4 1.4 3.2 3.2H4v2h11.1l-3.2 3.2 1.4 1.5Z" /></svg>
                   </span>
                 </button>
                 <button
@@ -138,14 +182,14 @@ export default function Hospital_Login() {
                   onClick={() => navigate('/')}
                   className="mt-3 w-full rounded-2xl border-2 border-white/20 bg-white/5 px-4 py-3 font-semibold text-white/90 hover:text-white hover:bg-white/10 focus:outline-none focus:ring-4 focus:ring-sky-400/30 transition-colors flex items-center justify-center gap-2"
                 >
-                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="h-5 w-5"><path d="M10 19 3 12l7-7 1.4 1.4L6.8 11H21v2H6.8l4.6 4.6L10 19Z"/></svg>
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="h-5 w-5"><path d="M10 19 3 12l7-7 1.4 1.4L6.8 11H21v2H6.8l4.6 4.6L10 19Z" /></svg>
                   <span>Back to Portal</span>
                 </button>
               </form>
             </div>
 
             <div className="border-t border-white/10 px-8 py-4 text-center">
-              <p className="text-xs text-white/40">© 2026@healthspire.org</p>
+              <p className="text-xs text-white/40">©Developed by HealthSpire. All rights reserved.</p>
             </div>
           </div>
         </div>

@@ -24,11 +24,12 @@ export default function Pharmacy_PrescriptionIntake(){
         }
       } catch {}
       setHeader({ patient: patName, mrn, doctor: prescription?.encounterId?.doctorId?.name || '-', date: dt.toLocaleString() })
-      const mapped = (prescription?.items || []).map((m: any) => ({
+      const src = (prescription?.medicine || prescription?.items || []) as any[]
+      const mapped = src.map((m: any) => ({
         name: String(m.name||'').trim(),
         frequency: m.frequency || undefined,
         duration: m.duration || undefined,
-        qty: (()=>{ const n = parseInt(String(m.dose||'').replace(/[^\d]/g,'')); return isNaN(n) || n<=0 ? 1 : n })(),
+        qty: (()=>{ const n = parseInt(String(m.qty ?? m.quantity ?? m.dose ?? '').replace(/[^\d]/g,'')); return isNaN(n) || n<=0 ? 1 : n })(),
       }))
       setItems(mapped)
       setError('')

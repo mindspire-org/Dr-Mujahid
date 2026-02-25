@@ -10,7 +10,19 @@ type Token = {
   patientName: string
   mrNo: string
   age?: string
+  patientId?: string
   encounterId?: string
+}
+
+type PrevLabReportsEntry = {
+  _id: string
+  submittedAt?: string
+  createdAt?: string
+  hxBy?: string
+  hxDate?: string
+  labInformation?: any
+  semenAnalysis?: any
+  tests?: any[]
 }
 
 type LabTestRow = {
@@ -181,18 +193,33 @@ const todayIso = new Date().toISOString().slice(0, 10)
 
 export default function Hospital_LabReportsEntry() {
   const [searchParams] = useSearchParams()
-  const [from, setFrom] = useState<string>('')
-  const [to, setTo] = useState<string>('')
+  const [from, setFrom] = useState<string>(todayIso)
+  const [to, setTo] = useState<string>(todayIso)
   const [tokens, setTokens] = useState<Token[]>([])
+  const [labSavedTokenIds, setLabSavedTokenIds] = useState<string[]>([])
   const [patientKey, setPatientKey] = useState<string>('')
   const [hxBy, setHxBy] = useState<string>('')
   const [hxDate, setHxDate] = useState<string>(todayIso)
   const [saving, setSaving] = useState(false)
   const [toast, setToast] = useState<null | { type: 'success' | 'error'; message: string }>(null)
 
+  const [prevEntries, setPrevEntries] = useState<PrevLabReportsEntry[]>([])
+  const [prevEntryId, setPrevEntryId] = useState<string>('')
+
   const showToast = (type: 'success' | 'error', message: string) => {
     setToast({ type, message })
     setTimeout(() => setToast(null), 2500)
+  }
+
+  const resetAllFields = () => {
+    setPatientKey('')
+    setPrevEntryId('')
+    setPrevEntries([])
+    setHxBy('')
+    setHxDate(todayIso)
+    setLabInformation(EMPTY_LAB_INFORMATION)
+    setSemenAnalysis(EMPTY_SEMEN_ANALYSIS)
+    setTests([{ testName: '', normalValue: '', result: '', status: '' }])
   }
 
   const [tests, setTests] = useState<LabTestRow[]>([
@@ -212,6 +239,7 @@ export default function Hospital_LabReportsEntry() {
           patientName: String(t.patientId?.fullName || t.patientName || '-'),
           mrNo: String(t.patientId?.mrn || t.mrn || '-'),
           age: t.patientId?.age != null ? String(t.patientId.age) : (t.patientId?.patientAge != null ? String(t.patientId.patientAge) : undefined),
+          patientId: t.patientId?._id != null ? String(t.patientId._id) : (t.patientId != null ? String(t.patientId) : undefined),
           encounterId: t.encounterId != null ? String(t.encounterId) : undefined,
         }))
         setTokens(items)
@@ -220,6 +248,33 @@ export default function Hospital_LabReportsEntry() {
       }
     })()
   }, [from, to])
+
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      try {
+        if (String(from || '') !== todayIso || String(to || '') !== todayIso) { setLabSavedTokenIds([]); return }
+        const mine = tokens.filter(t => !!t.encounterId)
+        const checks = await Promise.all(
+          mine.map(async (t) => {
+            try {
+              const res: any = await hospitalApi.getLabReportsEntry(String(t.encounterId))
+              const doc = res?.labReportsEntry
+              const has = !!(doc?._id) && (doc?.tests != null || doc?.labInformation != null || doc?.semenAnalysis != null || doc?.hxBy != null || doc?.hxDate != null)
+              return has ? String(t.id) : ''
+            } catch {
+              return ''
+            }
+          })
+        )
+        const ids = checks.filter(Boolean)
+        if (!cancelled) setLabSavedTokenIds(ids)
+      } catch {
+        if (!cancelled) setLabSavedTokenIds([])
+      }
+    })()
+    return () => { cancelled = true }
+  }, [tokens, from, to, todayIso])
 
   useEffect(() => {
     const tokenId = (searchParams.get('tokenId') || '').trim()
@@ -233,18 +288,36 @@ export default function Hospital_LabReportsEntry() {
   }, [tokens, searchParams])
 
   const patients = useMemo(() => {
+    const excludeSavedToday = String(from || '') === todayIso && String(to || '') === todayIso
+    const savedSet = new Set(excludeSavedToday ? labSavedTokenIds.map(String) : [])
     const map = new Map<string, { key: string; label: string }>()
     for (const t of tokens) {
       const key = t.id
       if (!key) continue
+      if (savedSet.has(String(key))) continue
       const label = `${t.patientName} • ${t.mrNo}`
       if (!map.has(key)) map.set(key, { key, label })
     }
     return Array.from(map.values())
-  }, [tokens])
+  }, [tokens, from, to, todayIso, labSavedTokenIds])
 
   const selectedToken = useMemo(() => tokens.find(t => t.id === patientKey) || null, [tokens, patientKey])
   const selectedEncounterId = selectedToken?.encounterId
+
+  useEffect(() => {
+    if (!patientKey) return
+    const excludeSavedToday = String(from || '') === todayIso && String(to || '') === todayIso
+    if (!excludeSavedToday) return
+    if (!labSavedTokenIds.includes(String(patientKey))) return
+    setPatientKey('')
+    setPrevEntryId('')
+    setPrevEntries([])
+    setHxBy('')
+    setHxDate(todayIso)
+    setLabInformation(EMPTY_LAB_INFORMATION)
+    setSemenAnalysis(EMPTY_SEMEN_ANALYSIS)
+    setTests([{ testName: '', normalValue: '', result: '', status: '' }])
+  }, [patientKey, labSavedTokenIds, from, to, todayIso])
 
   useEffect(() => {
     const encId = selectedEncounterId
@@ -271,6 +344,36 @@ export default function Hospital_LabReportsEntry() {
       }
     })()
   }, [selectedEncounterId])
+
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      try {
+        setPrevEntries([])
+        setPrevEntryId('')
+        const pid = selectedToken?.patientId
+        if (!pid) return
+        const res: any = await hospitalApi.listLabReportsEntries({ patientId: pid, limit: 100 })
+        const rows: PrevLabReportsEntry[] = (res?.labReportsEntries || []).map((r: any) => ({
+          _id: String(r._id || r.id || ''),
+          submittedAt: r.submittedAt ? String(r.submittedAt) : undefined,
+          createdAt: r.createdAt ? String(r.createdAt) : undefined,
+          hxBy: r.hxBy != null ? String(r.hxBy) : undefined,
+          hxDate: r.hxDate != null ? String(r.hxDate) : undefined,
+          labInformation: r.labInformation,
+          semenAnalysis: r.semenAnalysis,
+          tests: r.tests,
+        })).filter((x: PrevLabReportsEntry) => !!x._id)
+        if (!cancelled) setPrevEntries(rows)
+      } catch {
+        if (!cancelled) {
+          setPrevEntries([])
+          setPrevEntryId('')
+        }
+      }
+    })()
+    return () => { cancelled = true }
+  }, [selectedToken?.patientId, selectedToken?.id])
 
   return (
     <div className="w-full px-2 sm:px-4">
@@ -301,6 +404,35 @@ export default function Hospital_LabReportsEntry() {
         >
           Reset
         </button>
+
+        <div className="flex-1" />
+
+        <select
+          value={prevEntryId}
+          onChange={e => {
+            const id = String(e.target.value || '')
+            setPrevEntryId(id)
+            const r = prevEntries.find((x: PrevLabReportsEntry) => x._id === id)
+            if (!r) return
+            setHxBy(String(r.hxBy || ''))
+            setHxDate(String(r.hxDate || todayIso))
+            setLabInformation({ ...EMPTY_LAB_INFORMATION, ...(r.labInformation || {}) })
+            setSemenAnalysis({ ...EMPTY_SEMEN_ANALYSIS, ...(r.semenAnalysis || {}) })
+            const list = Array.isArray(r.tests) ? r.tests : []
+            setTests(list.length ? (list as any) : [{ testName: '', normalValue: '', result: '', status: '' }])
+          }}
+          className="rounded-md border border-slate-300 px-3 py-2 text-xs"
+          disabled={!selectedToken?.patientId || prevEntries.length === 0}
+        >
+          <option value="">Previous Entries</option>
+          {prevEntries.map(r => {
+            const when = r.submittedAt || r.createdAt || ''
+            const label = when ? new Date(when).toLocaleString() : r._id
+            return (
+              <option key={r._id} value={r._id}>{label}</option>
+            )
+          })}
+        </select>
       </div>
 
       <div className="mt-4 space-y-4 rounded-xl border border-slate-200 bg-white p-5">
@@ -322,10 +454,13 @@ export default function Hospital_LabReportsEntry() {
           </div>
 
           <div>
-            <label className="mb-1 block text-sm text-slate-700">Hx by (History Taker)</label>
-            <div className="flex flex-wrap items-center gap-2">
+            <label className="mb-1 block text-sm text-slate-700">Reports Entered By</label>
+            <div className="flex flex-wrap items-end gap-2">
               <input value={hxBy} onChange={e => setHxBy(e.target.value)} className="min-w-[180px] flex-1 rounded-md border border-slate-300 px-3 py-2 text-sm" />
-              <input type="date" value={hxDate} onChange={e => setHxDate(e.target.value)} className="w-40 rounded-md border border-slate-300 px-3 py-2 text-sm" />
+              <div>
+                <label className="mb-1 block text-sm text-slate-700">Reports Entered at</label>
+                <input type="date" value={hxDate} onChange={e => setHxDate(e.target.value)} className="w-40 rounded-md border border-slate-300 px-3 py-2 text-sm" />
+              </div>
             </div>
           </div>
         </div>
@@ -489,8 +624,8 @@ export default function Hospital_LabReportsEntry() {
                     const missing: string[] = []
                     const encId = selectedEncounterId
                     if (!encId) missing.push('Patient')
-                    if (!hxBy.trim()) missing.push('Hx by')
-                    if (!hxDate.trim()) missing.push('Date')
+                    if (!hxBy.trim()) missing.push('Reports Entered By')
+                    if (!hxDate.trim()) missing.push('Reports Entered at')
 
                     if (missing.length) {
                       showToast('error', `Please enter: ${missing.join(', ')}`)
@@ -511,6 +646,10 @@ export default function Hospital_LabReportsEntry() {
                         tests,
                       })
                       showToast('success', 'Submitted')
+                      if (String(from || '') === todayIso && String(to || '') === todayIso && selectedToken?.id) {
+                        setLabSavedTokenIds(s => (s.includes(String(selectedToken.id)) ? s : [...s, String(selectedToken.id)]))
+                      }
+                      resetAllFields()
                     } catch {
                       showToast('error', 'Failed to submit')
                     } finally {

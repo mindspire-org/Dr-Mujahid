@@ -2,6 +2,11 @@
 
 .home-hero { perspective: 1000px; }
 
+@keyframes rotate3d {
+  0% { transform: perspective(1000px) rotateY(0deg) rotateX(10deg); }
+  100% { transform: perspective(1000px) rotateY(360deg) rotateX(10deg); }
+}
+
 .home-hero-tilt {
   display: inline-block;
   transform-style: preserve-3d;

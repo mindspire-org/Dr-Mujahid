@@ -27,6 +27,22 @@ const OrderSchema = new Schema({
   subtotal: { type: Number, default: 0 },
   discount: { type: Number, default: 0 },
   net: { type: Number, default: 0 },
+  duesBefore: { type: Number, default: 0 },
+  advanceBefore: { type: Number, default: 0 },
+  payPreviousDues: { type: Boolean, default: false },
+  useAdvance: { type: Boolean, default: false },
+  advanceApplied: { type: Number, default: 0 },
+  amountReceived: { type: Number, default: 0 },
+  duesPaid: { type: Number, default: 0 },
+  paidForToday: { type: Number, default: 0 },
+  advanceAdded: { type: Number, default: 0 },
+  duesAfter: { type: Number, default: 0 },
+  advanceAfter: { type: Number, default: 0 },
+  receptionistName: { type: String },
+  paymentMethod: { type: String },
+  accountNumberIban: { type: String },
+  receivedToAccountCode: { type: String },
+  paymentStatus: { type: String, enum: ['paid','unpaid'], default: 'paid', index: true },
   tokenNo: { type: String },
   status: { type: String, enum: ['received','completed','returned'], default: 'received' },
   sampleTime: { type: String },
@@ -55,6 +71,22 @@ export type DiagnosticOrderDoc = {
   subtotal: number
   discount: number
   net: number
+  duesBefore?: number
+  advanceBefore?: number
+  payPreviousDues?: boolean
+  useAdvance?: boolean
+  advanceApplied?: number
+  amountReceived?: number
+  duesPaid?: number
+  paidForToday?: number
+  advanceAdded?: number
+  duesAfter?: number
+  advanceAfter?: number
+  receptionistName?: string
+  paymentMethod?: string
+  accountNumberIban?: string
+  receivedToAccountCode?: string
+  paymentStatus?: 'paid'|'unpaid'
   tokenNo?: string
   status: 'received'|'completed'|'returned'
   sampleTime?: string

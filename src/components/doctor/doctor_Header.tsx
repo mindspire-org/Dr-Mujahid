@@ -8,11 +8,23 @@ type Props = { onToggleSidebar?: () => void; collapsed?: boolean; onToggleTheme?
 
 export default function Doctor_Header({ onToggleSidebar, collapsed, onToggleTheme, theme }: Props) {
   const [doc, setDoc] = useState<DoctorSession | null>(null)
+  const [displayUser, setDisplayUser] = useState<string>('—')
   useEffect(() => {
     try {
       const raw = localStorage.getItem('doctor.session')
       setDoc(raw ? JSON.parse(raw) : null)
     } catch { setDoc(null) }
+  }, [])
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem('doctor.session') || localStorage.getItem('hospital.session') || '{}'
+      const s = JSON.parse(raw)
+      const name = String(s?.username || s?.fullName || s?.name || '').trim()
+      setDisplayUser(name || '—')
+    } catch {
+      setDisplayUser('—')
+    }
   }, [])
   useEffect(() => {
     try {
@@ -88,7 +100,7 @@ export default function Doctor_Header({ onToggleSidebar, collapsed, onToggleThem
               <svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='currentColor' className='h-4 w-4'><path d='M7.5 3h9A2.5 2.5 0 0 1 19 5.5v13A2.5 2.5 0 0 1 16.5 21h-9A2.5 2.5 0 0 1 5 18.5v-13A2.5 2.5 0 0 1 7.5 3Zm0 2A.5.5 0 0 0 7 5.5v13a.5.5 0 0 0 .5.5h9a.5.5 0 0 0 .5-.5v-13a.5.5 0 0 0-.5-.5h-9Z'/></svg>
               {theme === 'dark' ? 'Dark: On' : 'Dark: Off'}
             </button>
-            <div className="rounded-md border border-white/15 px-3 py-1.5 text-white">{doc?.username || 'doctor'}</div>
+            <div className="rounded-md border border-white/15 px-3 py-1.5 text-white">{displayUser}</div>
           </div>
         </div>
       </div>

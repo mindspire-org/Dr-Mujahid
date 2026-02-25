@@ -113,10 +113,15 @@ export default function Hospital_Departments() {
 
   // Persisting via backend; no localStorage sync
 
-  const confirmDelete = () => {
+  const confirmDelete = async () => {
     if (!deleteId) return
-    setItems(prev => prev.filter(d => d.id !== deleteId))
-    setDeleteId(null)
+    try {
+      await hospitalApi.deleteDepartment(deleteId)
+      setItems(prev => prev.filter(d => d.id !== deleteId))
+      setDeleteId(null)
+    } catch (err: any) {
+      alert(err?.message || 'Failed to delete department')
+    }
   }
 
   const exportCSV = () => {

@@ -81,22 +81,95 @@ function calcTotals(lines: any[], discount = 0, invoiceTaxes: any[] = []){
 
 export async function list(req: Request, res: Response){
   const parsed = draftQuerySchema.safeParse(req.query)
-  const { from, to, search, company, limit } = parsed.success ? parsed.data : {}
+  const { from, to, search, limit } = parsed.success ? parsed.data : {}
   const filter: any = {}
   if (from || to){
     filter.date = {}
     if (from) filter.date.$gte = from
     if (to) filter.date.$lte = to
   }
-  if (company){
-    filter['lines.company'] = company
-  }
   if (search){
     const rx = new RegExp(search, 'i')
-    filter.$or = [{ invoice: rx }, { supplierName: rx }, { 'lines.name': rx }, { 'lines.company': rx }]
+    filter.$or = [{ invoice: rx }, { supplierName: rx }, { 'lines.name': rx }]
   }
   const items = await PurchaseDraft.find(filter).sort({ createdAt: -1 }).limit(limit || 200).lean()
   res.json({ items })
+}
+
+// Server-side pagination for flattened draft lines used by Pending Review table
+export async function listLines(req: Request, res: Response){
+  const page = Math.max(1, Number(req.query.page || 1))
+  const limit = Math.max(1, Number(req.query.limit || 10))
+  const from = (req.query.from as string) || undefined
+  const to = (req.query.to as string) || undefined
+  const search = (req.query.search as string) || ''
+
+  const match: any = {}
+  if (from || to){
+    match.date = {}
+    if (from) match.date.$gte = from
+    if (to) match.date.$lte = to
+  }
+  if (search){
+    const rx = new RegExp(search, 'i')
+    match.$or = [{ invoice: rx }, { supplierName: rx }, { 'lines.name': rx }]
+  }
+  const skip = (page - 1) * limit
+  const pipeline: any[] = [
+    { $match: match },
+    { $unwind: '$lines' },
+    { $sort: { createdAt: -1, _id: -1 } },
+    {
+      $facet: {
+        data: [
+          { $skip: skip },
+          { $limit: limit },
+          { $project: {
+            draftId: '$_id',
+            lineId: '$lines._id',
+            invoice: 1,
+            supplierName: 1,
+            date: 1,
+            'name': '$lines.name',
+            'genericName': '$lines.genericName',
+            'category': '$lines.category',
+            'packs': '$lines.packs',
+            'unitsPerPack': '$lines.unitsPerPack',
+            'salePerPack': '$lines.salePerPack',
+            'totalItems': '$lines.totalItems',
+            'minStock': '$lines.minStock',
+            'expiry': '$lines.expiry',
+          } },
+        ],
+        count: [ { $count: 'total' } ]
+      }
+    }
+  ]
+  const agg: any[] = await (PurchaseDraft as any).aggregate(pipeline)
+  const data = agg?.[0]?.data || []
+  const total = Number(agg?.[0]?.count?.[0]?.total || 0)
+  const totalPages = Math.max(1, Math.ceil((total || 0) / (limit || 1)))
+  res.json({ items: data, total, page, totalPages })
+}
+
+export async function removeLine(req: Request, res: Response){
+  const { id, lineId } = req.params as any
+  if (!id || !lineId) return res.status(400).json({ error: 'Draft id and line id required' })
+
+  const updated: any = await PurchaseDraft.findByIdAndUpdate(
+    id,
+    { $pull: { lines: { _id: new mongoose.Types.ObjectId(String(lineId)) } } },
+    { new: true }
+  ).lean()
+
+  if (!updated) return res.status(404).json({ error: 'Draft not found' })
+
+  const remaining = Array.isArray(updated.lines) ? updated.lines.length : 0
+  if (remaining <= 0) {
+    await PurchaseDraft.deleteOne({ _id: id })
+    return res.json({ ok: true, deletedDraft: true })
+  }
+  return res.json({ ok: true, deletedDraft: false, remaining })
 }
 
 export async function create(req: Request, res: Response){
@@ -107,6 +180,8 @@ export async function create(req: Request, res: Response){
     invoice: data.invoice,
     supplierId: data.supplierId,
     supplierName: data.supplierName,
+    companyId: (data as any).companyId,
+    companyName: (data as any).companyName,
     invoiceTaxes: data.invoiceTaxes || [],
     totals,
     lines,
@@ -118,6 +193,39 @@ export async function remove(req: Request, res: Response){
   const { id } = req.params
   await PurchaseDraft.findByIdAndDelete(id)
   res.json({ ok: true })
+}
+
+export async function getOne(req: Request, res: Response){
+  const { id } = req.params
+  const doc = await PurchaseDraft.findById(id).lean()
+  if (!doc) return res.status(404).json({ error: 'Draft not found' })
+  res.json(doc)
+}
+
+export async function update(req: Request, res: Response){
+  const { id } = req.params
+  const exists = await PurchaseDraft.findById(id).lean()
+  if (!exists) return res.status(404).json({ error: 'Draft not found' })
+  const data = draftCreateSchema.parse(req.body)
+  const { lines, totals } = calcTotals(data.lines, (data as any).discount || 0, data.invoiceTaxes || [])
+  const updated = await PurchaseDraft.findByIdAndUpdate(
+    id,
+    {
+      $set: {
+        date: data.date,
+        invoice: data.invoice,
+        supplierId: data.supplierId,
+        supplierName: data.supplierName,
+        companyId: (data as any).companyId,
+        companyName: (data as any).companyName,
+        invoiceTaxes: data.invoiceTaxes || [],
+        totals,
+        lines,
+      }
+    },
+    { new: true }
+  ).lean()
+  res.json(updated)
 }
 
 export async function approve(req: Request, res: Response){
@@ -166,10 +274,10 @@ export async function approve(req: Request, res: Response){
         avgCostPerUnit: Number(newAvg.toFixed(6)),
       }
     }
-    if (l.company) update.$set.company = String(l.company)
     if (l.category) update.$set.category = l.category
     if (l.genericName) update.$set.genericName = l.genericName
     if (l.minStock != null) update.$set.minStock = l.minStock
+    if (l.defaultDiscountPct != null) update.$set.defaultDiscountPct = Math.max(0, Math.min(100, Number(l.defaultDiscountPct)))
     if (salePerUnit) update.$set.lastSalePerUnit = salePerUnit
 
     // earliestExpiry: keep min date using $min on ISO string (yyyy-mm-dd)
@@ -186,10 +294,31 @@ export async function approve(req: Request, res: Response){
     invoice: draft.invoice,
     supplierId: draft.supplierId,
     supplierName: draft.supplierName,
+    companyId: (draft as any).companyId,
+    companyName: (draft as any).companyName,
     totals: draft.totals,
     totalAmount: Number(totalAmount || 0),
     lines: draft.lines || [],
   })
+
+  // 2b) Back-fill lastPurchaseId + company on inventory items touched by this draft
+  try {
+    const keys = Array.from(new Set((draft.lines || [])
+      .map((l:any)=> String(l?.name || '').trim().toLowerCase())
+      .filter(Boolean)))
+    if (keys.length) {
+      await InventoryItem.updateMany(
+        { key: { $in: keys } },
+        {
+          $set: {
+            lastPurchaseId: String((purchase as any)?._id || ''),
+            lastCompany: String((draft as any)?.companyName || ''),
+            lastCompanyId: String((draft as any)?.companyId || ''),
+          }
+        }
+      )
+    }
+  } catch {}
   try {
     const actor = (req as any).user?.name || (req as any).user?.email || 'system'
     await AuditLog.create({

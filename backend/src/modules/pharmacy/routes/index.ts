@@ -1,11 +1,12 @@
 import { Router } from 'express'
-import { pharmacyAuth } from '../../../common/middleware/pharmacy_auth'
 import * as Suppliers from '../controllers/suppliers.controller'
 import * as Customers from '../controllers/customers.controller'
 import * as Expenses from '../controllers/expenses.controller'
 import * as Settings from '../controllers/settings.controller'
+import * as SystemSettings from '../controllers/system_settings.controller'
 import * as Staff from '../controllers/staff.controller'
 import * as Shifts from '../controllers/shifts.controller'
+import * as StaffEarnings from '../controllers/staff_earnings.controller'
 import * as Attendance from '../controllers/attendance.controller'
 import * as Sales from '../controllers/dispense.controller'
 import * as Purchases from '../controllers/purchases.controller'
@@ -18,20 +19,10 @@ import * as CashMovements from '../controllers/cash_movement.controller'
 import * as CashCounts from '../controllers/cash_count.controller'
 import * as Notifications from '../controllers/notifications.controller'
 import * as SidebarPerms from '../controllers/sidebarPermission.controller'
+import * as HoldSales from '../controllers/hold_sales.controller'
+import * as Companies from '../controllers/companies.controller'
 
 const r = Router()
-
-function requirePharmacyAdmin(req: any, res: any, next: any){
-  const role = String(req?.user?.role || '').toLowerCase()
-  if (role === 'admin') return next()
-  return res.status(403).json({ error: 'Forbidden: admin access required' })
-}
-
-// Auth (public)
-r.post('/users/login', Users.login)
-
-// All other Pharmacy routes require JWT
-r.use(pharmacyAuth)
 
 // Suppliers
 r.get('/suppliers', Suppliers.list)
@@ -40,18 +31,27 @@ r.put('/suppliers/:id', Suppliers.update)
 r.delete('/suppliers/:id', Suppliers.remove)
 r.post('/suppliers/:id/payment', Suppliers.recordPayment)
 r.get('/suppliers/:id/purchases', Suppliers.purchases)
+// Supplier-Companies
+r.get('/suppliers/:id/companies', Companies.listForSupplier)
+r.post('/suppliers/:id/companies', Companies.assignToSupplier)
 
 // Customers
 r.get('/customers', Customers.list)
 r.post('/customers', Customers.create)
 r.put('/customers/:id', Customers.update)
 r.delete('/customers/:id', Customers.remove)
+r.post('/customers/:id/payment', Customers.recordPayment)
+r.get('/customers/:id/payments', Customers.listPayments)
 
 // Expenses
 r.get('/expenses', Expenses.list)
 r.post('/expenses', Expenses.create)
 r.delete('/expenses/:id', Expenses.remove)
 r.get('/expenses/summary', Expenses.summary)
+
+// System Settings (DB-driven)
+r.get('/system-settings', SystemSettings.get)
+r.put('/system-settings', SystemSettings.update)
 
 // Cash Movements (Pay In/Out)
 r.get('/cash-movements', CashMovements.list)
@@ -81,6 +81,12 @@ r.post('/shifts', Shifts.create)
 r.put('/shifts/:id', Shifts.update)
 r.delete('/shifts/:id', Shifts.remove)
 
+// Staff Earnings
+r.get('/staff-earnings', StaffEarnings.list)
+r.post('/staff-earnings', StaffEarnings.create)
+r.put('/staff-earnings/:id', StaffEarnings.update)
+r.delete('/staff-earnings/:id', StaffEarnings.remove)
+
 // Attendance
 r.get('/attendance', Attendance.list)
 r.post('/attendance', Attendance.upsert)
@@ -90,11 +96,23 @@ r.get('/sales', Sales.list)
 r.post('/sales', Sales.create)
 r.get('/sales/summary', Sales.summary)
 
+// Hold Sales (server-side held bills)
+r.get('/hold-sales', HoldSales.list)
+r.get('/hold-sales/:id', HoldSales.getOne)
+r.post('/hold-sales', HoldSales.create)
+r.delete('/hold-sales/:id', HoldSales.remove)
+
 // Purchases
 r.get('/purchases', Purchases.list)
 r.post('/purchases', Purchases.create)
 r.delete('/purchases/:id', Purchases.remove)
 r.get('/purchases/summary', Purchases.summary)
+
+// Companies
+r.get('/companies', Companies.list)
+r.post('/companies', Companies.create)
+r.put('/companies/:id', Companies.update)
+r.delete('/companies/:id', Companies.remove)
 
 // Returns (Customer/Supplier)
 r.get('/returns', Returns.list)
@@ -105,30 +123,37 @@ r.get('/audit-logs', Audit.list)
 r.post('/audit-logs', Audit.create)
 
 // Users (Pharmacy)
-r.get('/users', requirePharmacyAdmin, Users.list)
-r.post('/users', requirePharmacyAdmin, Users.create)
-r.put('/users/:id', requirePharmacyAdmin, Users.update)
-r.delete('/users/:id', requirePharmacyAdmin, Users.remove)
+r.get('/users', Users.list)
+r.post('/users', Users.create)
+r.put('/users/:id', Users.update)
+r.delete('/users/:id', Users.remove)
+r.post('/users/login', Users.login)
 r.post('/users/logout', Users.logout)
 
 // Sidebar Roles & Permissions
-r.get('/sidebar-roles', requirePharmacyAdmin, SidebarPerms.listRoles)
-r.post('/sidebar-roles', requirePharmacyAdmin, SidebarPerms.createRole)
-r.delete('/sidebar-roles/:role', requirePharmacyAdmin, SidebarPerms.deleteRole)
+r.get('/sidebar-roles', SidebarPerms.listRoles)
+r.post('/sidebar-roles', SidebarPerms.createRole)
+r.delete('/sidebar-roles/:role', SidebarPerms.deleteRole)
 
 r.get('/sidebar-permissions', SidebarPerms.getPermissions)
-r.put('/sidebar-permissions/:role', requirePharmacyAdmin, SidebarPerms.updatePermissions)
-r.post('/sidebar-permissions/:role/reset', requirePharmacyAdmin, SidebarPerms.resetToDefaults)
+r.put('/sidebar-permissions/:role', SidebarPerms.updatePermissions)
+r.post('/sidebar-permissions/:role/reset', SidebarPerms.resetToDefaults)
 
 // Purchase Drafts (Pending Review)
 r.get('/purchase-drafts', Drafts.list)
+r.get('/purchase-drafts/lines', Drafts.listLines)
 r.post('/purchase-drafts', Drafts.create)
+r.get('/purchase-drafts/:id', Drafts.getOne)
+r.put('/purchase-drafts/:id', Drafts.update)
 r.post('/purchase-drafts/:id/approve', Drafts.approve)
+r.delete('/purchase-drafts/:id/lines/:lineId', Drafts.removeLine)
 r.delete('/purchase-drafts/:id', Drafts.remove)
 
 // Inventory items (aggregated store)
 r.get('/inventory', InventoryItems.list)
-r.post('/inventory', InventoryItems.create)
+// Filtered inventory views for tabs (low|out|expiring)
+r.get('/inventory/filter', InventoryItems.listFiltered)
+r.get('/inventory/:key/details', InventoryItems.details)
 r.put('/inventory/:key', InventoryItems.update)
 // Inventory summary aggregated from purchases
 r.get('/inventory/summary', InventoryItems.summary)

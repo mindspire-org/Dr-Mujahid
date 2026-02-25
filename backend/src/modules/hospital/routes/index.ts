@@ -11,6 +11,7 @@ import * as Attendance from '../controllers/attendance.controller'
 import * as Audit from '../controllers/audit.controller'
 import * as Settings from '../controllers/settings.controller'
 import * as FinanceCtl from '../controllers/finance.controller'
+import * as Transactions from '../controllers/transactions.controller'
 import * as FinanceStatementCtl from '../controllers/finance_statement.controller'
 import * as FinanceOpeningCtl from '../controllers/finance_opening_balance.controller'
 import * as BankAccountsCtl from '../controllers/bank_accounts.controller'
@@ -19,9 +20,18 @@ import * as Referrals from '../controllers/referrals.controller'
 import * as PettyRefill from '../controllers/petty_cash_refill.controller'
 import * as FinanceBalance from '../controllers/finance_balance.controller'
 import * as FinanceHistory from '../controllers/finance_history.controller'
+import * as FinanceAccountTxns from '../controllers/finance_account_transactions.controller'
+import * as FinanceAccountTransfer from '../controllers/finance_account_transfer.controller'
+import * as PettyPersonal from '../controllers/petty_cash_personal.controller'
+import * as BankPersonal from '../controllers/bank_personal.controller'
+import * as PettyTransfer from '../controllers/petty_cash_transfer.controller'
+import * as CollectionReport from '../controllers/collection_report.controller'
 import * as Patients from '../controllers/patients.controller'
+import * as Accounts from '../controllers/accounts.controller'
+import * as CreditPatients from '../controllers/credit_patients.controller'
 import * as IPDRec from '../controllers/ipd_records.controller'
 import * as Notifications from '../controllers/notifications.controller'
+import * as UserNotifications from '../controllers/user_notifications.controller'
 import * as Master from '../controllers/master.controller'
 import * as Users from '../controllers/users.controller'
 import * as IpdReferrals from '../controllers/ipd_referrals.controller'
@@ -31,8 +41,25 @@ import * as HospitalPettyExpense from '../controllers/hospital_petty_expense.con
 import * as HistoryTaking from '../controllers/history_taking.controller'
 import * as LabReportsEntry from '../controllers/lab_reports_entry.controller'
 import * as Appointments from '../controllers/appointments.controller'
+import * as Roles from '../controllers/roles.controller'
+import * as Access from '../controllers/access.controller'
+import * as AuthCtl from '../controllers/auth.controller'
+import * as StaffEarnings from '../controllers/staff_earnings.controller'
+import { auth } from '../../../common/middleware/auth'
 
 const r = Router()
+
+const adminOnly = (req: any, res: any, next: any) => {
+  const role = String(req?.user?.role || '')
+  if (role === 'Admin') return next()
+  return res.status(403).json({ error: 'Forbidden' })
+}
+
+const adminOrFinance = (req: any, res: any, next: any) => {
+  const role = String(req?.user?.role || '').toLowerCase()
+  if (role.includes('admin') || role.includes('finance')) return next()
+  return res.status(403).json({ error: 'Forbidden' })
+}
 
 // Masters
 r.get('/departments', Master.listDepartments)
@@ -60,9 +87,19 @@ r.get('/opd/quote-price', OPD.quotePrice)
 r.get('/opd/encounters/:encounterId/history-taking', HistoryTaking.getByEncounter)
 r.put('/opd/encounters/:encounterId/history-taking', HistoryTaking.upsertByEncounter)
 
+// OPD - History Taking (by patient)
+r.get('/opd/history-takings', HistoryTaking.listByPatient)
+
 // OPD - Lab Reports Entry
 r.get('/opd/encounters/:encounterId/lab-reports-entry', LabReportsEntry.getByEncounter)
 r.put('/opd/encounters/:encounterId/lab-reports-entry', LabReportsEntry.upsertByEncounter)
+
+// OPD - Lab Reports Entry (by patient)
+r.get('/opd/lab-reports-entries', LabReportsEntry.listByPatient)
+
+// OPD - Prescription (by encounter)
+r.get('/opd/encounters/:encounterId/prescription', Prescriptions.getByEncounter)
+r.put('/opd/encounters/:encounterId/prescription', Prescriptions.upsertByEncounter)
 
 // Appointments
 r.get('/appointments', Appointments.list)
@@ -86,6 +123,13 @@ r.delete('/opd/referrals/:id', Referrals.remove)
 
 // Patients
 r.get('/patients/profile', Patients.profile)
+
+// Accounts (dues/advance per patient)
+r.get('/accounts/:patientId', Accounts.get)
+
+// Credit Patients (dues/advance + unpaid tokens)
+r.get('/credit-patients', CreditPatients.listCreditPatients)
+r.post('/accounts/:patientId/pay', CreditPatients.payCreditPatient)
 
 // IPD
 r.post('/ipd/admissions', IPD.admit)
@@ -211,6 +255,7 @@ r.get('/ipd/admissions/:id/final-invoice/print', IpdDocs.printFinalInvoice)
 // Tokens (OPD)
 r.post('/tokens/opd', Tokens.createOpd)
 r.get('/tokens', Tokens.list)
+r.patch('/tokens/:id', Tokens.update)
 r.patch('/tokens/:id/status', Tokens.updateStatus)
 r.patch('/tokens/:id/pay', Tokens.pay)
 r.delete('/tokens/:id', Tokens.remove)
@@ -222,12 +267,30 @@ r.put('/staff/:id', Staff.update)
 r.delete('/staff/:id', Staff.remove)
 
 // Users (Hospital App Users)
-r.get('/users', Users.list)
-r.post('/users', Users.create)
-r.put('/users/:id', Users.update)
-r.delete('/users/:id', Users.remove)
+r.get('/users', auth, adminOrFinance, Users.list)
+r.get('/users/:id', auth, adminOrFinance, Users.getOne)
+r.post('/users', auth, adminOnly, Users.create)
+r.put('/users/:id', auth, adminOnly, Users.update)
+r.post('/users/:id/reset-password', auth, adminOnly, Users.resetPassword)
+r.delete('/users/:id', auth, adminOnly, Users.remove)
 r.post('/users/login', Users.login)
 r.post('/users/logout', Users.logout)
+
+// Roles (Hospital App Roles)
+r.get('/roles', auth, adminOnly, Roles.list)
+r.post('/roles', auth, adminOnly, Roles.create)
+r.put('/roles/:id', auth, adminOnly, Roles.update)
+r.delete('/roles/:id', auth, adminOnly, Roles.remove)
+
+// Access Catalog (DB-driven sidebar/modules/pages)
+r.get('/access/nodes', auth, adminOnly, Access.list)
+r.post('/access/nodes', auth, adminOnly, Access.create)
+r.put('/access/nodes/:id', auth, adminOnly, Access.update)
+r.delete('/access/nodes/:id', auth, adminOnly, Access.remove)
+r.get('/access/tree', auth, adminOnly, Access.tree)
+
+// Current User (effective permissions)
+r.get('/auth/me', auth, AuthCtl.me)
 
 // Shifts
 r.get('/shifts', Shifts.list)
@@ -239,47 +302,80 @@ r.delete('/shifts/:id', Shifts.remove)
 r.get('/attendance', Attendance.list)
 r.post('/attendance', Attendance.upsert)
 
+// Staff Earnings
+r.get('/staff-earnings', auth, StaffEarnings.list)
+r.post('/staff-earnings', auth, StaffEarnings.create)
+r.put('/staff-earnings/:id', auth, StaffEarnings.update)
+r.delete('/staff-earnings/:id', auth, StaffEarnings.remove)
+
 // Expenses
-r.get('/expenses', Expense.list)
-r.post('/expenses', Expense.create)
-r.delete('/expenses/:id', Expense.remove)
+r.get('/expenses', auth, Expense.list)
+r.get('/expenses/:id', auth, Expense.getById)
+r.post('/expenses', auth, Expense.create)
+r.patch('/expenses/:id/submit', auth, Expense.submit)
+r.patch('/expenses/:id/approve', auth, Expense.approve)
+r.patch('/expenses/:id/reject', auth, Expense.reject)
+r.delete('/expenses/:id', auth, Expense.remove)
 
 // Finance (Hospital-owned) Doctor finance
 r.post('/finance/manual-doctor-earning', FinanceCtl.postManualDoctorEarning)
 r.post('/finance/doctor-payout', FinanceCtl.postDoctorPayout)
 r.get('/finance/doctor/:id/balance', FinanceCtl.getDoctorBalance)
 r.get('/finance/doctor/:id/payouts', FinanceCtl.listDoctorPayouts)
+r.get('/finance/payouts', FinanceCtl.listPayouts)
+r.get('/finance/transactions', Transactions.list)
+r.get('/finance/collection-report', auth, adminOrFinance, CollectionReport.collectionReport)
 r.get('/finance/doctor/:id/accruals', FinanceCtl.doctorAccruals)
 r.get('/finance/earnings', FinanceCtl.listDoctorEarnings)
 r.post('/finance/journal/:id/reverse', FinanceCtl.reverseJournal)
 
 // Finance Balances
-r.get('/finance/account-balance', FinanceBalance.getAccountBalance)
+// Require auth for finance endpoints (user-based petty cash relies on identity)
+r.get('/finance/account-balance', auth, FinanceBalance.getAccountBalance)
 // Finance History
-r.get('/finance/opening-balances', FinanceHistory.listOpeningBalances)
-r.get('/finance/petty-cash/refills', FinanceHistory.listPettyRefills)
+r.get('/finance/opening-balances', auth, FinanceHistory.listOpeningBalances)
+r.get('/finance/petty-cash/refills', auth, FinanceHistory.listPettyRefills)
+
+// Finance Account Transactions (generic ledger)
+r.get('/finance/account-transactions', auth, FinanceAccountTxns.listAccountTransactions)
+
+// Finance account transfers (bank/petty/general)
+r.post('/finance/account-transfer', auth, FinanceAccountTransfer.transferAccount)
 
 r.get('/finance/patient-statement', FinanceStatementCtl.patientStatement)
 // Opening Balances
-r.post('/finance/opening-balance', FinanceOpeningCtl.postOpeningBalance)
+r.post('/finance/opening-balance', auth, FinanceOpeningCtl.postOpeningBalance)
 // Bank Accounts
-r.get('/finance/bank-accounts', BankAccountsCtl.list)
-r.post('/finance/bank-accounts', BankAccountsCtl.create)
-r.put('/finance/bank-accounts/:id', BankAccountsCtl.update)
-r.delete('/finance/bank-accounts/:id', BankAccountsCtl.remove)
+r.get('/finance/bank-accounts', auth, BankAccountsCtl.list)
+r.post('/finance/bank-accounts', auth, BankAccountsCtl.create)
+r.put('/finance/bank-accounts/:id', auth, BankAccountsCtl.update)
+r.delete('/finance/bank-accounts/:id', auth, BankAccountsCtl.remove)
 // Petty Cash Accounts
-r.get('/finance/petty-cash-accounts', PettyCashCtl.list)
-r.post('/finance/petty-cash-accounts', PettyCashCtl.create)
-r.put('/finance/petty-cash-accounts/:id', PettyCashCtl.update)
-r.delete('/finance/petty-cash-accounts/:id', PettyCashCtl.remove)
+r.get('/finance/petty-cash-accounts', auth, PettyCashCtl.list)
+r.post('/finance/petty-cash-accounts', auth, PettyCashCtl.create)
+r.put('/finance/petty-cash-accounts/:id', auth, PettyCashCtl.update)
+r.delete('/finance/petty-cash-accounts/:id', auth, PettyCashCtl.remove)
 // Petty Cash Refill
-r.get('/finance/petty-cash/status', PettyRefill.pettyCashStatus)
-r.post('/finance/petty-cash/refill', PettyRefill.refillPettyCash)
+r.get('/finance/petty-cash/status', auth, PettyRefill.pettyCashStatus)
+r.post('/finance/petty-cash/refill', auth, PettyRefill.refillPettyCash)
+
+// Petty Cash Transfer (petty -> petty)
+r.post('/finance/petty-cash/transfer', auth, PettyTransfer.transferPettyCash)
+
+// Personal petty cash (Hospital portal user view)
+r.get('/finance/petty-cash/me', auth, PettyPersonal.myPettyCash)
+r.post('/finance/petty-cash/pull', auth, PettyPersonal.pullFundsToMyPetty)
+r.get('/finance/petty-cash/pull/history', auth, PettyPersonal.listMyPettyPulls)
+
+// Personal bank balance (Hospital portal user view)
+r.get('/finance/bank/me', auth, BankPersonal.myBankAccount)
+r.post('/finance/bank/pull', auth, BankPersonal.pullFundsToMyBank)
+r.get('/finance/bank/pull/history', auth, BankPersonal.listMyBankPulls)
 
 // Hospital Petty Cash Expense
-r.get('/finance/petty-cash/expenses', HospitalPettyExpense.list)
-r.post('/finance/petty-cash/expenses', HospitalPettyExpense.create)
-r.delete('/finance/petty-cash/expenses/:id', HospitalPettyExpense.remove)
+r.get('/finance/petty-cash/expenses', auth, HospitalPettyExpense.list)
+r.post('/finance/petty-cash/expenses', auth, HospitalPettyExpense.create)
+r.delete('/finance/petty-cash/expenses/:id', auth, HospitalPettyExpense.remove)
 
 // Audit Logs
 r.get('/audit-logs', Audit.list)
@@ -296,6 +392,11 @@ r.get('/patients/search', Patients.search)
 r.get('/notifications', Notifications.list)
 r.patch('/notifications/:id', Notifications.update)
 r.get('/notifications/stream', Notifications.stream)
+
+// Notifications (Hospital staff/user)
+r.get('/user-notifications', auth, UserNotifications.list)
+r.patch('/user-notifications/:id', auth, UserNotifications.update)
+r.post('/user-notifications/mark-all-read', auth, UserNotifications.markAllRead)
 
 // Bed Management
 r.get('/floors', BedMgmt.listFloors)

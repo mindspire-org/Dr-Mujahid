@@ -12,9 +12,11 @@ type Settings = {
   slipFooter?: string
 }
 
+const DEFAULT_HOSPITAL_NAME = "Men's Care Clinic"
+
 export default function Hospital_Settings() {
   const [settings, setSettings] = useState<Settings>({
-    name: 'Mindspire Hospital Management System',
+    name: DEFAULT_HOSPITAL_NAME,
     phone: '+92-320-4090604',
     address: 'Hospital Address, City, Country',
     logoDataUrl: undefined,
@@ -29,7 +31,15 @@ export default function Hospital_Settings() {
     async function load(){
       try {
         const s = await hospitalApi.getSettings() as any
-        if (!cancelled && s) setSettings(prev => ({ ...prev, ...s }))
+        if (!cancelled && s) {
+          setSettings(prev => {
+            const next = { ...prev, ...s }
+            next.name = String(next.name || '').trim() || DEFAULT_HOSPITAL_NAME
+            try { localStorage.setItem('hospital.settings', JSON.stringify(next)) } catch {}
+            try { window.dispatchEvent(new CustomEvent('hospital:settings-updated', { detail: next })) } catch {}
+            return next
+          })
+        }
       } catch {}
     }
     load()
@@ -52,6 +62,8 @@ export default function Hospital_Settings() {
     e.preventDefault()
     try {
       await hospitalApi.updateSettings(settings)
+      try { localStorage.setItem('hospital.settings', JSON.stringify(settings)) } catch {}
+      try { window.dispatchEvent(new CustomEvent('hospital:settings-updated', { detail: settings })) } catch {}
       setSavedBanner('Settings saved successfully')
       logAudit('user_edit', 'hospital settings saved')
       setTimeout(() => setSavedBanner(''), 2000)

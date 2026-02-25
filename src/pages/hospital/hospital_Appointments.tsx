@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Eye, Pencil, ReceiptText, Trash2 } from 'lucide-react'
-import { useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { hospitalApi } from '../../utils/api'
 
 type AppointmentType = 'OPD' | 'Diagnostic' | 'Therapy' | 'Counselling'
@@ -36,8 +36,6 @@ type Appointment = {
 
 type AppointmentForm = {
   appointmentType: AppointmentType
-
-  patientMrn: string
   patientName: string
   patientPhone: string
   patientAge: string
@@ -60,7 +58,6 @@ type AppointmentForm = {
 function emptyForm(): AppointmentForm {
   return {
     appointmentType: 'OPD',
-    patientMrn: '',
     patientName: '',
     patientPhone: '',
     patientAge: '',
@@ -170,21 +167,6 @@ function AppointmentDialog({
               <div className="text-sm font-semibold text-slate-800">Appointment Detail</div>
               <div className="mt-4 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
                 <div>
-                  <label className="mb-1 block text-sm text-slate-700">Appointment Type</label>
-                  <select
-                    value={form.appointmentType}
-                    onChange={e => update('appointmentType', e.target.value)}
-                    disabled={readonly}
-                    className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
-                  >
-                    <option value="OPD">OPD</option>
-                    <option value="Diagnostic">Diagnostic</option>
-                    <option value="Therapy">Therapy</option>
-                    <option value="Counselling">Counselling</option>
-                  </select>
-                </div>
-
-                <div>
                   <label className="mb-1 block text-sm text-slate-700">Appointment Date</label>
                   <input
                     type="date"
@@ -221,11 +203,6 @@ function AppointmentDialog({
                     className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
                     required
                   />
-                </div>
-
-                <div>
-                  <label className="mb-1 block text-sm text-slate-700">MR#</label>
-                  <input value={form.patientMrn || ''} disabled placeholder="Auto" className="w-full rounded-md border border-slate-300 bg-slate-50 px-3 py-2 text-sm" />
                 </div>
 
                 <div>
@@ -382,6 +359,7 @@ function AppointmentDialog({
 
 export default function Hospital_Appointments() {
   const nav = useNavigate()
+  const location = useLocation()
   const [rows, setRows] = useState<Appointment[]>([])
   const [loading, setLoading] = useState(false)
   const [q, setQ] = useState('')
@@ -443,7 +421,7 @@ export default function Hospital_Appointments() {
     return rows.filter(r => {
       const docName = r.doctorId?.name ? String(r.doctorId.name) : ''
       const depName = r.departmentId?.name ? String(r.departmentId.name) : ''
-      return [r.patientName, r.patientMrn, r.patientPhone, docName, depName, r.appointmentType, r.appointmentDate, r.appointmentTime]
+      return [r.patientName, r.patientPhone, docName, depName, r.appointmentDate, r.appointmentTime]
         .filter(Boolean)
         .some(v => String(v).toLowerCase().includes(s))
     })
@@ -460,7 +438,6 @@ export default function Hospital_Appointments() {
   function formFromRow(r: Appointment): AppointmentForm {
     return {
       appointmentType: r.appointmentType,
-      patientMrn: r.patientMrn || '',
       patientName: r.patientName || '',
       patientPhone: r.patientPhone || '',
       patientAge: r.patientAge || '',
@@ -524,7 +501,7 @@ export default function Hospital_Appointments() {
           <input
             value={q}
             onChange={e => setQ(e.target.value)}
-            placeholder="Search patient / MR# / doctor"
+            placeholder="Search patient / doctor"
             className="w-64 rounded-md border border-slate-300 px-3 py-2 text-sm"
           />
           <button onClick={load} className="rounded-md bg-slate-700 px-3 py-2 text-sm font-medium text-white hover:bg-slate-800">
@@ -541,7 +518,6 @@ export default function Hospital_Appointments() {
               <th className="px-4 py-2 text-left">Time</th>
               <th className="px-4 py-2 text-left">Type</th>
               <th className="px-4 py-2 text-left">Patient</th>
-              <th className="px-4 py-2 text-left">MR#</th>
               <th className="px-4 py-2 text-left">Doctor</th>
               <th className="px-4 py-2 text-left">Fee</th>
               <th className="px-4 py-2 text-left">Department</th>
@@ -556,7 +532,6 @@ export default function Hospital_Appointments() {
                 <td className="px-4 py-2">{r.appointmentTime || '-'}</td>
                 <td className="px-4 py-2">{r.appointmentType}</td>
                 <td className="px-4 py-2 font-medium">{r.patientName || '-'}</td>
-                <td className="px-4 py-2">{r.patientMrn || '-'}</td>
                 <td className="px-4 py-2">{r.doctorId?.name || '-'}</td>
                 <td className="px-4 py-2">{resolveFee(r) != null ? `Rs. ${Number(resolveFee(r)).toLocaleString()}` : '-'}</td>
                 <td className="px-4 py-2">{r.departmentId?.name || '-'}</td>
@@ -570,12 +545,12 @@ export default function Hospital_Appointments() {
                     <button
                       type="button"
                       onClick={() => {
-                        nav('/hospital/token-generator', {
+                        const inReception = String(location?.pathname || '').startsWith('/reception')
+                        nav(inReception ? '/reception/token-generator' : '/hospital/token-generator', {
                           state: {
                             from: 'appointments',
                             appointmentId: r._id,
                             patient: {
-                              mrn: r.patientMrn,
                               name: r.patientName,
                               phone: r.patientPhone,
                               age: r.patientAge,
@@ -626,7 +601,7 @@ export default function Hospital_Appointments() {
 
             {filtered.length === 0 && (
               <tr>
-                <td className="px-4 py-8 text-center text-slate-500" colSpan={10}>
+                <td className="px-4 py-8 text-center text-slate-500" colSpan={9}>
                   {loading ? 'Loading...' : 'No appointments'}
                 </td>
               </tr>

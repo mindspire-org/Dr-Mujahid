@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { pharmacyApi } from '../../utils/api'
 import { Download, Printer } from 'lucide-react'
 import {
@@ -18,6 +18,10 @@ export default function Pharmacy_Reports() {
   const [from, setFrom] = useState(startMonthStr)
   const [to, setTo] = useState(todayStr)
   const [tick, setTick] = useState(0)
+  const [shifts, setShifts] = useState<Array<{ id: string; name: string; start: string; end: string }>>([])
+  const [filterShiftId, setFilterShiftId] = useState('')
+  const [fromTime, setFromTime] = useState('')
+  const [toTime, setToTime] = useState('')
 
   type Summary = {
     totalSales: number
@@ -33,6 +37,51 @@ export default function Pharmacy_Reports() {
     outOfStock: number
     stockValue: number
   }
+
+  useEffect(()=>{
+    let mounted = true
+    ;(async()=>{
+      try{
+        const res: any = await pharmacyApi.listShifts()
+        if (!mounted) return
+        const arr = (res?.items || res || []).map((x:any)=> ({ id: String(x._id||x.id), name: x.name, start: x.start, end: x.end }))
+        setShifts(arr)
+      } catch {}
+    })()
+    return ()=>{ mounted = false }
+  }, [])
+
+  function getShiftWindow(dateStr: string, sh?: { start: string; end: string }){
+    try{
+      if (!sh) return null
+      const [sy, sm, sd] = dateStr.split('-').map(n=>parseInt(n,10))
+      const [shh, smm] = String(sh.start||'00:00').split(':').map(n=>parseInt(n||'0',10))
+      const [ehh, emm] = String(sh.end||'00:00').split(':').map(n=>parseInt(n||'0',10))
+      const start = new Date(sy, (sm-1), sd, shh||0, smm||0, 0)
+      let end = new Date(sy, (sm-1), sd, ehh||0, emm||0, 0)
+      if (end <= start) end = new Date(end.getTime() + 24*60*60*1000)
+      return { start, end }
+    } catch { return null }
+  }
+
+  // Global effective window: time overrides; if single-day and shift selected, use shift window
+  const effectiveWindow = useMemo(()=>{
+    try{
+      if (fromTime && toTime){
+        return { from: `${from}T${fromTime}:00`, to: `${to}T${toTime}:59` }
+      }
+      if (filterShiftId && from === to){
+        const sh = shifts.find(s=>s.id===filterShiftId)
+        const win = getShiftWindow(from, sh)
+        if (win){
+          const f = new Date(win.start.getTime() - (win.start.getTimezoneOffset()*60000)).toISOString().slice(0,19)
+          const t = new Date(win.end.getTime() - (win.end.getTimezoneOffset()*60000)).toISOString().slice(0,19)
+          return { from: f, to: t }
+        }
+      }
+    } catch {}
+    return { from, to }
+  }, [from, to, fromTime, toTime, filterShiftId, shifts])
 
   function startOfWeek(d: Date) {
     const x = weekStart(d)
@@ -211,29 +260,56 @@ export default function Pharmacy_Reports() {
   const [comparison, setComparison] = useState<Array<{ label: string; value: number }>>([])
   const [pharmacyName, setPharmacyName] = useState('Pharmacy')
   // Chart theming that reacts to theme toggle
-  const [isDark, setIsDark] = useState<boolean>(
+  const [darkTheme, setDarkTheme] = useState<boolean>(
     typeof document !== 'undefined' ? document.documentElement.classList.contains('dark') : false
   )
   useEffect(() => {
     if (typeof document === 'undefined') return
     const el = document.documentElement
-    const update = () => setIsDark(el.classList.contains('dark'))
+    const update = () => setDarkTheme(el.classList.contains('dark'))
     update()
     const obs = new MutationObserver(update)
     obs.observe(el, { attributes: true, attributeFilter: ['class'] })
     return () => obs.disconnect()
   }, [])
-  const tickColor = isDark ? '#cbd5e1' : '#64748b'
-  const gridColor = isDark ? 'rgba(148,163,184,0.25)' : 'rgba(148,163,184,0.35)'
-  const dcsContainer = 'rounded-2xl border-2 border-slate-200 bg-gradient-to-br from-white to-sky-50/30 p-6 shadow-lg dark:border-slate-700 dark:from-slate-900 dark:to-slate-800'
-  const innerPanelClass = 'mt-6 rounded-2xl border-2 border-slate-200 bg-white/70 backdrop-blur-sm p-6 shadow-inner dark:border-slate-700 dark:bg-slate-800/70'
-  const rowBg = (light: string) => `rounded-xl ${isDark ? 'bg-slate-800' : light} p-4`
+  const tickColor = darkTheme ? '#cbd5e1' : '#64748b'
+  const gridColor = darkTheme ? 'rgba(148,163,184,0.25)' : 'rgba(148,163,184,0.35)'
+  const dcsContainer = darkTheme
+    ? 'rounded-2xl border-2 border-slate-700 bg-linear-to-br from-slate-900 to-slate-800 p-6 shadow-lg'
+    : 'rounded-2xl border-2 border-slate-200 bg-linear-to-br from-white to-sky-50/30 p-6 shadow-lg'
+  const innerPanelClass = darkTheme
+    ? 'mt-6 rounded-2xl border-2 border-slate-700 bg-slate-800/70 backdrop-blur-sm p-6 shadow-inner'
+    : 'mt-6 rounded-2xl border-2 border-slate-200 bg-white/70 backdrop-blur-sm p-6 shadow-inner'
+  const rowBg = (light: string) => `rounded-xl ${darkTheme ? 'bg-slate-800' : light} p-4`
 
   function fmt(d: Date){
     const y = d.getFullYear()
     const m = String(d.getMonth()+1).padStart(2,'0')
     const day = String(d.getDate()).padStart(2,'0')
     return `${y}-${m}-${day}`
+  }
+
+  function fmt12(hhmm: string): string {
+    try{
+      if (!hhmm) return ''
+      const s = String(hhmm).trim()
+      if (/[ap]m/i.test(s)){
+        const mm = s.match(/^(\d{1,2}):(\d{2})\s*([ap]m)$/i)
+        if (mm){
+          const h = Math.max(1, Math.min(12, parseInt(mm[1],10) || 12))
+          return `${String(h).padStart(2,'0')}:${mm[2]} ${mm[3].toUpperCase()}`
+        }
+        return s.replace(/(am|pm)/i, (m)=>m.toUpperCase())
+      }
+      const parts = s.split(':')
+      if (parts.length < 2) return s
+      const h = parseInt(parts[0],10)
+      const m = parts[1].slice(0,2)
+      if (isNaN(h)) return s
+      const am = h < 12
+      const h12 = (h % 12) || 12
+      return `${String(h12).padStart(2,'0')}:${m} ${am ? 'AM' : 'PM'}`
+    } catch { return hhmm }
   }
 
   function weekStart(date: Date){
@@ -249,13 +325,15 @@ export default function Pharmacy_Reports() {
     let mounted = true
     async function load(){
       try {
+        const dateFrom = String(effectiveWindow.from).slice(0,10)
+        const dateTo = String(effectiveWindow.to).slice(0,10)
         const [sales, cash, credit, inv, pur, exp, settings] = await Promise.all([
-          pharmacyApi.salesSummary({ from, to }),
-          pharmacyApi.salesSummary({ payment: 'Cash', from, to }),
-          pharmacyApi.salesSummary({ payment: 'Credit', from, to }),
+          pharmacyApi.salesSummary({ from: effectiveWindow.from, to: effectiveWindow.to }),
+          pharmacyApi.salesSummary({ payment: 'Cash', from: effectiveWindow.from, to: effectiveWindow.to }),
+          pharmacyApi.salesSummary({ payment: 'Credit', from: effectiveWindow.from, to: effectiveWindow.to }),
           pharmacyApi.inventorySummary(),
-          pharmacyApi.purchasesSummary({ from, to }),
-          pharmacyApi.expensesSummary({ from, to }),
+          pharmacyApi.purchasesSummary({ from: dateFrom, to: dateTo }),
+          pharmacyApi.expensesSummary({ from: effectiveWindow.from, to: effectiveWindow.to }),
           pharmacyApi.getSettings().catch(() => ({ pharmacyName: 'Pharmacy' })),
         ])
         if (!mounted) return
@@ -296,7 +374,7 @@ export default function Pharmacy_Reports() {
       } catch (e) { console.error(e) }
 
       try {
-        const list: any = await pharmacyApi.listSales({ from, to, limit: 500 })
+        const list: any = await pharmacyApi.listSales({ from: effectiveWindow.from, to: effectiveWindow.to, limit: 500 })
         const dayMap = new Map<string, number>()
         for (const s of (list?.items || [])){
           const d = String(s.datetime || '').slice(0,10)
@@ -324,8 +402,7 @@ export default function Pharmacy_Reports() {
     }
     load()
     return ()=>{ mounted = false }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tick])
+  }, [tick, effectiveWindow.from, effectiveWindow.to])
 
   const maxWeekly = Math.max(...weeklySales.map((d) => d.value), 1)
   const maxComp = Math.max(...comparison.map(d => d.value), 1)
@@ -342,27 +419,39 @@ export default function Pharmacy_Reports() {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <div>
-          <div className="text-xl font-bold text-slate-800 dark:text-slate-100">Daily Summary Report</div>
+          <div className="text-xl font-bold text-slate-800">Daily Summary Report</div>
         </div>
       </div>
 
-      <div className="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
+      <div className="rounded-xl border border-slate-200 bg-white p-4">
         <div className="grid gap-3 md:grid-cols-[1fr_1fr_auto] items-end">
-          <div className="grid gap-3 sm:grid-cols-2">
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <div>
-              <label className="mb-1 block text-sm text-slate-700 dark:text-slate-300">From</label>
-              <input type="date" value={from} onChange={e=>setFrom(e.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100" />
+              <label className="mb-1 block text-sm text-slate-700">From</label>
+              <input type="date" value={from} onChange={e=>setFrom(e.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
             </div>
             <div>
-              <label className="mb-1 block text-sm text-slate-700 dark:text-slate-300">To</label>
-              <input type="date" value={to} onChange={e=>setTo(e.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100" />
+              <label className="mb-1 block text-sm text-slate-700">To</label>
+              <input type="date" value={to} onChange={e=>setTo(e.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
+            </div>
+            <div>
+              <label className="mb-1 block text-sm text-slate-700">From Time (optional)</label>
+              <input type="time" value={fromTime} onChange={e=>setFromTime(e.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
+            </div>
+            <div>
+              <label className="mb-1 block text-sm text-slate-700">To Time (optional)</label>
+              <input type="time" value={toTime} onChange={e=>setToTime(e.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
             </div>
           </div>
           <div className="flex items-end">
             <div className="flex flex-wrap items-center gap-2">
-              <button type="button" onClick={setRangeToday} className="rounded-md border border-slate-200 bg-white px-3 py-2 text-sm hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800">Today</button>
-              <button type="button" onClick={setRangeThisWeek} className="rounded-md border border-slate-200 bg-white px-3 py-2 text-sm hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800">This Week</button>
-              <button type="button" onClick={setRangeThisMonth} className="rounded-md border border-slate-200 bg-white px-3 py-2 text-sm hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800">This Month</button>
+              <button type="button" onClick={setRangeToday} className="rounded-md border border-slate-200 bg-white px-3 py-2 text-sm hover:bg-slate-50">Today</button>
+              <button type="button" onClick={setRangeThisWeek} className="rounded-md border border-slate-200 bg-white px-3 py-2 text-sm hover:bg-slate-50">This Week</button>
+              <button type="button" onClick={setRangeThisMonth} className="rounded-md border border-slate-200 bg-white px-3 py-2 text-sm hover:bg-slate-50">This Month</button>
+              <select value={filterShiftId} onChange={e=>setFilterShiftId(e.target.value)} className="rounded-md border border-slate-200 bg-white px-3 py-2 text-sm">
+                <option value="">All Shifts</option>
+                {shifts.map(s=> <option key={s.id} value={s.id}>{s.name} ({fmt12(s.start)}-{fmt12(s.end)})</option>)}
+              </select>
               <button onClick={apply} className="btn">Apply</button>
             </div>
           </div>
@@ -384,11 +473,13 @@ export default function Pharmacy_Reports() {
         <SummaryCard title="Total Stock Value" value={`PKR ${summary.stockValue.toLocaleString()}`} bg="bg-teal-50" border="border-teal-200" />
       </div>
 
+      {/* Shift-wise Cash removed; global filters apply above */}
+
       <div className="grid gap-4 md:grid-cols-2">
-        <div className="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
-          <div className="mb-3 font-medium text-slate-800 dark:text-slate-100">Weekly Sales</div>
-          <div className="h-56 w-full overflow-hidden rounded-xl border border-slate-100 bg-slate-50 p-3 shadow-sm dark:border-slate-700 dark:bg-slate-800" style={{ minWidth: 0, minHeight: 0 }}>
-            <ResponsiveContainer width="100%" height="100%">
+        <div className="rounded-xl border border-slate-200 bg-white p-4">
+          <div className="mb-3 font-medium text-slate-800">Weekly Sales</div>
+          <div className="h-56 w-full overflow-hidden rounded-xl border border-slate-100 bg-slate-50 p-3 shadow-sm" style={{ minWidth: 0, minHeight: 0 }}>
+            <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
               <BarChart
                 data={weeklySales.map(d => ({
                   week: `Wk ${new Date(d.week).toLocaleDateString(undefined, { month: 'short', day: '2-digit' })}`,
@@ -419,9 +510,9 @@ export default function Pharmacy_Reports() {
                     if (!active || !payload?.length) return null
                     const val = Number((payload?.[0] as any)?.value || 0)
                     return (
-                      <div className="rounded-xl border border-slate-200 bg-white/95 px-3 py-2 text-xs shadow-lg backdrop-blur dark:border-slate-700 dark:bg-slate-900/95 dark:text-slate-100">
-                        <div className="font-semibold text-slate-800 dark:text-slate-100">{String(label ?? '')}</div>
-                        <div className="mt-1 text-slate-600 dark:text-slate-300">Sales: <span className="font-bold text-sky-700 dark:text-sky-400">PKR {val.toLocaleString()}</span></div>
+                      <div className="rounded-xl border border-slate-200 bg-white/95 px-3 py-2 text-xs shadow-lg backdrop-blur">
+                        <div className="font-semibold text-slate-800">{String(label ?? '')}</div>
+                        <div className="mt-1 text-slate-600">Sales: <span className="font-bold text-sky-700">PKR {val.toLocaleString()}</span></div>
                       </div>
                     )
                   }}
@@ -439,10 +530,10 @@ export default function Pharmacy_Reports() {
             </ResponsiveContainer>
           </div>
         </div>
-        <div className="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
-          <div className="mb-3 font-medium text-slate-800 dark:text-slate-100">Comparison: Sales, Purchases, Expenses</div>
-          <div className="h-56 w-full overflow-hidden rounded-xl border border-slate-100 bg-slate-50 p-3 shadow-sm dark:border-slate-700 dark:bg-slate-800" style={{ minWidth: 0, minHeight: 0 }}>
-            <ResponsiveContainer width="100%" height="100%">
+        <div className="rounded-xl border border-slate-200 bg-white p-4">
+          <div className="mb-3 font-medium text-slate-800">Comparison: Sales, Purchases, Expenses</div>
+          <div className="h-56 w-full overflow-hidden rounded-xl border border-slate-100 bg-slate-50 p-3 shadow-sm" style={{ minWidth: 0, minHeight: 0 }}>
+            <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
               <BarChart
                 data={comparison}
                 margin={{ top: 12, right: 12, left: 0, bottom: 8 }}
@@ -477,9 +568,9 @@ export default function Pharmacy_Reports() {
                     if (!active || !payload?.length) return null
                     const val = Number((payload?.[0] as any)?.value || 0)
                     return (
-                      <div className="rounded-xl border border-slate-200 bg-white/95 px-3 py-2 text-xs shadow-lg backdrop-blur dark:border-slate-700 dark:bg-slate-900/95 dark:text-slate-100">
-                        <div className="font-semibold text-slate-800 dark:text-slate-100">{String(label ?? '')}</div>
-                        <div className="mt-1 text-slate-600 dark:text-slate-300">Amount: <span className="font-bold">PKR {val.toLocaleString()}</span></div>
+                      <div className="rounded-xl border border-slate-200 bg-white/95 px-3 py-2 text-xs shadow-lg backdrop-blur">
+                        <div className="font-semibold text-slate-800">{String(label ?? '')}</div>
+                        <div className="mt-1 text-slate-600">Amount: <span className="font-bold">PKR {val.toLocaleString()}</span></div>
                       </div>
                     )
                   }}
@@ -506,14 +597,14 @@ export default function Pharmacy_Reports() {
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div>
             <div className="flex items-center gap-3">
-              <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-sky-500 to-indigo-600 shadow-lg">
+              <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-linear-to-br from-sky-500 to-indigo-600 shadow-lg">
                 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="h-6 w-6 text-white">
                   <path d="M11.25 4.533A9.707 9.707 0 006 3a9.735 9.735 0 00-3.25.555.75.75 0 00-.5.707v14.25a.75.75 0 001 .707A8.237 8.237 0 016 18.75c1.995 0 3.823.707 5.25 1.886V4.533zM12.75 20.636A8.214 8.214 0 0118 18.75c.966 0 1.89.166 2.75.47a.75.75 0 001-.708V4.262a.75.75 0 00-.5-.707A9.735 9.735 0 0018 3a9.707 9.707 0 00-5.25 1.533v16.103z" />
                 </svg>
               </div>
               <div>
-                <div className="text-2xl font-black bg-gradient-to-r from-sky-600 to-indigo-600 bg-clip-text text-transparent">Daily Closing Sheet</div>
-                <div className="mt-1 text-sm font-medium text-slate-600 dark:text-slate-400">Financial summary for the selected period</div>
+                <div className="text-2xl font-black bg-linear-to-r from-sky-600 to-indigo-600 bg-clip-text text-transparent">Daily Closing Sheet</div>
+                <div className="mt-1 text-sm font-medium text-slate-600">Financial summary for the selected period</div>
               </div>
             </div>
           </div>
@@ -521,7 +612,7 @@ export default function Pharmacy_Reports() {
             <button 
               type="button" 
               onClick={printClosingSheet} 
-              className="inline-flex items-center gap-2 rounded-xl border-2 border-sky-200 bg-white px-4 py-2.5 font-semibold text-sky-700 shadow-sm hover:bg-sky-50 hover:border-sky-300 transition-all dark:border-slate-600 dark:bg-slate-800 dark:text-sky-400 dark:hover:bg-slate-700"
+              className="inline-flex items-center gap-2 rounded-xl border-2 border-sky-200 bg-white px-4 py-2.5 font-semibold text-sky-700 shadow-sm hover:bg-sky-50 hover:border-sky-300 transition-all"
             >
               <Printer className="h-4 w-4" />
               Print
@@ -558,7 +649,7 @@ export default function Pharmacy_Reports() {
                 ].join('\n')
                 downloadTextFile(`closing-sheet-${pharmacyName.replace(/\s+/g, '-')}-${from}-to-${to}.txt`, text)
               }}
-              className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-sky-600 to-indigo-600 px-4 py-2.5 font-bold text-white shadow-lg hover:from-sky-700 hover:to-indigo-700 transition-all"
+              className="inline-flex items-center gap-2 rounded-xl bg-linear-to-r from-sky-600 to-indigo-600 px-4 py-2.5 font-bold text-white shadow-lg hover:from-sky-700 hover:to-indigo-700 transition-all"
             >
               <Download className="h-4 w-4" />
               Download
@@ -567,39 +658,39 @@ export default function Pharmacy_Reports() {
         </div>
 
         <div className={innerPanelClass}>
-          <div className="mb-4 flex items-center justify-between border-b-2 border-slate-200 pb-3 dark:border-slate-700">
+          <div className="mb-4 flex items-center justify-between border-b-2 border-slate-200 pb-3">
             <div>
-              <div className="text-sm font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">Financial Summary</div>
-              <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">Period: <span className="font-semibold text-slate-700 dark:text-slate-300">{from} to {to}</span></div>
+              <div className="text-sm font-bold uppercase tracking-wide text-slate-500">Financial Summary</div>
+              <div className="mt-1 text-xs text-slate-500">Period: <span className="font-semibold text-slate-700">{from} to {to}</span></div>
             </div>
-            <div className="rounded-lg bg-gradient-to-br from-sky-100 to-indigo-100 px-3 py-1.5 dark:from-sky-900/30 dark:to-indigo-900/30">
-              <div className="text-xs font-semibold text-sky-700 dark:text-sky-400">HealthSpire</div>
+            <div className="rounded-lg bg-linear-to-br from-sky-100 to-indigo-100 px-3 py-1.5">
+              <div className="text-xs font-semibold text-sky-700">HealthSpire</div>
             </div>
           </div>
 
           <div className="space-y-3">
-            <div className={rowBg('bg-gradient-to-r from-emerald-50 to-teal-50')}>
+            <div className={rowBg('bg-linear-to-r from-emerald-50 to-teal-50')}>
               <div className="flex items-center justify-between">
-                <span className="font-semibold text-slate-700 dark:text-slate-300">💰 Total Sales</span>
-                <span className="text-lg font-bold text-emerald-700 dark:text-emerald-400">PKR {summary.totalSales.toLocaleString()}</span>
+                <span className="font-semibold text-slate-700">💰 Total Sales</span>
+                <span className="text-lg font-bold text-emerald-700">PKR {summary.totalSales.toLocaleString()}</span>
               </div>
             </div>
             
-            <div className={rowBg('bg-gradient-to-r from-blue-50 to-sky-50')}>
+            <div className={rowBg('bg-linear-to-r from-blue-50 to-sky-50')}>
               <div className="flex items-center justify-between">
-                <span className="font-semibold text-slate-700 dark:text-slate-300">📦 Total Purchases</span>
-                <span className="text-lg font-bold text-blue-700 dark:text-blue-400">PKR {summary.totalPurchases.toLocaleString()}</span>
+                <span className="font-semibold text-slate-700">📦 Total Purchases</span>
+                <span className="text-lg font-bold text-blue-700">PKR {summary.totalPurchases.toLocaleString()}</span>
               </div>
             </div>
             
-            <div className={rowBg('bg-gradient-to-r from-rose-50 to-pink-50')}>
+            <div className={rowBg('bg-linear-to-r from-rose-50 to-pink-50')}>
               <div className="flex items-center justify-between">
-                <span className="font-semibold text-slate-700 dark:text-slate-300">💸 Total Expenses</span>
-                <span className="text-lg font-bold text-rose-700 dark:text-rose-400">PKR {summary.totalExpenses.toLocaleString()}</span>
+                <span className="font-semibold text-slate-700">💸 Total Expenses</span>
+                <span className="text-lg font-bold text-rose-700">PKR {summary.totalExpenses.toLocaleString()}</span>
               </div>
             </div>
 
-            <div className="rounded-2xl bg-gradient-to-r from-sky-600 to-indigo-600 p-5 shadow-lg">
+            <div className="rounded-2xl bg-linear-to-r from-sky-600 to-indigo-600 p-5 shadow-lg">
               <div className="flex items-center justify-between">
                 <span className="text-lg font-bold text-white">🎯 Net Profit</span>
                 <span className="text-2xl font-black text-white">{summary.totalProfit >= 0 ? '+' : ''}PKR {summary.totalProfit.toLocaleString()}</span>
@@ -632,7 +723,7 @@ export default function Pharmacy_Reports() {
 
 function SummaryCard({ title, value, bg, border }: { title: string; value: string; bg: string; border: string }) {
   return (
-    <div className={`rounded-xl border ${border} ${bg} p-4 dark:border-slate-700 dark:bg-slate-900`}>
+    <div className={`rounded-xl border ${border} ${bg} p-4 dark:border-slate-700 dark:bg-slate-800`}>
       <div className="text-xs font-medium text-slate-600 dark:text-slate-300">{title}</div>
       <div className="mt-2 text-lg font-semibold text-slate-900 dark:text-slate-100">{value}</div>
     </div>

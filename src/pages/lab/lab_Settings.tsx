@@ -46,8 +46,21 @@ export default function Lab_Settings() {
   }, [])
 
   // System Settings form state
-  const [dateFormat, setDateFormat] = useState<string>(localStorage.getItem('lab.dateFormat') || 'DD/MM/YYYY')
-  const [currency, setCurrency] = useState<string>(localStorage.getItem('lab.currency') || 'PKR')
+  const [dateFormat, setDateFormat] = useState<string>('DD/MM/YYYY')
+  const [currency, setCurrency] = useState<string>('PKR')
+
+  useEffect(()=>{
+    let mounted = true
+    ;(async()=>{
+      try {
+        const s: any = await (labApi as any).getSystemSettings()
+        if (!mounted || !s) return
+        if (s.dateFormat) setDateFormat(String(s.dateFormat))
+        if (s.currency) setCurrency(String(s.currency))
+      } catch {}
+    })()
+    return ()=>{ mounted = false }
+  }, [])
 
   const saveLab = async () => {
     setSaving(true)
@@ -78,12 +91,15 @@ export default function Lab_Settings() {
   }
 
   const saveSystem = () => {
-    try {
-      localStorage.setItem('lab.dateFormat', dateFormat)
-      localStorage.setItem('lab.currency', currency)
-      setNotice('System settings saved')
-      try { setTimeout(()=> setNotice(''), 2500) } catch {}
-    } catch {}
+    ;(async()=>{
+      try {
+        await (labApi as any).updateSystemSettings({ dateFormat, currency })
+        setNotice('System settings saved')
+        try { setTimeout(()=> setNotice(''), 2500) } catch {}
+      } catch (e) {
+        console.error(e)
+      }
+    })()
   }
 
   return (

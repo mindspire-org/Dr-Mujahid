@@ -1,14 +1,16 @@
 import { useEffect, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { RotateCw, FileDown, CalendarDays, Package, TrendingDown, AlertTriangle } from 'lucide-react'
 import Pharmacy_InventoryTable from '../../components/pharmacy/pharmacy_InventoryTable'
 import Pharmacy_UpdateStock from '../../components/pharmacy/pharmacy_UpdateStock'
 import { pharmacyApi } from '../../utils/api'
 import Pharmacy_EditInventoryItem from '../../components/pharmacy/pharmacy_EditInventoryItem'
 import Pharmacy_ConfirmDialog from '../../components/pharmacy/pharmacy_ConfirmDialog'
+import Pharmacy_InventoryItemDetailsDialog from '../../components/pharmacy/pharmacy_InventoryItemDetailsDialog'
 
 export default function Pharmacy_Inventory() {
   const navigate = useNavigate()
+  const location = useLocation()
   const [updateStockOpen, setUpdateStockOpen] = useState(false)
   const [editOpen, setEditOpen] = useState(false)
   const [editMedicine, setEditMedicine] = useState<string>('')
@@ -17,32 +19,66 @@ export default function Pharmacy_Inventory() {
   const [activeTab, setActiveTab] = useState<Tab>('All Items')
   const [rows, setRows] = useState<any[]>([])
   const [search, setSearch] = useState('')
-  const [company, setCompany] = useState('')
-  const [companyOptions, setCompanyOptions] = useState<string[]>([])
   const [refreshTick, setRefreshTick] = useState(0)
   const [confirmOpen, setConfirmOpen] = useState(false)
   const [toDelete, setToDelete] = useState<string | null>(null)
+  const [rejectConfirmOpen, setRejectConfirmOpen] = useState(false)
+  const [rejectAllConfirmOpen, setRejectAllConfirmOpen] = useState(false)
+  const [toReject, setToReject] = useState<{ draftId: string; lineId?: string; label?: string } | null>(null)
   const [stats, setStats] = useState<{ stockSaleValue: number; lowStockCount: number; outOfStockCount: number; expiringSoonCount: number }>({ stockSaleValue: 0, lowStockCount: 0, outOfStockCount: 0, expiringSoonCount: 0 })
   const [settings, setSettings] = useState<any>(null)
   const [page, setPage] = useState(1)
   const [totalPages, setTotalPages] = useState(1)
   const [limit, setLimit] = useState(10)
+  const [pageCache, setPageCache] = useState<Record<number, any[]>>({})
+  const [detailsOpen, setDetailsOpen] = useState(false)
+  const [detailsKey, setDetailsKey] = useState('')
   
+  // Load dashboard summary (counts) sparingly; avoid re-fetching on pagination changes
+  useEffect(() => {
+    let mounted = true
+    // Instant cached stats for perceived speed (only if fresh < 60s)
+    try {
+      const cached = JSON.parse(localStorage.getItem('pharmacy.inventory.summary') || 'null')
+      if (cached?.stats && cached?.at && (Date.now() - Number(cached.at) < 60_000) && mounted) setStats(cached.stats)
+    } catch {}
+    ;(async ()=>{
+      try {
+        const sum: any = await pharmacyApi.inventorySummaryCached(undefined, { ttlMs: 120_000, forceRefresh: refreshTick>0 })
+        if (mounted && sum?.stats){
+          setStats(sum.stats)
+          try { localStorage.setItem('pharmacy.inventory.summary', JSON.stringify({ stats: sum.stats, at: Date.now() })) } catch {}
+        }
+      } catch {}
+    })()
+    return ()=>{ mounted = false }
+  }, [refreshTick])
+
+  // Reset page cache when filters change (but not on page changes)
+  useEffect(()=>{ setPageCache({}) }, [activeTab, search, limit, refreshTick])
+
   const approveOne = async (id: string) => {
-    // optimistic remove
+    // approving is draft-level
     setRows(prev => prev.filter((r: any) => r.draftId !== id))
-    pharmacyApi.approvePurchaseDraft(id).finally(()=> { setRefreshTick(t=>t+1); setActiveTab('All Items') })
+    pharmacyApi.approvePurchaseDraft(id).finally(()=> { setRefreshTick(t=>t+1) })
   }
-  const rejectOne = async (id: string) => {
-    setRows(prev => prev.filter((r: any) => r.draftId !== id))
-    pharmacyApi.deletePurchaseDraft(id).finally(()=> setRefreshTick(t=>t+1))
+  const rejectOne = async (draftId: string, lineId?: string) => {
+    // reject should be line-level (only remove the clicked row)
+    if (lineId) {
+      setRows(prev => prev.filter((r: any) => !(r.draftId === draftId && r.lineId === lineId)))
+      pharmacyApi.deletePurchaseDraftLine(draftId, lineId).finally(()=> setRefreshTick(t=>t+1))
+      return
+    }
+    // fallback: reject whole draft
+    setRows(prev => prev.filter((r: any) => r.draftId !== draftId))
+    pharmacyApi.deletePurchaseDraft(draftId).finally(()=> setRefreshTick(t=>t+1))
   }
   const approveAll = async () => {
     if (activeTab !== 'Pending Review') return
     const ids = Array.from(new Set((rows as any[]).map(r=>r.draftId).filter(Boolean))) as string[]
     // optimistic remove
     setRows(prev => prev.filter((r: any) => !ids.includes(r.draftId)))
-    Promise.all(ids.map(id => pharmacyApi.approvePurchaseDraft(id).catch(()=>{}))).finally(()=> { setRefreshTick(t=>t+1); setActiveTab('All Items') })
+    Promise.all(ids.map(id => pharmacyApi.approvePurchaseDraft(id).catch(()=>{}))).finally(()=> { setRefreshTick(t=>t+1) })
   }
   const rejectAll = async () => {
     if (activeTab !== 'Pending Review') return
@@ -51,68 +87,90 @@ export default function Pharmacy_Inventory() {
     Promise.all(ids.map(id => pharmacyApi.deletePurchaseDraft(id).catch(()=>{}))).finally(()=> setRefreshTick(t=>t+1))
   }
 
+  const askRejectOne = (draftId: string, lineId?: string, label?: string) => {
+    if (activeTab !== 'Pending Review') return
+    setToReject({ draftId, lineId, label })
+    setRejectConfirmOpen(true)
+  }
+
+  const askRejectAll = () => {
+    if (activeTab !== 'Pending Review') return
+    setRejectAllConfirmOpen(true)
+  }
+
+  // Sync tab with URL (?tab=all|pending|low|expiring|out)
+  useEffect(() => {
+    const sp = new URLSearchParams(location.search)
+    const tab = (sp.get('tab') || '').toLowerCase()
+    const map: Record<string, Tab> = {
+      all: 'All Items',
+      pending: 'Pending Review',
+      low: 'Low Stock',
+      expiring: 'Expiring Soon',
+      out: 'Out of Stock',
+    }
+    const next = map[tab]
+    if (next && next !== activeTab) setActiveTab(next)
+    if (!tab) {
+      // don't force update; keep current state
+    }
+  }, [location.search])
+
+  const setTabAndUrl = (t: Tab) => {
+    setActiveTab(t)
+    setPage(1)
+    const sp = new URLSearchParams(location.search)
+    const rev: Record<Tab, string> = {
+      'All Items': 'all',
+      'Pending Review': 'pending',
+      'Low Stock': 'low',
+      'Expiring Soon': 'expiring',
+      'Out of Stock': 'out',
+    }
+    sp.set('tab', rev[t])
+    navigate({ pathname: '/pharmacy/inventory', search: `?${sp.toString()}` }, { replace: true })
+  }
+
   useEffect(() => {
     const load = async () => {
       try {
-        // fetch dashboard summary regardless of tab
-        try {
-          const sum: any = await pharmacyApi.inventorySummary({ company: company || undefined })
-          if (sum?.stats) setStats(sum.stats)
-        } catch {}
-        // Override Expiring Items count to use LAST expiry (within 30 days)
-        try {
-          const BIG_LIMIT = 2000
-          const resLast: any = await pharmacyApi.listInventory({ page: 1, limit: BIG_LIMIT, company: company || undefined })
-          const itemsLast: any[] = resLast?.items ?? resLast ?? []
-          try {
-            const companies = Array.from(new Set((itemsLast || []).map((it:any)=> String(it.company || '').trim()).filter(Boolean))).sort()
-            setCompanyOptions(companies)
-          } catch {}
-          const today = new Date(); today.setHours(0,0,0,0)
-          const soonDays = 30
-          const countLast = (itemsLast || []).reduce((acc:number, it:any)=>{
-            const expStr = String(it.lastExpiry || '').slice(0,10)
-            if (!expStr) return acc
-            const d = new Date(expStr + 'T00:00:00')
-            if (isNaN(d.getTime())) return acc
-            const days = Math.floor((d.getTime() - today.getTime()) / 86400000)
-            return (days >= 0 && days <= soonDays) ? acc + 1 : acc
-          }, 0)
-          setStats(prev => ({ ...(prev||{ stockSaleValue:0, lowStockCount:0, outOfStockCount:0, expiringSoonCount:0 }), expiringSoonCount: countLast }))
-        } catch {}
+        // dashboard summary is loaded in a separate effect to avoid blocking pagination
         // settings (for printing header)
         try {
           const s: any = await pharmacyApi.getSettings()
           setSettings(s)
         } catch {}
         if (activeTab === 'Pending Review') {
-          const res: any = await pharmacyApi.listPurchaseDrafts({ search: search || undefined, company: company || undefined, limit: 200 })
-          const drafts: any[] = res?.items ?? res ?? []
-          const mapped = drafts.flatMap((d: any) => (d.lines || []).map((l: any) => ({
-            invoice: d.invoice || '-',
-            medicine: l.name || '-',
-            company: l.company || '-',
-            generic: l.genericName || '-',
-            category: l.category || '-',
-            packs: l.packs ?? '-',
-            unitsPerPack: l.unitsPerPack ?? '-',
-            unitSale: (l.unitsPerPack && l.salePerPack) ? Number((l.salePerPack / l.unitsPerPack).toFixed(3)) : '-',
-            totalItems: (l.totalItems != null) ? l.totalItems : ((l.unitsPerPack || 1) * (l.packs || 0)),
-            minStock: (l.minStock != null) ? l.minStock : '-',
-            expiry: l.expiry || '-',
-            supplier: d.supplierName || '-',
-            draftId: d._id,
-          })))
+          const res: any = await pharmacyApi.listPurchaseDraftLines({ search: search || undefined, page, limit })
+          const items: any[] = res?.items ?? res ?? []
+          const tp = Number(res?.totalPages || 1)
+          if (!isNaN(tp)) setTotalPages(tp)
+          const mapped = (items || []).map((it: any) => ({
+            invoice: it.invoice || '-',
+            medicine: it.name || '-',
+            generic: it.genericName || '-',
+            category: it.category || '-',
+            packs: it.packs ?? '-',
+            unitsPerPack: it.unitsPerPack ?? '-',
+            unitSale: (it.unitsPerPack && it.salePerPack) ? Number((it.salePerPack / it.unitsPerPack).toFixed(3)) : '-',
+            totalItems: (it.totalItems != null) ? it.totalItems : ((it.unitsPerPack || 1) * (it.packs || 0)),
+            minStock: (it.minStock != null) ? it.minStock : '-',
+            expiry: it.expiry || '-',
+            supplier: it.supplierName || '-',
+            draftId: it.draftId,
+            lineId: it.lineId,
+          }))
           setRows(mapped)
         } else if (activeTab === 'All Items') {
-          const res: any = await pharmacyApi.listInventory({ search: search || undefined, company: company || undefined, page, limit })
+          // Serve cached page immediately (stale-while-revalidate)
+          if (pageCache[page]) setRows(pageCache[page])
+          const res: any = await pharmacyApi.listInventoryCached({ search: search || undefined, page, limit }, { ttlMs: 60_000, forceRefresh: refreshTick>0 })
           const items: any[] = res?.items ?? res ?? []
           const tp = Number(res?.totalPages || 1)
           if (!isNaN(tp)) setTotalPages(tp)
           const mapped = (items || []).map((it: any)=>({
             invoice: it.lastInvoice || '-',
             medicine: it.name || '-',
-            company: it.company || '-',
             generic: it.genericName || it.lastGenericName || '-',
             category: it.category || '-',
             packs: (it.unitsPerPack && it.unitsPerPack>0) ? Math.floor((it.onHand||0) / it.unitsPerPack) : '-',
@@ -124,37 +182,42 @@ export default function Pharmacy_Inventory() {
             supplier: it.lastSupplier || '-',
           }))
           setRows(mapped)
+          setPageCache(prev => ({ ...prev, [page]: mapped }))
+          // Prefetch next page to speed up pagination
+          const nextPage = page + 1
+          if (nextPage <= (tp || 1) && !pageCache[nextPage]){
+            pharmacyApi.listInventoryCached({ search: search || undefined, page: nextPage, limit }, { ttlMs: 60_000 })
+              .then((r:any)=>{
+                const itms: any[] = r?.items ?? r ?? []
+                const m = (itms || []).map((it: any)=>({
+                  invoice: it.lastInvoice || '-',
+                  medicine: it.name || '-',
+                  generic: it.genericName || it.lastGenericName || '-',
+                  category: it.category || '-',
+                  packs: (it.unitsPerPack && it.unitsPerPack>0) ? Math.floor((it.onHand||0) / it.unitsPerPack) : '-',
+                  unitsPerPack: it.unitsPerPack ?? '-',
+                  unitSale: (it.lastSalePerUnit != null) ? Number((it.lastSalePerUnit).toFixed(3)) : '-',
+                  totalItems: it.onHand ?? 0,
+                  minStock: (it.minStock != null) ? it.minStock : '-',
+                  expiry: (String(it.lastExpiry || it.earliestExpiry || '').slice(0,10)) || '-',
+                  supplier: it.lastSupplier || '-',
+                }))
+                setPageCache(prev => ({ ...prev, [nextPage]: m }))
+              })
+              .catch(()=>{})
+          }
         } else {
-          // Derived tabs: Low Stock, Expiring Soon, Out of Stock
-          const BIG_LIMIT = 2000
-          const res: any = await pharmacyApi.listInventory({ search: search || undefined, company: company || undefined, page: 1, limit: BIG_LIMIT })
-          const items: any[] = res?.items ?? res ?? []
-          // Compare by whole days to avoid timezone/time-of-day edge cases
-          const today = new Date(); today.setHours(0,0,0,0)
-          const soonDays = 30
-          const filtered = (items || []).filter((it: any) => {
-            const onHand = Number(it.onHand ?? 0)
-            const minStock = (it.minStock != null) ? Number(it.minStock) : null
-            const expStr = String(it.lastExpiry || '').slice(0,10)
-            const expDate = expStr ? new Date(expStr + 'T00:00:00') : null
-            const expValid = !!(expDate && !isNaN(expDate.getTime()))
-            if (activeTab === 'Low Stock') {
-              return onHand > 0 && minStock != null && onHand < Number(minStock)
-            }
-            if (activeTab === 'Out of Stock') {
-              return onHand <= 0
-            }
-            if (activeTab === 'Expiring Soon') {
-              if (!expValid) return false
-              const days = Math.floor(((expDate as Date).getTime() - today.getTime()) / 86400000)
-              return days >= 0 && days <= soonDays
-            }
-            return false
-          })
-          const mapped = filtered.map((it: any)=>({
+          // Derived tabs: Low Stock, Expiring Soon, Out of Stock — server-side filtered + paginated
+          const status = activeTab === 'Low Stock' ? 'low' : (activeTab === 'Out of Stock' ? 'out' : 'expiring')
+          const res: any = await pharmacyApi.listInventoryFilteredCached({ status: status as any, search: search || undefined, page, limit }, { ttlMs: 60_000, forceRefresh: refreshTick>0 })
+          // Exclude items that are out of stock from Expiring Soon view
+          const itemsRaw: any[] = res?.items ?? res ?? []
+          const items: any[] = status==='expiring' ? itemsRaw.filter((it:any)=> Number(it.onHand||0) > 0) : itemsRaw
+          const tp = Number(res?.totalPages || 1)
+          if (!isNaN(tp)) setTotalPages(tp)
+          const mapped = (items || []).map((it: any)=>({
             invoice: it.lastInvoice || '-',
             medicine: it.name || '-',
-            company: it.company || '-',
             generic: it.genericName || it.lastGenericName || '-',
             category: it.category || '-',
             packs: (it.unitsPerPack && it.unitsPerPack>0) ? Math.floor((it.onHand||0) / it.unitsPerPack) : '-',
@@ -162,24 +225,29 @@ export default function Pharmacy_Inventory() {
             unitSale: (it.lastSalePerUnit != null) ? Number((it.lastSalePerUnit).toFixed(3)) : '-',
             totalItems: it.onHand ?? 0,
             minStock: (it.minStock != null) ? it.minStock : '-',
-            expiry: (String(it.lastExpiry || it.earliestExpiry || '').slice(0,10)) || '-',
+            expiry: (status === 'expiring' ? String(it.earliestExpiry || '').slice(0,10) : String(it.lastExpiry || it.earliestExpiry || '').slice(0,10)) || '-',
             supplier: it.lastSupplier || '-',
           }))
           setRows(mapped)
+          // Keep the top widgets consistent when switching tabs (use total from server, not page length)
+          const total = Number(res?.total || 0)
+          if (activeTab === 'Expiring Soon') setStats(prev => ({ ...(prev||{ stockSaleValue:0, lowStockCount:0, outOfStockCount:0, expiringSoonCount:0 }), expiringSoonCount: total }))
+          if (activeTab === 'Low Stock') setStats(prev => ({ ...(prev||{ stockSaleValue:0, lowStockCount:0, outOfStockCount:0, expiringSoonCount:0 }), lowStockCount: total }))
+          if (activeTab === 'Out of Stock') setStats(prev => ({ ...(prev||{ stockSaleValue:0, lowStockCount:0, outOfStockCount:0, expiringSoonCount:0 }), outOfStockCount: total }))
         }
       } catch {
         setRows([])
       }
     }
     load()
-  }, [activeTab, search, company, refreshTick, page, limit])
+  }, [activeTab, search, refreshTick, page, limit])
 
   function handleExport(){
     const csvRows: string[] = []
-    const headers = ['Invoice #','Medicine','Brand','Category','Packs','Units/Pack','Unit Sale','Total Items','Min Stock','Expiry','Supplier']
+    const headers = ['Invoice #','Medicine','Category','Packs','Units/Pack','Unit Sale','Total Items','Min Stock','Expiry','Supplier']
     csvRows.push(headers.join(','))
     rows.forEach((r: any)=>{
-      const vals = [r.invoice, r.medicine, r.company || '-', r.category, r.packs, r.unitsPerPack, r.unitSale, r.totalItems, r.minStock, r.expiry, r.supplier]
+      const vals = [r.invoice, r.medicine, r.category, r.packs, r.unitsPerPack, r.unitSale, r.totalItems, r.minStock, r.expiry, r.supplier]
       csvRows.push(vals.map(v => typeof v === 'string' ? '"'+v.replace(/"/g,'""')+'"' : String(v)).join(','))
     })
     const blob = new Blob([csvRows.join('\n')], { type: 'text/csv;charset=utf-8;' })
@@ -240,87 +308,86 @@ export default function Pharmacy_Inventory() {
       try { frame.contentWindow?.focus(); frame.contentWindow?.print(); } catch {}
       setTimeout(()=>{ document.body.removeChild(frame) }, 100)
     }
-}
+  }
 
-return (
-  <div className="space-y-4">
-    <div className="flex items-center gap-2 text-slate-800">
-      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="h-5 w-5"><path d="M5 6.75A2.75 2.75 0 0 1 7.75 4h8.5A2.75 2.75 0 0 1 19 6.75V9h-1.5V6.75c0-.69-.56-1.25-1.25-1.25h-8.5c-.69 0-1.25.56-1.25 1.25V9H5V6.75Z"/><path d="M4.25 9.75A2.75 2.75 0 0 1 7 7h10a2.75 2.75 0 0 1 2.75 2.75v7.5A2.75 2.75 0 0 1 17 20H7a2.75 2.75 0 0 1-2.75-2.75v-7.5Z"/></svg>
-      <h2 className="text-xl font-bold">Inventory</h2>
-    </div>
-
-    <div className="rounded-xl border border-slate-200 bg-white p-4">
-      <div className="flex flex-wrap items-center gap-2">
-        <input value={search} onChange={e=>{ setSearch(e.target.value); setPage(1) }} placeholder="Search inventory..." className="w-full max-w-md rounded-md border border-slate-300 px-3 py-2 text-sm" />
-        <select value={company} onChange={e=>{ setCompany(e.target.value); setPage(1) }} className="w-full max-w-xs rounded-md border border-slate-300 px-3 py-2 text-sm">
-          <option value="">All Brands</option>
-          {companyOptions.map(c => <option key={c} value={c}>{c}</option>)}
-        </select>
-        <button onClick={()=>setRefreshTick(t=>t+1)} className="btn-outline-navy inline-flex items-center gap-2"><RotateCw className="h-4 w-4" /> Refresh</button>
-        <button onClick={()=>navigate('/pharmacy/inventory/add-invoice')} className="btn inline-flex items-center gap-2"><Package className="h-4 w-4" /> Add Invoice</button>
-        <button onClick={handleExport} className="btn-outline-navy inline-flex items-center gap-2"><FileDown className="h-4 w-4" /> Export CSV</button>
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center gap-2 text-slate-800">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="h-5 w-5"><path d="M5 6.75A2.75 2.75 0 0 1 7.75 4h8.5A2.75 2.75 0 0 1 19 6.75V9h-1.5V6.75c0-.69-.56-1.25-1.25-1.25h-8.5c-.69 0-1.25.56-1.25 1.25V9H5V6.75Z"/><path d="M4.25 9.75A2.75 2.75 0 0 1 7 7h10a2.75 2.75 0 0 1 2.75 2.75v7.5A2.75 2.75 0 0 1 17 20H7a2.75 2.75 0 0 1-2.75-2.75v-7.5Z"/></svg>
+        <h2 className="text-xl font-bold">Inventory</h2>
       </div>
 
-      <div className="mt-4 grid gap-3 md:grid-cols-4">
-        <div className="card p-4 border-emerald-200 bg-emerald-50/40">
-          <div className="flex items-start justify-between">
-            <div>
-              <div className="text-sm text-slate-600">Stock Value</div>
-              <div className="mt-1 text-lg font-semibold text-emerald-700">{stats.stockSaleValue?.toFixed ? stats.stockSaleValue.toFixed(2) : '0.00'}</div>
+      <div className="rounded-xl border border-slate-200 bg-white p-4">
+        <div className="mb-3 flex flex-wrap items-center gap-3">
+          <div className="text-2xl font-extrabold text-slate-900">Inventory Control</div>
+          <div className="ml-auto flex items-center gap-2">
+            <button onClick={() => setUpdateStockOpen(true)} className="btn"><RotateCw className="h-4 w-4" /> Update Stock</button>
+            <button onClick={() => navigate('/pharmacy/inventory/add-invoice')} className="btn"><CalendarDays className="h-4 w-4" /> Add Invoice</button>
+            <button onClick={()=>setRefreshTick(t=>t+1)} className="btn-outline-navy"><RotateCw className="h-4 w-4" /> Refresh</button>
+            <button onClick={handleExport} className="btn-outline-navy"><FileDown className="h-4 w-4" /> Export</button>
+          </div>
+        </div>
+
+        <div className="mb-3 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+          <div className="card p-4 border-emerald-200 bg-emerald-50/40">
+            <div className="flex items-start justify-between">
+              <div>
+                <div className="text-sm text-slate-600">Stock Value</div>
+                <div className="mt-1 text-lg font-semibold text-emerald-700">{stats.stockSaleValue?.toFixed ? stats.stockSaleValue.toFixed(2) : '0.00'}</div>
+              </div>
+              <div className="rounded-lg bg-emerald-100 p-2 text-emerald-700">
+                <Package className="h-5 w-5" />
+              </div>
             </div>
-            <div className="rounded-lg bg-emerald-100 p-2 text-emerald-700">
-              <Package className="h-5 w-5" />
+          </div>
+          <div className="card p-4 border-yellow-200 bg-yellow-50/40">
+            <div className="flex items-start justify-between">
+              <div>
+                <div className="text-sm text-slate-600">Low Stock Items</div>
+                <div className="mt-1 text-lg font-semibold text-yellow-700">{stats.lowStockCount ?? 0}</div>
+              </div>
+              <div className="rounded-lg bg-yellow-100 p-2 text-yellow-700">
+                <TrendingDown className="h-5 w-5" />
+              </div>
+            </div>
+          </div>
+          <div className="card p-4 border-orange-200 bg-orange-50/40">
+            <div className="flex items-start justify-between">
+              <div>
+                <div className="text-sm text-slate-600">Expiring Items</div>
+                <div className="mt-1 text-lg font-semibold text-orange-600">{stats.expiringSoonCount ?? 0}</div>
+              </div>
+              <div className="rounded-lg bg-orange-100 p-2 text-orange-600">
+                <CalendarDays className="h-5 w-5" />
+              </div>
+            </div>
+          </div>
+          <div className="card p-4 border-rose-200 bg-rose-50/40">
+            <div className="flex items-start justify-between">
+              <div>
+                <div className="text-sm text-slate-600">Out of Stock Items</div>
+                <div className="mt-1 text-lg font-semibold text-rose-700">{stats.outOfStockCount ?? 0}</div>
+              </div>
+              <div className="rounded-lg bg-rose-100 p-2 text-rose-700">
+                <AlertTriangle className="h-5 w-5" />
+              </div>
             </div>
           </div>
         </div>
-        <div className="card p-4 border-yellow-200 bg-yellow-50/40">
-          <div className="flex items-start justify-between">
-            <div>
-              <div className="text-sm text-slate-600">Low Stock Items</div>
-              <div className="mt-1 text-lg font-semibold text-yellow-700">{stats.lowStockCount ?? 0}</div>
-            </div>
-            <div className="rounded-lg bg-yellow-100 p-2 text-yellow-700">
-              <TrendingDown className="h-5 w-5" />
-            </div>
+
+        <div className="mb-3 flex flex-wrap items-center gap-2">
+          <div className="flex-1 min-w-[240px]">
+            <input id="pharmacy-inventory-search" value={search} onChange={e=>{ setSearch(e.target.value); setPage(1) }} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" placeholder="Search medicines or scan barcode..." />
           </div>
+          <button onClick={handlePrint} className="btn-outline-navy">Print</button>
+          <button className="btn-outline-navy">Filter</button>
         </div>
-        <div className="card p-4 border-orange-200 bg-orange-50/40">
-          <div className="flex items-start justify-between">
-            <div>
-              <div className="text-sm text-slate-600">Expiring Items</div>
-              <div className="mt-1 text-lg font-semibold text-orange-600">{stats.expiringSoonCount ?? 0}</div>
-            </div>
-            <div className="rounded-lg bg-orange-100 p-2 text-orange-600">
-              <CalendarDays className="h-5 w-5" />
-            </div>
-          </div>
-        </div>
-        <div className="card p-4 border-rose-200 bg-rose-50/40">
-          <div className="flex items-start justify-between">
-            <div>
-              <div className="text-sm text-slate-600">Out of Stock Items</div>
-              <div className="mt-1 text-lg font-semibold text-rose-700">{stats.outOfStockCount ?? 0}</div>
-            </div>
-            <div className="rounded-lg bg-rose-100 p-2 text-rose-700">
-              <AlertTriangle className="h-5 w-5" />
-            </div>
-          </div>
-        </div>
-      </div>
-    
-      <div className="mb-3 flex flex-wrap items-center gap-2">
-        <div className="flex-1 min-w-[240px]">
-          <input id="pharmacy-inventory-search" value={search} onChange={e=>{ setSearch(e.target.value); setPage(1) }} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" placeholder="Search medicines or scan barcode..." />
-        </div>
-        <button onClick={handlePrint} className="btn-outline-navy">Print</button>
-        <button className="btn-outline-navy">Filter</button>
-      </div>
 
         <div className="mb-3 flex flex-wrap items-center gap-2 text-sm">
           {tabs.map(tag => (
             <button
               key={tag}
-              onClick={()=>setActiveTab(tag)}
+              onClick={()=>setTabAndUrl(tag)}
               className={`rounded-md border px-3 py-1.5 ${activeTab===tag? 'border-navy-600 bg-navy-50 text-navy-700' : 'border-slate-200 bg-slate-50 hover:bg-slate-100'}`}
             >{tag}</button>
           ))}
@@ -330,10 +397,32 @@ return (
           rows={rows}
           pending={activeTab==='Pending Review'}
           onApprove={approveOne}
-          onReject={rejectOne}
+          onReject={(draftId, lineId)=>{
+            const row = (rows as any[]).find(r => r.draftId===draftId && (lineId ? r.lineId===lineId : true))
+            askRejectOne(draftId, lineId, row?.medicine)
+          }}
           onApproveAll={approveAll}
-          onRejectAll={rejectAll}
+          onRejectAll={askRejectAll}
+          onView={(key)=>{
+            if (activeTab !== 'All Items') return
+            const k = String(key||'').trim().toLowerCase()
+            if (!k) return
+            setDetailsKey(k)
+            setDetailsOpen(true)
+          }}
           onEdit={(medicine)=>{ setEditMedicine(medicine); setEditOpen(true) }}
+          onEditDraft={(id)=> {
+            const fromPending = activeTab==='Pending Review'
+            const search = fromPending ? '?from=pending' : ''
+            navigate(`/pharmacy/inventory/edit-invoice/${encodeURIComponent(id)}${search}`)
+          }}
+          // Pagination controls for Pending Review and Derived tabs (Low/Expiring/Out). All Items has its own footer below.
+          page={activeTab!=='All Items' ? page : undefined}
+          totalPages={activeTab!=='All Items' ? totalPages : undefined}
+          limit={activeTab!=='All Items' ? limit : undefined}
+          onChangeLimit={activeTab!=='All Items' ? (n)=>{ setLimit(n); setPage(1) } : undefined}
+          onPrev={activeTab!=='All Items' ? ()=> setPage(p=> Math.max(1, p-1)) : undefined}
+          onNext={activeTab!=='All Items' ? ()=> setPage(p=> Math.min(totalPages, p+1)) : undefined}
           onDelete={async(medicine)=>{
             const m = (medicine||'').trim()
             if (!m) return
@@ -360,6 +449,33 @@ return (
 
       <Pharmacy_UpdateStock open={updateStockOpen} onClose={() => setUpdateStockOpen(false)} />
       <Pharmacy_EditInventoryItem open={editOpen} onClose={()=>{ setEditOpen(false); setRefreshTick(t=>t+1) }} medicine={editMedicine} />
+      <Pharmacy_InventoryItemDetailsDialog open={detailsOpen} onClose={()=>{ setDetailsOpen(false); setDetailsKey('') }} itemKey={detailsKey} />
+      <Pharmacy_ConfirmDialog
+        open={rejectConfirmOpen}
+        title="Reject Draft Line"
+        message={toReject?.label ? `Reject ${toReject.label}? This will remove it from Pending Review.` : 'Reject this item from Pending Review?'}
+        confirmText="Reject"
+        onCancel={()=>{ setRejectConfirmOpen(false); setToReject(null) }}
+        onConfirm={async()=>{
+          const d = toReject?.draftId
+          const l = toReject?.lineId
+          setRejectConfirmOpen(false)
+          setToReject(null)
+          if (!d) return
+          await rejectOne(d, l)
+        }}
+      />
+      <Pharmacy_ConfirmDialog
+        open={rejectAllConfirmOpen}
+        title="Reject All Pending"
+        message="Reject all pending draft items? This will remove all items currently in Pending Review."
+        confirmText="Reject All"
+        onCancel={()=> setRejectAllConfirmOpen(false)}
+        onConfirm={async()=>{
+          setRejectAllConfirmOpen(false)
+          await rejectAll()
+        }}
+      />
       <Pharmacy_ConfirmDialog
         open={confirmOpen}
         title="Delete Inventory Item"

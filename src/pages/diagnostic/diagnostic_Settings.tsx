@@ -62,6 +62,12 @@ export default function Diagnostic_Settings(){
         })).filter(c => c.name || c.degrees || c.title),
       }
       await diagnosticApi.updateSettings(payload)
+      try {
+        localStorage.setItem('diagnostic.settings', JSON.stringify({ diagnosticName, logoDataUrl: logoDataUrl || undefined }))
+      } catch {}
+      try {
+        window.dispatchEvent(new CustomEvent('diagnostic:settings-updated', { detail: { diagnosticName, logoDataUrl: logoDataUrl || undefined } }))
+      } catch {}
       setNotice('Diagnostic settings saved')
       try { setTimeout(()=> setNotice(''), 2500) } catch {}
     } catch {}

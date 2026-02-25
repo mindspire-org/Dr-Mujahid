@@ -31,12 +31,11 @@ export async function search(req: Request, res: Response){
   if (phone) criteria.push({ phoneNormalized: { $regex: new RegExp(phone + '$') } })
 
   const filter: any = criteria.length ? { $and: criteria } : {}
-  // Only show patients who have at least one non-cancelled token (OPD visit)
+  const pats: any[] = await LabPatient.find(filter).limit(limit).lean()
+
+  // Compute visitCount based on Hospital tokens when available
   const tokenCrit: any = { patientId: { $ne: null }, status: { $ne: 'cancelled' } }
   if (doctorId) tokenCrit.doctorId = doctorId
-  const patientIds = await HospitalToken.distinct('patientId', tokenCrit)
-  filter._id = { $in: patientIds }
-  const pats: any[] = await LabPatient.find(filter).limit(limit).lean()
 
   const countRows = await HospitalToken.aggregate([
     { $match: { ...tokenCrit, patientId: { $in: pats.map(p => p._id) } } },

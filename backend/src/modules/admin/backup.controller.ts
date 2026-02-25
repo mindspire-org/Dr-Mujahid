@@ -3,6 +3,7 @@ import mongoose, { Types } from 'mongoose'
 import { promises as fs } from 'fs'
 import path from 'path'
 import { env } from '../../config/env'
+import { HospitalAccessNode } from '../hospital/models/AccessNode'
 
 function isPlainObject(v: any){ return Object.prototype.toString.call(v) === '[object Object]' }
 
@@ -64,8 +65,36 @@ export async function exportAll(req: Request, res: Response){
 export async function purgeAll(_req: Request, res: Response){
   const ok = String((_req.body as any)?.confirm || '').toUpperCase() === 'PURGE'
   if (!ok) return res.status(400).json({ error: 'Confirmation required. Set body.confirm = "PURGE".' })
-  await mongoose.connection.db!.dropDatabase()
-  res.json({ ok: true })
+  const db = mongoose.connection.db!
+  const names = await listCollectionNames()
+  let accessNodeCollectionName = ''
+  try { accessNodeCollectionName = String((HospitalAccessNode as any)?.collection?.name || '').trim() } catch {}
+  const protectedCollections = new Set([
+    // Explicitly requested
+    'users',
+    'hospital_roles',
+    'hospital_bank_accounts',
+    'hospital_petty_cash_accounts',
+    // Mongoose pluralizations commonly used in this codebase
+    'hospital_users',
+    // Access tree powering User Management permissions UI (/hospital/access/tree)
+    // Model name: Hospital_AccessNode (mongoose pluralization varies by existing DB)
+    'hospital_accessnodes',
+    'hospital_access_nodes',
+  ])
+  if (accessNodeCollectionName) protectedCollections.add(accessNodeCollectionName)
+  const skipped: string[] = []
+  const deleted: Record<string, number> = {}
+
+  for (const name of names){
+    const n = String(name || '').trim()
+    if (!n) continue
+    if (protectedCollections.has(n)) { skipped.push(n); continue }
+    const r = await db.collection(n).deleteMany({})
+    deleted[n] = Number((r as any)?.deletedCount || 0)
+  }
+
+  res.json({ ok: true, skipped, deleted })
 }
 
 export async function restoreAll(req: Request, res: Response){
@@ -88,7 +117,7 @@ export async function restoreAll(req: Request, res: Response){
   res.json({ ok: true })
 }
 
-export async function runBackupToDisk(){
+export async function runBackupToDisk(outDirOverride?: string){
   const dbName = mongoose.connection.db!.databaseName
   const names = await listCollectionNames()
   const collections: Record<string, any[]> = {}
@@ -97,13 +126,13 @@ export async function runBackupToDisk(){
     collections[name] = docs.map(serializeDoc)
   }
   const payload = { _meta: { ts: new Date().toISOString(), db: dbName, app: 'hospital-mis', version: 1 }, collections }
-  const outDir = path.resolve(env.BACKUP_DIR)
+  const outDir = path.resolve(outDirOverride || env.BACKUP_DIR)
   await fs.mkdir(outDir, { recursive: true })
   const stamp = new Date().toISOString().replace(/[:T]/g,'-').slice(0,19)
   const file = path.join(outDir, `backup-${dbName}-${stamp}.json`)
   await fs.writeFile(file, JSON.stringify(payload))
   await applyRetention(outDir)
-  return file
+  return { file, ts: payload._meta.ts, db: dbName }
 }
 
 async function applyRetention(dir: string){

@@ -4,27 +4,56 @@ import { HospitalPrescription } from '../models/Prescription'
 import { HospitalEncounter } from '../models/Encounter'
 import { LabPatient } from '../../lab/models/Patient'
 
+function normalizePrescriptionOut(p: any){
+  if (!p) return p
+  if (p.medicine === undefined && p.items !== undefined) p.medicine = p.items
+  return p
+}
+
+function handleError(res: Response, e: any){
+  if (e?.name === 'ZodError') return res.status(400).json({ error: e.errors?.[0]?.message || 'Invalid payload' })
+  if (e?.status) return res.status(e.status).json({ error: e.error || 'Error' })
+  return res.status(500).json({ error: 'Internal Server Error' })
+}
+
+async function getEncounter(encounterId: string){
+  const enc = await HospitalEncounter.findById(encounterId)
+  if (!enc) throw { status: 404, error: 'Encounter not found' }
+  if (enc.type !== 'OPD') throw { status: 400, error: 'Only OPD encounters can have prescriptions' }
+  return enc
+}
+
 export async function create(req: Request, res: Response){
   const data = createPrescriptionSchema.parse(req.body)
   const enc = await HospitalEncounter.findById(data.encounterId)
   if (!enc) return res.status(404).json({ error: 'Encounter not found' })
   if (enc.type !== 'OPD') return res.status(400).json({ error: 'Only OPD encounters can have prescriptions' })
 
+  const medicine = (data as any).medicine || (data as any).items
+
   const pres = await HospitalPrescription.create({
     patientId: enc.patientId,
     encounterId: data.encounterId,
-    items: data.items,
+    historyTakingId: (data as any).historyTakingId,
+    labReportsEntryId: (data as any).labReportsEntryId,
+    medicine,
     labTests: data.labTests,
     labNotes: data.labNotes,
-    diagnosticTests: (data as any).diagnosticTests,
-    diagnosticNotes: (data as any).diagnosticNotes,
-    therapyTests: (data as any).therapyTests,
-    therapyNotes: (data as any).therapyNotes,
-    primaryComplaint: (data as any).primaryComplaint,
-    primaryComplaintHistory: (data as any).primaryComplaintHistory,
-    familyHistory: (data as any).familyHistory,
-    treatmentHistory: (data as any).treatmentHistory,
-    allergyHistory: (data as any).allergyHistory,
+    diagnosticTests: data.diagnosticTests,
+    diagnosticNotes: data.diagnosticNotes,
+    therapyTests: data.therapyTests,
+    therapyNotes: data.therapyNotes,
+    diagnosticDiscount: (data as any).diagnosticDiscount,
+    therapyDiscount: (data as any).therapyDiscount,
+    counsellingDiscount: (data as any).counsellingDiscount,
+    therapyPlan: (data as any).therapyPlan,
+    therapyMachines: (data as any).therapyMachines,
+    counselling: (data as any).counselling,
+    primaryComplaint: data.primaryComplaint,
+    primaryComplaintHistory: data.primaryComplaintHistory,
+    familyHistory: data.familyHistory,
+    treatmentHistory: data.treatmentHistory,
+    allergyHistory: data.allergyHistory,
     history: data.history,
     examFindings: data.examFindings,
     diagnosis: data.diagnosis,
@@ -33,7 +62,71 @@ export async function create(req: Request, res: Response){
     createdBy: data.createdBy,
   })
 
-  res.status(201).json({ prescription: pres })
+  res.status(201).json({ prescription: normalizePrescriptionOut(pres.toObject ? pres.toObject() : pres) })
+}
+
+export async function getByEncounter(req: Request, res: Response){
+  try {
+    const { encounterId } = req.params as any
+    const enc = await getEncounter(String(encounterId))
+    const doc = await HospitalPrescription.findOne({ encounterId: enc._id }).lean()
+    res.json({ prescription: normalizePrescriptionOut(doc) || null })
+  } catch (e) {
+    return handleError(res, e)
+  }
+}
+
+export async function upsertByEncounter(req: Request, res: Response){
+  try {
+    const { encounterId } = req.params as any
+    const enc = await getEncounter(String(encounterId))
+    const data = updatePrescriptionSchema.parse(req.body)
+    const set: any = {
+      patientId: enc.patientId,
+      encounterId: enc._id,
+    }
+
+    if ((data as any).historyTakingId !== undefined) set.historyTakingId = (data as any).historyTakingId
+    if ((data as any).labReportsEntryId !== undefined) set.labReportsEntryId = (data as any).labReportsEntryId
+
+    const med = (data as any).medicine || (data as any).items
+    if (med) set.medicine = med
+    if (data.labTests !== undefined) set.labTests = data.labTests
+    if (data.labNotes !== undefined) set.labNotes = data.labNotes
+    if ((data as any).diagnosticTests !== undefined) set.diagnosticTests = (data as any).diagnosticTests
+    if ((data as any).diagnosticNotes !== undefined) set.diagnosticNotes = (data as any).diagnosticNotes
+    if ((data as any).therapyTests !== undefined) set.therapyTests = (data as any).therapyTests
+    if ((data as any).therapyNotes !== undefined) set.therapyNotes = (data as any).therapyNotes
+    if ((data as any).diagnosticDiscount !== undefined) set.diagnosticDiscount = (data as any).diagnosticDiscount
+    if ((data as any).therapyDiscount !== undefined) set.therapyDiscount = (data as any).therapyDiscount
+    if ((data as any).counsellingDiscount !== undefined) set.counsellingDiscount = (data as any).counsellingDiscount
+    if ((data as any).therapyPlan !== undefined) set.therapyPlan = (data as any).therapyPlan
+    if ((data as any).therapyMachines !== undefined) set.therapyMachines = (data as any).therapyMachines
+    if ((data as any).counselling !== undefined) set.counselling = (data as any).counselling
+    if ((data as any).primaryComplaint !== undefined) set.primaryComplaint = (data as any).primaryComplaint
+    if ((data as any).primaryComplaintHistory !== undefined) set.primaryComplaintHistory = (data as any).primaryComplaintHistory
+    if ((data as any).familyHistory !== undefined) set.familyHistory = (data as any).familyHistory
+    if ((data as any).treatmentHistory !== undefined) set.treatmentHistory = (data as any).treatmentHistory
+    if ((data as any).allergyHistory !== undefined) set.allergyHistory = (data as any).allergyHistory
+    if (data.history !== undefined) set.history = data.history
+    if (data.examFindings !== undefined) set.examFindings = data.examFindings
+    if (data.diagnosis !== undefined) set.diagnosis = data.diagnosis
+    if (data.advice !== undefined) set.advice = data.advice
+    if ((data as any).vitals !== undefined) set.vitals = (data as any).vitals
+    if ((data as any).createdBy !== undefined) set.createdBy = (data as any).createdBy
+
+    const doc = await HospitalPrescription.findOneAndUpdate(
+      { encounterId: enc._id },
+      { $set: set },
+      { upsert: true, new: true, setDefaultsOnInsert: true }
+    )
+      .populate({ path: 'encounterId', select: 'doctorId patientId startAt', populate: [{ path: 'doctorId', select: 'name' }, { path: 'patientId', select: 'fullName mrn' }] })
+      .lean()
+
+    res.status(201).json({ prescription: normalizePrescriptionOut(doc) })
+  } catch (e) {
+    return handleError(res, e)
+  }
 }
 
 export async function list(req: Request, res: Response){
@@ -71,7 +164,7 @@ export async function list(req: Request, res: Response){
     .limit(limit)
     .populate({ path: 'encounterId', select: 'doctorId patientId startAt', populate: [{ path: 'doctorId', select: 'name' }, { path: 'patientId', select: 'fullName mrn' }] })
     .lean()
-  res.json({ prescriptions: rows, total, page, limit })
+  res.json({ prescriptions: (rows || []).map(normalizePrescriptionOut), total, page, limit })
 }
 
 export async function getById(req: Request, res: Response){
@@ -80,36 +173,45 @@ export async function getById(req: Request, res: Response){
     .populate({ path: 'encounterId', select: 'doctorId patientId startAt', populate: [{ path: 'doctorId', select: 'name' }, { path: 'patientId', select: 'fullName mrn' }] })
     .lean()
   if (!row) return res.status(404).json({ error: 'Prescription not found' })
-  res.json({ prescription: row })
+  res.json({ prescription: normalizePrescriptionOut(row) })
 }
 
 export async function update(req: Request, res: Response){
   const { id } = req.params as any
   const data = updatePrescriptionSchema.parse(req.body)
   const set: any = {}
-  if (data.items) set.items = data.items
+  if ((data as any).historyTakingId !== undefined) set.historyTakingId = (data as any).historyTakingId
+  if ((data as any).labReportsEntryId !== undefined) set.labReportsEntryId = (data as any).labReportsEntryId
+  const med = (data as any).medicine || (data as any).items
+  if (med) set.medicine = med
   if (data.labTests !== undefined) set.labTests = data.labTests
   if (data.labNotes !== undefined) set.labNotes = data.labNotes
   if ((data as any).diagnosticTests !== undefined) set.diagnosticTests = (data as any).diagnosticTests
   if ((data as any).diagnosticNotes !== undefined) set.diagnosticNotes = (data as any).diagnosticNotes
   if ((data as any).therapyTests !== undefined) set.therapyTests = (data as any).therapyTests
   if ((data as any).therapyNotes !== undefined) set.therapyNotes = (data as any).therapyNotes
+  if ((data as any).diagnosticDiscount !== undefined) set.diagnosticDiscount = (data as any).diagnosticDiscount
+  if ((data as any).therapyDiscount !== undefined) set.therapyDiscount = (data as any).therapyDiscount
+  if ((data as any).counsellingDiscount !== undefined) set.counsellingDiscount = (data as any).counsellingDiscount
+  if ((data as any).therapyPlan !== undefined) set.therapyPlan = (data as any).therapyPlan
+  if ((data as any).therapyMachines !== undefined) set.therapyMachines = (data as any).therapyMachines
+  if ((data as any).counselling !== undefined) set.counselling = (data as any).counselling
   if ((data as any).primaryComplaint !== undefined) set.primaryComplaint = (data as any).primaryComplaint
   if ((data as any).primaryComplaintHistory !== undefined) set.primaryComplaintHistory = (data as any).primaryComplaintHistory
   if ((data as any).familyHistory !== undefined) set.familyHistory = (data as any).familyHistory
   if ((data as any).treatmentHistory !== undefined) set.treatmentHistory = (data as any).treatmentHistory
-  if ((data as any).alergyHistory !== undefined) set.allergyHistory = (data as any).alergyHistory
   if ((data as any).allergyHistory !== undefined) set.allergyHistory = (data as any).allergyHistory
   if (data.history !== undefined) set.history = data.history
   if (data.examFindings !== undefined) set.examFindings = data.examFindings
   if (data.diagnosis !== undefined) set.diagnosis = data.diagnosis
   if (data.advice !== undefined) set.advice = data.advice
   if ((data as any).vitals !== undefined) set.vitals = (data as any).vitals
+  if ((data as any).createdBy !== undefined) set.createdBy = (data as any).createdBy
   const row = await HospitalPrescription.findByIdAndUpdate(String(id), { $set: set }, { new: true })
     .populate({ path: 'encounterId', select: 'doctorId patientId startAt', populate: [{ path: 'doctorId', select: 'name' }, { path: 'patientId', select: 'fullName mrn' }] })
     .lean()
   if (!row) return res.status(404).json({ error: 'Prescription not found' })
-  res.json({ prescription: row })
+  res.json({ prescription: normalizePrescriptionOut(row) })
 }
 
 export async function remove(req: Request, res: Response){

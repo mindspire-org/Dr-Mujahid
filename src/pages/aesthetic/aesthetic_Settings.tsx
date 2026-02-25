@@ -37,15 +37,36 @@ export default function Pharmacy_Settings() {
     return () => { mounted = false }
   }, [])
 
+  useEffect(() => {
+    let mounted = true
+    ;(async () => {
+      try {
+        const s = await (aestheticApi as any).getSystemSettings() as any
+        if (!mounted || !s) return
+        if (s.taxRate != null) setTaxRate(Number(s.taxRate) || 0)
+        if (s.discountRate != null) setDiscountRate(Number(s.discountRate) || 0)
+        if (s.currency) setCurrency(String(s.currency))
+        if (s.dateFormat) setDateFormat(String(s.dateFormat))
+      } catch (e) {
+        console.error(e)
+      }
+    })()
+    return () => { mounted = false }
+  }, [])
+
   const savePharmacy = async () => {
     await aestheticApi.updateSettings({ pharmacyName, phone, address, email, billingFooter, logoDataUrl: logoDataUrl || '' })
     alert('Pharmacy settings saved')
   }
 
   const saveSystem = () => {
-    // TODO: integrate API later
-    console.log({ taxRate, discountRate, currency, dateFormat })
-    alert('System settings saved (demo)')
+    ;(async()=>{
+      try {
+        await (aestheticApi as any).updateSystemSettings({ taxRate, discountRate, currency, dateFormat })
+      } catch (e) {
+        console.error(e)
+      }
+    })()
   }
 
   return (

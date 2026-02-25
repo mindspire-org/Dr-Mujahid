@@ -15,6 +15,9 @@ export default function Pharmacy_UpdateStock({ open, onClose }: Props) {
   const [suppliers, setSuppliers] = useState<any[]>([])
   const [supplierId, setSupplierId] = useState('')
   const [supplierName, setSupplierName] = useState('')
+  const [companies, setCompanies] = useState<any[]>([])
+  const [companyId, setCompanyId] = useState('')
+  const [companyName, setCompanyName] = useState('')
   const [inventoryNames, setInventoryNames] = useState<string[]>([])
   const [genericName, setGenericName] = useState('')
   const [category, setCategory] = useState('')
@@ -73,9 +76,42 @@ export default function Pharmacy_UpdateStock({ open, onClose }: Props) {
         const s = suppliers.find((x:any)=> String(x.name||'') === String(it.lastSupplier||''))
         setSupplierId(s?._id || '')
       }
+      if (it.lastCompany){ setCompanyName(String(it.lastCompany)) }
+      if (it.lastCompanyId){ setCompanyId(String(it.lastCompanyId)) }
     }).catch(()=>{})
     return ()=>{ mounted = false }
   }, [open, name, suppliers])
+
+  // Load companies for selected supplier and auto/select like Add Invoice
+  useEffect(()=>{
+    if (!open) return
+    let mounted = true
+    ;(async()=>{
+      try {
+        if (!supplierId){ setCompanies([]); setCompanyId(''); setCompanyName(''); return }
+        const res: any = await pharmacyApi.listCompanies({ distributorId: supplierId })
+        if (!mounted) return
+        const list = res?.items ?? res ?? []
+        setCompanies(list)
+        const found = companyId ? list.find((x: any) => String(x._id) === String(companyId)) : null
+        if (found){
+          setCompanyName(found.name || '')
+        } else if (list.length === 1){
+          setCompanyId(String(list[0]._id))
+          setCompanyName(String(list[0].name || ''))
+        } else {
+          setCompanyId('')
+          setCompanyName('')
+        }
+      } catch {
+        if (!mounted) return
+        setCompanies([])
+        setCompanyId('')
+        setCompanyName('')
+      }
+    })()
+    return ()=>{ mounted = false }
+  }, [open, supplierId])
 
   const unitBuy = unitsPerPack ? (buyPerPack / unitsPerPack) : 0
 
@@ -187,9 +223,24 @@ export default function Pharmacy_UpdateStock({ open, onClose }: Props) {
               <div className="flex items-center gap-2">
                 <select value={supplierId} onChange={e=>{ setSupplierId(e.target.value); const s = suppliers.find((x:any)=>x._id===e.target.value); setSupplierName(s?.name||'') }} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-700">
                   <option value="">Select supplier...</option>
-                  {suppliers.map((s:any)=>(<option key={s._id} value={s._id}>{s.name}{s.company?` — ${s.company}`:''}</option>))}
+                  {suppliers.map((s:any)=>(<option key={s._id} value={s._id}>{s.name}</option>))}
                 </select>
               </div>
+            </div>
+            <div>
+              <label className="mb-1 block text-sm font-medium text-slate-700">Company</label>
+              <select
+                value={companyId}
+                onChange={e=>{ setCompanyId(e.target.value); const c = companies.find((x:any)=>x._id===e.target.value); setCompanyName(c?.name||'') }}
+                disabled={!supplierId}
+                className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-700"
+              >
+                <option value="">Select company</option>
+                {supplierId && companies.length === 0 && (
+                  <option value="" disabled>No assigned companies</option>
+                )}
+                {companies.map((c:any)=>(<option key={c._id} value={c._id}>{c.name}</option>))}
+              </select>
             </div>
           </div>
 
@@ -255,6 +306,8 @@ export default function Pharmacy_UpdateStock({ open, onClose }: Props) {
                   invoice: invoice.trim(),
                   supplierId: supplierId || undefined,
                   supplierName: supplierName || undefined,
+                  companyId: companyId || undefined,
+                  companyName: companyName || undefined,
                   invoiceTaxes: taxes
                     .filter(t=> (t.name||'').trim() && (t.value||0)>0)
                     .map(t=>({ name: (t.name||'').trim(), value: t.value||0, type: t.type || 'percent', applyOn: t.applyOn || 'gross' })),

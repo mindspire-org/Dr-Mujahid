@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
+import { useLocation } from 'react-router-dom'
 import { pharmacyApi } from '../../utils/api'
 import Pharmacy_POSReceiptDialog from '../../components/pharmacy/pharmacy_POSReceiptDialog'
+import SuggestField from '../../components/SuggestField'
 
  type Row = {
   id: string
@@ -12,6 +14,7 @@ import Pharmacy_POSReceiptDialog from '../../components/pharmacy/pharmacy_POSRec
   qty: number
   amount: number
   payment: 'Cash' | 'Card' | 'Credit'
+  user?: string
 }
 
 function formatDateTime(s: string) {
@@ -20,10 +23,13 @@ function formatDateTime(s: string) {
 }
 
 export default function Pharmacy_SalesHistory() {
+  const location = useLocation()
   const [medicine, setMedicine] = useState('')
   const [bill, setBill] = useState('')
   const [from, setFrom] = useState('')
   const [to, setTo] = useState('')
+  const [user, setUser] = useState('')
+  const [payment, setPayment] = useState<string>('')
   const [limit, setLimit] = useState(10)
   const [page, setPage] = useState(1)
   const [total, setTotal] = useState(0)
@@ -32,12 +38,32 @@ export default function Pharmacy_SalesHistory() {
   const [rawSales, setRawSales] = useState<any[]>([])
   const [receiptOpen, setReceiptOpen] = useState(false)
   const [receiptSale, setReceiptSale] = useState<any | null>(null)
+  const [userSuggestions, setUserSuggestions] = useState<string[]>([])
+
+  // Read filters from URL (?from=YYYY-MM-DD&to=YYYY-MM-DD&payment=Cash|Credit|Card)
+  useEffect(() => {
+    const sp = new URLSearchParams(location.search)
+    const nextFrom = String(sp.get('from') || '')
+    const nextTo = String(sp.get('to') || '')
+    const nextPayment = String(sp.get('payment') || '')
+    const nextBill = String(sp.get('bill') || '')
+    const nextMedicine = String(sp.get('medicine') || '')
+    const nextUser = String(sp.get('user') || '')
+    let changed = false
+    if (nextFrom !== from) { setFrom(nextFrom); changed = true }
+    if (nextTo !== to) { setTo(nextTo); changed = true }
+    if (nextPayment !== payment) { setPayment(nextPayment); changed = true }
+    if (nextBill !== bill) { setBill(nextBill); changed = true }
+    if (nextMedicine !== medicine) { setMedicine(nextMedicine); changed = true }
+    if (nextUser !== user) { setUser(nextUser); changed = true }
+    if (changed) setPage(1)
+  }, [location.search])
 
   useEffect(() => {
     let mounted = true
     const load = async () => {
       try {
-        const res: any = await pharmacyApi.listSales({ bill: bill || undefined, medicine: medicine || undefined, from: from || undefined, to: to || undefined, page, limit })
+        const res: any = await pharmacyApi.listSales({ bill: bill || undefined, medicine: medicine || undefined, user: user || undefined, from: from || undefined, to: to || undefined, payment: payment || undefined, page, limit })
         if (!mounted) return
         const items = res.items || []
         setRawSales(items)
@@ -55,6 +81,7 @@ export default function Pharmacy_SalesHistory() {
             qty: qtySum,
             amount: s.total || 0,
             payment: s.payment || 'Cash',
+            user: s.createdBy || '',
           } as Row
         })
         setRows(mapped)
@@ -66,17 +93,33 @@ export default function Pharmacy_SalesHistory() {
     const handler = () => load()
     try { window.addEventListener('pharmacy:sale', handler as any) } catch {}
     return ()=>{ mounted = false; try { window.removeEventListener('pharmacy:sale', handler as any) } catch {} }
-  }, [bill, medicine, from, to, page, limit])
+  }, [bill, medicine, user, from, to, page, limit])
+
+  // Load pharmacy users for the User autocomplete filter
+  useEffect(() => {
+    let mounted = true
+    ;(async () => {
+      try {
+        const res: any = await pharmacyApi.listUsers()
+        if (!mounted) return
+        const list = (res?.items || []).map((u: any) => String(u?.username || '')).filter(Boolean)
+        setUserSuggestions(list)
+      } catch {
+        setUserSuggestions([])
+      }
+    })()
+    return () => { mounted = false }
+  }, [])
 
   const exportCSV = () => {
     const escape = (v: any) => {
       const s = String(v ?? '')
       return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s
     }
-    const header = ['Date/Time','Bill No','Customer','Medicines','Qty (each)','Qty','Amount','Payment']
+    const header = ['Date/Time','Bill No','Customer','Medicines','Qty (each)','Qty','Amount','User','Payment']
       .map(escape).join(',')
     const lines = rows.map(r => [
-      formatDateTime(r.datetime), r.billNo, r.customer, r.medicines, r.qtyEach, r.qty, r.amount.toFixed(2), r.payment
+      formatDateTime(r.datetime), r.billNo, r.customer, r.medicines, r.qtyEach, r.qty, r.amount.toFixed(2), r.user || '', r.payment
     ].map(escape).join(',')).join('\n')
     const csv = header + '\n' + lines
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
@@ -106,14 +149,15 @@ export default function Pharmacy_SalesHistory() {
     const pageH = doc.internal.pageSize.getHeight()
     doc.setFont('courier', 'normal')
     const cols = [
-      { key: 'datetime', title: 'Date/Time', width: 42 },
-      { key: 'billNo', title: 'Bill No', width: 26 },
-      { key: 'customer', title: 'Customer', width: 30 },
-      { key: 'medicines', title: 'Medicines', width: 100 },
-      { key: 'qtyEach', title: 'Qty (each)', width: 26 },
-      { key: 'qty', title: 'Qty', width: 14 },
-      { key: 'amount', title: 'Amount', width: 22 },
-      { key: 'payment', title: 'Payment', width: 17 },
+      { key: 'datetime', title: 'Date/Time', width: 40 },
+      { key: 'billNo', title: 'Bill No', width: 24 },
+      { key: 'customer', title: 'Customer', width: 28 },
+      { key: 'medicines', title: 'Medicines', width: 90 },
+      { key: 'qtyEach', title: 'Qty (each)', width: 24 },
+      { key: 'qty', title: 'Qty', width: 12 },
+      { key: 'amount', title: 'Amount', width: 20 },
+      { key: 'user', title: 'User', width: 22 },
+      { key: 'payment', title: 'Payment', width: 15 },
     ] as const
     const drawHeader = (y: number) => {
       doc.setFontSize(12)
@@ -131,7 +175,7 @@ export default function Pharmacy_SalesHistory() {
     doc.setFontSize(8)
     for (const r of rows) {
       const data = [
-        formatDateTime(r.datetime), r.billNo, r.customer, r.medicines, r.qtyEach, String(r.qty), `Rs ${r.amount.toFixed(2)}`, r.payment,
+        formatDateTime(r.datetime), r.billNo, r.customer, r.medicines, r.qtyEach, String(r.qty), `Rs ${r.amount.toFixed(2)}`, r.user || '', r.payment,
       ]
       const lines = data.map((v, i) => (doc as any).splitTextToSize(v, cols[i].width - 2)) as string[][]
       const maxLines = Math.max(1, ...lines.map(a => a.length))
@@ -160,7 +204,7 @@ export default function Pharmacy_SalesHistory() {
         <div className="text-xl font-bold text-slate-800">Sales History</div>
 
         <div className="rounded-xl border border-slate-200 bg-white p-4">
-          <div className="grid gap-3 md:grid-cols-4">
+          <div className="grid gap-3 md:grid-cols-5">
             <div>
               <label className="mb-1 block text-sm text-slate-700">Medicine name</label>
               <input value={medicine} onChange={e=>setMedicine(e.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" placeholder="e.g., Paracetamol" />
@@ -176,6 +220,17 @@ export default function Pharmacy_SalesHistory() {
             <div>
               <label className="mb-1 block text-sm text-slate-700">To</label>
               <input type="date" value={to} onChange={e=>setTo(e.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
+            </div>
+            <div>
+              <label className="mb-1 block text-sm text-slate-700">User</label>
+              <SuggestField
+                as="input"
+                value={user}
+                onChange={setUser}
+                suggestions={userSuggestions}
+                placeholder="username"
+                className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+              />
             </div>
           </div>
           <div className="mt-3 flex items-center gap-3">
@@ -208,6 +263,7 @@ export default function Pharmacy_SalesHistory() {
                   <th className="whitespace-nowrap px-4 py-2 font-medium">Qty (each)</th>
                   <th className="whitespace-nowrap px-4 py-2 font-medium">Qty</th>
                   <th className="whitespace-nowrap px-4 py-2 font-medium">Amount</th>
+                  <th className="whitespace-nowrap px-4 py-2 font-medium">User</th>
                   <th className="whitespace-nowrap px-4 py-2 font-medium">Payment</th>
                   <th className="whitespace-nowrap px-4 py-2 font-medium">Actions</th>
                 </tr>
@@ -222,13 +278,14 @@ export default function Pharmacy_SalesHistory() {
                   <td className="px-4 py-2">{r.qtyEach}</td>
                   <td className="px-4 py-2">{r.qty}</td>
                   <td className="px-4 py-2">Rs {r.amount.toFixed(2)}</td>
+                  <td className="px-4 py-2">{r.user || '-'}</td>
                   <td className="px-4 py-2">{r.payment}</td>
                   <td className="px-4 py-2"><button onClick={()=>{ const s = rawSales.find(x=>x._id===r.id); if (s){ setReceiptSale(s); setReceiptOpen(true) }}} className="rounded-md border border-slate-200 px-2 py-1 text-xs hover:bg-slate-50">Reprint</button></td>
                 </tr>
               ))}
               {rows.length === 0 && (
                 <tr>
-                  <td colSpan={9} className="px-4 py-12 text-center text-slate-500">No results</td>
+                  <td colSpan={10} className="px-4 py-12 text-center text-slate-500">No results</td>
                 </tr>
               )}
             </tbody>
@@ -255,6 +312,8 @@ export default function Pharmacy_SalesHistory() {
         method={(receiptSale?.payment === 'Credit') ? 'credit' : 'cash'}
         lines={(receiptSale?.lines || []).map((l:any)=> ({ name: l.name, qty: l.qty, price: l.unitPrice }))}
         discountPct={receiptSale?.discountPct || 0}
+        lineDiscountRs={Number(receiptSale?.lineDiscountTotal || 0)}
+        taxPct={Number(receiptSale?.taxPct || 0)}
         customer={receiptSale?.customer}
       />
     </>

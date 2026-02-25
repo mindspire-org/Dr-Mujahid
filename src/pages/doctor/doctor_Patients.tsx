@@ -276,11 +276,22 @@ export default function Doctor_Patients() {
 
       let tpl: PrescriptionPdfTemplate = 'default'
       try { const raw = localStorage.getItem(`doctor.rx.template.${doc?.id || 'anon'}`) as PrescriptionPdfTemplate | null; if (raw === 'default' || raw === 'rx-vitals-left') tpl = raw } catch {}
+
+      // Read history taking from DB (staff module) for this encounter
+      let historyTaking: any = null
+      try {
+        const encId = String(pres?.encounterId?._id || pres?.encounterId || '')
+        if (encId) {
+          const ht: any = await hospitalApi.getHistoryTaking(encId)
+          historyTaking = ht?.historyTaking?.data || null
+        }
+      } catch {}
       await previewPrescriptionPdf({
         doctor,
         settings,
         patient,
-        items: pres?.items || [],
+        items: pres?.medicine || pres?.items || [],
+        historyTaking,
         vitals: pres?.vitals,
         primaryComplaint: pres?.primaryComplaint || pres?.complaints,
         primaryComplaintHistory: pres?.primaryComplaintHistory,
@@ -297,6 +308,7 @@ export default function Doctor_Patients() {
         diagnosticNotes: pres?.diagnosticNotes || '',
         therapyTests: pres?.therapyTests || [],
         therapyNotes: pres?.therapyNotes || '',
+        counselling: pres?.counselling,
         createdAt: pres?.createdAt,
       }, tpl)
     } catch (e: any) {

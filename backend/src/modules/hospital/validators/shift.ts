@@ -7,6 +7,7 @@ export const shiftCreateSchema = z.object({
   absentCharges: z.coerce.number().nonnegative().optional().default(0),
   lateDeduction: z.coerce.number().nonnegative().optional().default(0),
   earlyOutDeduction: z.coerce.number().nonnegative().optional().default(0),
+  weekendDays: z.array(z.coerce.number().int().min(0).max(6)).optional().default([]),
 })
 
 export const shiftUpdateSchema = shiftCreateSchema.partial()

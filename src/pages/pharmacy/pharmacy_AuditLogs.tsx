@@ -244,36 +244,36 @@ export default function Pharmacy_AuditLogs() {
         <div className="grid gap-3 md:grid-cols-[1fr_200px_1fr_1fr_auto_auto_auto] items-end">
           <div>
             <label className="mb-1 block text-sm text-slate-700">Search logs...</label>
-            <input value={search} onChange={e=>setSearch(e.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" placeholder="Search logs..." />
+            <input value={search} onChange={e=>setSearch(e.target.value)} className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900" placeholder="Search logs..." />
           </div>
           <div>
             <label className="mb-1 block text-sm text-slate-700">Action</label>
-            <select value={action} onChange={e=>setAction(e.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm">
+            <select value={action} onChange={e=>setAction(e.target.value)} className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900">
               {actions.map(a => (<option key={a} value={a}>{a}</option>))}
             </select>
           </div>
           <div>
             <label className="mb-1 block text-sm text-slate-700">From</label>
-            <input type="date" value={from} onChange={e=>setFrom(e.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
+            <input type="date" value={from} onChange={e=>setFrom(e.target.value)} className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900" />
           </div>
           <div>
             <label className="mb-1 block text-sm text-slate-700">To</label>
-            <input type="date" value={to} onChange={e=>setTo(e.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
+            <input type="date" value={to} onChange={e=>setTo(e.target.value)} className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900" />
           </div>
           <div className="flex items-end">
-            <select value={limit} onChange={e=>{ setLimit(parseInt(e.target.value)); setPage(1) }} className="rounded-md border border-slate-300 px-2 py-1 text-sm text-slate-700">
+            <select value={limit} onChange={e=>{ setLimit(parseInt(e.target.value)); setPage(1) }} className="rounded-md border border-slate-300 bg-white px-2 py-1 text-sm text-slate-700">
               <option value={10}>10</option>
               <option value={20}>20</option>
               <option value={50}>50</option>
               <option value={100}>100</option>
             </select>
           </div>
-          <button onClick={refresh} className="btn" disabled={loading}>{loading? 'Loading...' : 'Refresh'}</button>
+          <button type="button" onClick={refresh} className="btn" disabled={loading}>{loading? 'Loading...' : 'Refresh'}</button>
           <div className="flex gap-2">
-            <button onClick={exportPdf} className="btn-outline-navy" disabled={loading}>
+            <button type="button" onClick={exportPdf} className="btn-outline-navy" disabled={loading}>
             {loading ? 'Generating...' : 'Export Logs PDF'}
           </button>
-          <button onClick={exportExcel} className="btn-outline-navy" disabled={loading}>
+          <button type="button" onClick={exportExcel} className="btn-outline-navy" disabled={loading}>
             {loading ? 'Generating...' : 'Export Logs Excel'}
           </button>
           </div>
@@ -309,8 +309,8 @@ export default function Pharmacy_AuditLogs() {
           <div className="flex items-center justify-between border-t border-slate-200 pt-3">
             <div className="text-xs text-slate-600">Page {page} of {totalPages}</div>
             <div className="flex items-center gap-2">
-              <button onClick={()=> setPage(p=> Math.max(1, p-1))} disabled={page<=1} className="rounded-md border border-slate-200 px-2 py-1 text-sm disabled:opacity-50">Prev</button>
-              <button onClick={()=> setPage(p=> Math.min(totalPages, p+1))} disabled={page>=totalPages} className="rounded-md border border-slate-200 px-2 py-1 text-sm disabled:opacity-50">Next</button>
+              <button type="button" onClick={()=> setPage(p=> Math.max(1, p-1))} disabled={page<=1} className="rounded-md border border-slate-200 px-2 py-1 text-sm disabled:opacity-50">Prev</button>
+              <button type="button" onClick={()=> setPage(p=> Math.min(totalPages, p+1))} disabled={page>=totalPages} className="rounded-md border border-slate-200 px-2 py-1 text-sm disabled:opacity-50">Next</button>
             </div>
           </div>
         </div>

@@ -5,6 +5,7 @@ import { downloadPrescriptionPdf, previewPrescriptionPdf } from '../../utils/pre
 import type { PrescriptionPdfTemplate } from '../../utils/prescriptionPdf'
 import PrescriptionVitals from '../../components/doctor/PrescriptionVitals'
 import PrescriptionDiagnosticOrders from '../../components/doctor/PrescriptionDiagnosticOrders'
+import { useNavigate } from 'react-router-dom'
 
 type DoctorSession = { id: string; name: string; username: string }
 
@@ -28,6 +29,7 @@ type Prescription = {
 }
 
 export default function Doctor_PrescriptionHistory() {
+  const navigate = useNavigate()
   const [doc, setDoc] = useState<DoctorSession | null>(null)
   const [list, setList] = useState<Prescription[]>([])
   const [q, setQ] = useState('')
@@ -100,7 +102,7 @@ export default function Doctor_PrescriptionHistory() {
         history: r.history,
         examFindings: r.examFindings,
         advice: r.advice,
-        medicines: (r.items || []).map((it: any) => `${it.name}${it.frequency?` • ${it.frequency}`:''}${it.duration?` • ${it.duration}`:''}${it.dose?` • ${it.dose}`:''}`).join('\n'),
+        medicines: ((r.medicine || r.items) || []).map((it: any) => `${it.name}${it.frequency?` • ${it.frequency}`:''}${it.duration?` • ${it.duration}`:''}${it.dose?` • ${it.dose}`:''}`).join('\n'),
         createdAt: r.createdAt,
       }))
       setList(items)
@@ -139,6 +141,7 @@ export default function Doctor_PrescriptionHistory() {
       settings: data.settings || {},
       patient: data.patient || {},
       items: data.items || [],
+      historyTaking: data.historyTaking,
       vitals: data.vitals,
       primaryComplaint: data.primaryComplaint,
       primaryComplaintHistory: data.primaryComplaintHistory,
@@ -153,8 +156,14 @@ export default function Doctor_PrescriptionHistory() {
       labNotes: data.labNotes || '',
       diagnosticTests: data.diagnosticTests || [],
       diagnosticNotes: data.diagnosticNotes || '',
+      diagnosticDiscount: data.diagnosticDiscount,
       therapyTests: data.therapyTests || [],
       therapyNotes: data.therapyNotes || '',
+      therapyDiscount: data.therapyDiscount,
+      therapyPlan: data.therapyPlan,
+      therapyMachines: data.therapyMachines,
+      counselling: data.counselling,
+      counsellingDiscount: data.counsellingDiscount,
       createdAt: data.createdAt,
     }, tpl)
   }
@@ -168,6 +177,7 @@ export default function Doctor_PrescriptionHistory() {
       settings: data.settings || {},
       patient: data.patient || {},
       items: data.items || [],
+      historyTaking: data.historyTaking,
       vitals: data.vitals,
       primaryComplaint: data.primaryComplaint,
       primaryComplaintHistory: data.primaryComplaintHistory,
@@ -181,8 +191,14 @@ export default function Doctor_PrescriptionHistory() {
       labNotes: data.labNotes || '',
       diagnosticTests: data.diagnosticTests || [],
       diagnosticNotes: data.diagnosticNotes || '',
+      diagnosticDiscount: data.diagnosticDiscount,
       therapyTests: data.therapyTests || [],
       therapyNotes: data.therapyNotes || '',
+      therapyDiscount: data.therapyDiscount,
+      therapyPlan: data.therapyPlan,
+      therapyMachines: data.therapyMachines,
+      counselling: data.counselling,
+      counsellingDiscount: data.counsellingDiscount,
       createdAt: data.createdAt,
     }, `prescription-${id}.pdf`, tpl)
   }
@@ -270,7 +286,8 @@ export default function Doctor_PrescriptionHistory() {
       const p = res?.prescription
       setEditingId(id)
       // parse route/instruction from notes for each item
-      const items = (p?.items || []).map((m: any) => {
+      const src = (p?.medicine || p?.items || [])
+      const items = (src || []).map((m: any) => {
         const nt = String(m?.notes || '')
         const mRoute = nt.match(/Route:\s*([^;]+)/i)
         const mInstr = nt.match(/Instruction:\s*([^;]+)/i)
@@ -349,7 +366,7 @@ export default function Doctor_PrescriptionHistory() {
       examFindings: editForm.examFindings || undefined,
       diagnosis: editForm.diagnosis || undefined,
       advice: editForm.advice || undefined,
-      items: (editForm.items||[]).filter(it => (it.name||'').trim()).map(it => ({ name: String(it.name).trim(), frequency: it.frequency || undefined, duration: it.duration || undefined, dose: it.dose || undefined, notes: (it.route||it.instruction) ? [it.route?`Route: ${it.route}`:null, it.instruction?`Instruction: ${it.instruction}`:null].filter(Boolean).join('; ') : (it.notes || undefined) })),
+      medicine: (editForm.items||[]).filter(it => (it.name||'').trim()).map(it => ({ name: String(it.name).trim(), frequency: it.frequency || undefined, duration: it.duration || undefined, dose: it.dose || undefined, notes: (it.route||it.instruction) ? [it.route?`Route: ${it.route}`:null, it.instruction?`Instruction: ${it.instruction}`:null].filter(Boolean).join('; ') : (it.notes || undefined) })),
     }
     if (editForm.labTestsText !== undefined) {
       const tests = String(editForm.labTestsText||'').split(/\n|,/).map(s=>s.trim()).filter(Boolean)
@@ -370,7 +387,7 @@ export default function Doctor_PrescriptionHistory() {
       if (dRaw.notes && String(dRaw.notes).trim()) payload.diagnosticNotes = dRaw.notes
       else if ((editDiagDisplay.notes||'').trim()) payload.diagnosticNotes = editDiagDisplay.notes
     } catch {}
-    if (!payload.items || payload.items.length===0){ alert('Add at least one medicine'); return }
+    if (!payload.medicine || payload.medicine.length===0){ alert('Add at least one medicine'); return }
     try {
       // vitals from tab
       try {
@@ -463,14 +480,6 @@ export default function Doctor_PrescriptionHistory() {
                     onClick={()=>openConfirm('pharmacy', p)}
                   >Refer to Pharmacy</button>
                 )})()}
-                {(() => { const done = !!refFlags[p.id]?.lab; return (
-                  <button
-                    className={`rounded-md px-3 py-1 text-sm ${done?'border-blue-300 bg-blue-50 text-blue-700':'border border-slate-300'}`}
-                    disabled={done}
-                    title={done?'Already referred to lab':''}
-                    onClick={()=>openConfirm('lab', p)}
-                  >Refer to Lab</button>
-                )})()}
                 {(() => { const done = !!refFlags[p.id]?.diag; return (
                   <button
                     className={`rounded-md px-3 py-1 text-sm ${done?'border-blue-300 bg-blue-50 text-blue-700':'border border-slate-300'}`}
@@ -479,7 +488,12 @@ export default function Doctor_PrescriptionHistory() {
                     onClick={()=>openConfirm('diagnostic', p)}
                   >Refer to Diagnostic</button>
                 )})()}
-                <button className="rounded-md border border-slate-300 px-3 py-1 text-sm" onClick={()=>openEditor(p.id)}>Edit</button>
+                <button
+                  className="rounded-md border border-slate-300 px-3 py-1 text-sm"
+                  onClick={() => navigate('/doctor/prescription', { state: { prescriptionId: p.id, encounterId: p.encounterId } })}
+                >
+                  Edit
+                </button>
                 <button className="rounded-md border border-rose-300 bg-rose-50 px-3 py-1 text-sm text-rose-700" onClick={()=>openConfirm('delete', p)}>Delete</button>
               </div>
             </div>
@@ -501,12 +515,8 @@ export default function Doctor_PrescriptionHistory() {
           settings={printData.settings || { name: '', address: '', phone: '' }}
           patient={printData.patient || {}}
           items={printData.items || []}
-          labTests={printData.labTests || []}
-          labNotes={printData.labNotes || ''}
-          diagnosticTests={printData.diagnosticTests || []}
-          diagnosticNotes={printData.diagnosticNotes || ''}
-          therapyTests={printData.therapyTests || []}
-          therapyNotes={printData.therapyNotes || ''}
+          vitals={printData.vitals}
+          historyTaking={printData.historyTaking}
           primaryComplaint={printData.primaryComplaint}
           primaryComplaintHistory={printData.primaryComplaintHistory}
           familyHistory={printData.familyHistory}
@@ -516,6 +526,18 @@ export default function Doctor_PrescriptionHistory() {
           examFindings={printData.examFindings}
           diagnosis={printData.diagnosis}
           advice={printData.advice}
+          labTests={printData.labTests || []}
+          labNotes={printData.labNotes || ''}
+          diagnosticTests={printData.diagnosticTests || []}
+          diagnosticNotes={printData.diagnosticNotes || ''}
+          diagnosticDiscount={printData.diagnosticDiscount}
+          therapyTests={printData.therapyTests || []}
+          therapyNotes={printData.therapyNotes || ''}
+          therapyDiscount={printData.therapyDiscount}
+          therapyPlan={printData.therapyPlan}
+          therapyMachines={printData.therapyMachines}
+          counselling={printData.counselling}
+          counsellingDiscount={printData.counsellingDiscount}
           createdAt={printData.createdAt}
         />
       )}
@@ -632,7 +654,7 @@ export default function Doctor_PrescriptionHistory() {
               )}
               {editActiveTab==='diagnostics' && (
                 <div>
-                  <PrescriptionDiagnosticOrders ref={diagEditRef} initialTestsText={editDiagDisplay.testsText} initialNotes={editDiagDisplay.notes} />
+                  <PrescriptionDiagnosticOrders ref={diagEditRef} doctorId={doc?.id} initialTestsText={editDiagDisplay.testsText} initialNotes={editDiagDisplay.notes} />
                 </div>
               )}
               {editActiveTab==='meds' && (
@@ -692,6 +714,50 @@ async function fetchPrintData(id: string){
     hospitalApi.getSettings() as any,
   ])
   const pres = detail?.prescription
+  const encounterId = String(pres?.encounterId?._id || pres?.encounterId || '')
+  let historyTaking: any = null
+  try {
+    if (encounterId) {
+      const ht: any = await hospitalApi.getHistoryTaking(encounterId)
+      historyTaking = ht?.historyTaking?.data || null
+    }
+  } catch {}
+  const vitalsFromHistoryTaking = (() => {
+    const d: any = historyTaking || null
+    if (!d) return undefined
+    const p = d.personalInfo || d.personal_info || d.personal || d.patient || d
+    const num = (x: any) => {
+      if (x == null) return undefined
+      const v = parseFloat(String(x).trim())
+      return isFinite(v) ? v : undefined
+    }
+    const bpRaw = p?.bp ?? p?.BP ?? p?.bloodPressure ?? p?.blood_pressure
+    let sys: number | undefined
+    let dia: number | undefined
+    if (typeof bpRaw === 'string') {
+      const s = String(bpRaw).trim()
+      if (s.includes('/')) {
+        const m = s.match(/(\d+(?:\.\d+)?)\s*\/\s*(\d+(?:\.\d+)?)/)
+        if (m) { sys = num(m[1]); dia = num(m[2]) }
+      } else {
+        // Sometimes BP is stored as a single number like "120" (systolic only)
+        sys = num(s)
+      }
+    } else if (bpRaw && typeof bpRaw === 'object') {
+      sys = num(bpRaw.sys ?? bpRaw.systolic ?? bpRaw.bloodPressureSys)
+      dia = num(bpRaw.dia ?? bpRaw.diastolic ?? bpRaw.bloodPressureDia)
+    }
+    const heightCm = num(p?.heightCm ?? p?.height_cm ?? p?.height)
+    const weightKg = num(p?.weightKg ?? p?.weight_kg ?? p?.weight)
+    if (sys == null && dia == null && heightCm == null && weightKg == null) return undefined
+    return {
+      bloodPressureSys: sys,
+      bloodPressureDia: dia,
+      heightCm,
+      weightKg,
+    }
+  })()
+  const vitals = pres?.vitals || vitalsFromHistoryTaking
   let patient: any = { name: pres?.encounterId?.patientId?.fullName || '-', mrn: pres?.encounterId?.patientId?.mrn || '-' }
   try {
     if (patient?.mrn) {
@@ -737,7 +803,7 @@ async function fetchPrintData(id: string){
       if (deptName) doctor.departmentName = deptName
     } catch {}
   } catch {}
-  return { settings, doctor, patient, items: pres?.items || [], vitals: pres?.vitals, labTests: pres?.labTests || [], labNotes: pres?.labNotes, diagnosticTests: pres?.diagnosticTests || [], diagnosticNotes: pres?.diagnosticNotes, therapyTests: pres?.therapyTests || [], therapyNotes: pres?.therapyNotes || '', primaryComplaint: pres?.primaryComplaint || pres?.complaints, primaryComplaintHistory: pres?.primaryComplaintHistory, familyHistory: pres?.familyHistory, treatmentHistory: pres?.treatmentHistory, history: pres?.history, examFindings: pres?.examFindings, diagnosis: pres?.diagnosis, advice: pres?.advice, createdAt: pres?.createdAt }
+  return { settings, doctor, patient, historyTaking, items: pres?.medicine || pres?.items || [], vitals, labTests: pres?.labTests || [], labNotes: pres?.labNotes, diagnosticTests: pres?.diagnosticTests || [], diagnosticNotes: pres?.diagnosticNotes, diagnosticDiscount: pres?.diagnosticDiscount, therapyTests: pres?.therapyTests || [], therapyNotes: pres?.therapyNotes || '', therapyDiscount: pres?.therapyDiscount, therapyPlan: pres?.therapyPlan, therapyMachines: pres?.therapyMachines, counselling: pres?.counselling, counsellingDiscount: pres?.counsellingDiscount, createdAt: pres?.createdAt }
 }
 
 // helper for fetching data used by both print and download

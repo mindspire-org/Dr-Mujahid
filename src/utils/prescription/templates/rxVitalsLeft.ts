@@ -82,14 +82,13 @@ export async function buildRxVitalsLeft(data: PrescriptionPdfData){
   pdf.setTextColor(0,0,0)
 
   const leftX = 12
-  const gap = 0
 
   // Patient info band across the page (below header), two columns
   const bandY = headerH + 6
-  let bandH = 34
+  let bandH = 28
   pdf.setFont('helvetica','bold')
   pdf.setFontSize(9)
-  let ty = bandY + 6
+  let ty = bandY + 5
   let maxBandY = ty
   const colSplit = leftX + (pageWidth - leftX*2) / 2
   const l = (label: string, value?: string) => {
@@ -111,19 +110,18 @@ export async function buildRxVitalsLeft(data: PrescriptionPdfData){
   l('Phone:', data.patient?.phone)
   l('Address:', data.patient?.address)
   r('MR Number:', data.patient?.mrn, -16)
-  r('Token #:', (data as any).tokenNo || undefined, -12)
-  r('Date:', createdAt.toLocaleDateString(), -8)
-  r('Doctor:', (data.doctor?.name ? `Dr. ${data.doctor.name}` : undefined), -4)
-  r('Department:', data.doctor?.departmentName, 0)
+  r('Date:', createdAt.toLocaleDateString(), -12)
+  r('Doctor:', (data.doctor?.name ? `Dr. ${data.doctor.name}` : undefined), -8)
+  r('Department:', data.doctor?.departmentName, -4)
 
   // Draw the band border sized to content
   pdf.setDrawColor(203,213,225)
-  bandH = Math.max(bandH, (maxBandY - bandY) + 6)
+  bandH = Math.max(bandH, (maxBandY - bandY) + 5)
   pdf.roundedRect(leftX, bandY, pageWidth - leftX*2, bandH, 2, 2)
 
   // Divider after patient info
   try {
-    pdf.setDrawColor(203,213,225)
+    pdf.setDrawColor(0,0,0)
     pdf.setLineWidth(0.4)
     const divY = bandY + bandH + 3
     pdf.line(leftX, divY, pageWidth - leftX, divY)
@@ -131,129 +129,371 @@ export async function buildRxVitalsLeft(data: PrescriptionPdfData){
 
   // Layout below band
   const leftY = bandY + bandH + 8
-  // Draw LEFT panel first; measure widest line to place Rx box tight to it
-  pdf.setFont('helvetica','bold')
-  pdf.setFontSize(10)
-  pdf.text('VITAL SIGNS', leftX, leftY + 4)
-  let vy = leftY + 8
-  pdf.setFont('helvetica','normal')
-  pdf.setFontSize(9)
-  const vit = data.vitals || {}
-  const dashed = (s?: string) => (s && s.trim()) ? s : '— — —'
-  let leftTextMaxW = 0
-  const recordWidth = (tx: string) => { try { const w = pdf.getTextWidth(tx); if (w > leftTextMaxW) leftTextMaxW = w } catch {} }
-  // measure header width as well
-  recordWidth('VITAL SIGNS')
-  const putV = (label: string, present: boolean, value: string) => {
-    if (!present) return
-    const line = `${label}: ${value}`
-    recordWidth(line)
-    pdf.text(line, leftX, vy)
-    vy += 5
-  }
-  putV('BP', (vit.bloodPressureSys != null || vit.bloodPressureDia != null), `${vit.bloodPressureSys ?? '—'} / ${vit.bloodPressureDia ?? '—'}`)
-  putV('Pulse', true, dashed(vit.pulse!=null?String(vit.pulse):''))
-  putV('Temp', true, dashed(vit.temperatureC!=null?String(vit.temperatureC):''))
-  putV('Wt', true, dashed(vit.weightKg!=null?String(vit.weightKg):''))
-  // optional extended vitals
-  putV('RR (/min)', vit.respiratoryRate != null, String(vit.respiratoryRate))
-  putV('SpO2 (%)', vit.spo2 != null, String(vit.spo2))
-  putV('Sugar (mg/dL)', vit.bloodSugar != null, String(vit.bloodSugar))
-  putV('Height (cm)', vit.heightCm != null, String(vit.heightCm))
-  putV('BMI', vit.bmi != null, String(vit.bmi))
-  putV('BSA (m2)', vit.bsa != null, String(vit.bsa))
 
-  // Replace Investigation checklist with Lab Tests and Diagnostic Tests lists (only if provided)
-  vy += 2
-  const notesWrapW = 70
-  const renderList = (label: string, items?: string[], notes?: string) => {
-    const list = Array.isArray(items) ? items.map(t => String(t || '').trim()).filter(Boolean) : []
-    const n = String(notes || '').trim()
-    pdf.setFont('helvetica','bold')
-    pdf.text(label, leftX, vy)
-    recordWidth(label)
-    vy += 4
-    pdf.setFont('helvetica','normal')
-    const listOut = list.length ? list : ['N/A']
-    listOut.forEach(t => {
-      const line = `- ${t}`
-      recordWidth(line)
-      pdf.text(line, leftX, vy)
-      vy += 4
-    })
-    if (n) {
-      pdf.setTextColor(71, 85, 105)
-      const lines = pdf.splitTextToSize(`Note: ${n}`, notesWrapW)
-      lines.forEach((ln: string) => {
-        const line = String(ln)
-        recordWidth(line)
-        pdf.text(line, leftX, vy)
-        vy += 4
-      })
-      pdf.setTextColor(0,0,0)
-    }
-  }
-  renderList('LAB TESTS', data.labTests, data.labNotes)
-  renderList('DIAGNOSTIC TESTS', data.diagnosticTests, data.diagnosticNotes)
-  renderList('THERAPY ORDERS', (data as any).therapyTests, (data as any).therapyNotes)
-
-  // After left panel is printed, compute Rx box start tightly after left content (clamped)
-  const minLeftW = 18
-  const maxLeftW = 32
-  const pad = 6
-  const leftW = Math.ceil(Math.max(minLeftW, Math.min(maxLeftW, leftTextMaxW + pad)))
-  const rxX = leftX + leftW + gap
+  // Reduce Rx box width and align it to the right side
+  const rxW = (pageWidth - leftX * 2) * 0.75
+  const rxX = pageWidth - 12 - rxW
   const rxY = leftY
-  const rxW = pageWidth - rxX - 12
+  // Reserve ~25% blank area on the right inside Rx box
+  const rxRightBlankW = rxW * 0.25
+
+  // Left side content area (empty space to the left of Rx box)
+  const sideX = leftX
+  const sideY = leftY
+  const sideW = Math.max(10, rxX - leftX - 4)
+  let sy = sideY + 8
+  try {
+    pdf.setTextColor(0,0,0)
+    pdf.setFont('helvetica', 'bold')
+    pdf.setFontSize(10)
+    pdf.text('Vitals', sideX + 2, sy)
+    sy += 6
+
+    const vitals: any = (data as any).vitals || {}
+    const bpText = (() => {
+      const sys = vitals.bloodPressureSys ?? vitals.sys ?? vitals.SYS ?? vitals.bpSys
+      const dia = vitals.bloodPressureDia ?? vitals.dia ?? vitals.DIA ?? vitals.bpDia
+      if (sys != null && dia != null) return `${String(sys)}/${String(dia)}`
+      if (sys != null) return String(sys)
+      if (dia != null) return String(dia)
+      return vitals.bp ?? vitals.BP
+    })()
+    const heightText = vitals.heightCm ?? vitals.height
+    const weightText = vitals.weightKg ?? vitals.weight
+    const vLine = (label: string, value: any) => {
+      pdf.setFont('helvetica','bold')
+      pdf.setFontSize(9)
+      pdf.text(`${label}:`, sideX + 2, sy)
+      pdf.setFont('helvetica','normal')
+      pdf.text(String(value ?? '-'), sideX + 22, sy)
+      sy += 5
+    }
+    const bpWithUnit = (bpText != null && String(bpText).trim() && !String(bpText).includes('mmHg')) ? `${bpText} mmHg` : (bpText || '-')
+    vLine('BP', bpWithUnit)
+    vLine('Height', (heightText != null && String(heightText).trim() ? `${heightText} feet` : '-'))
+    vLine('Weight', (weightText != null && String(weightText).trim() ? `${weightText} kg` : '-'))
+
+    sy += 4
+    pdf.setFont('helvetica', 'bold')
+    pdf.setFontSize(10)
+    pdf.text('Lab Orders', sideX + 2, sy)
+    sy += 6
+
+    const tests = Array.isArray(data.labTests) ? data.labTests.map(t => String(t || '').trim()).filter(Boolean) : []
+    pdf.setFont('helvetica', 'normal')
+    pdf.setFontSize(9)
+    for (const t of tests) {
+      const wrapped = pdf.splitTextToSize(`• ${t}`, Math.max(20, sideW - 4))
+      pdf.text(wrapped, sideX + 2, sy)
+      sy += wrapped.length * 4 + 1
+      if (sy > pageHeight - 30) break
+    }
+
+    const labNote = String((data as any).labNotes || '').trim()
+    if (labNote && sy <= pageHeight - 30) {
+      pdf.setFontSize(8)
+      pdf.setFont('helvetica', 'bold')
+      pdf.text('Note:', sideX + 2, sy)
+      const noteW = (pdf as any).getTextWidth ? (pdf as any).getTextWidth('Note:') : 18
+      pdf.setFont('helvetica', 'normal')
+      const wrapped = pdf.splitTextToSize(String(labNote), Math.max(20, sideW - 4) - (noteW + 1))
+      pdf.text(wrapped, sideX + 2 + noteW + 1, sy)
+      sy += wrapped.length * 4 + 1
+    }
+
+    sy += 4
+    pdf.setFont('helvetica', 'bold')
+    pdf.setFontSize(10)
+    pdf.text('Diagnostic Orders', sideX + 2, sy)
+    sy += 6
+
+    const diagTests = Array.isArray(data.diagnosticTests)
+      ? data.diagnosticTests.map(t => String(t || '').trim()).filter(Boolean)
+      : []
+    pdf.setFont('helvetica', 'normal')
+    pdf.setFontSize(9)
+    for (const t of diagTests) {
+      const wrapped = pdf.splitTextToSize(`• ${t}`, Math.max(20, sideW - 4))
+      pdf.text(wrapped, sideX + 2, sy)
+      sy += wrapped.length * 4 + 1
+      if (sy > pageHeight - 30) break
+    }
+
+    const diagNote = String((data as any).diagnosticNotes || '').trim()
+    if (diagNote && sy <= pageHeight - 30) {
+      pdf.setFontSize(8)
+      pdf.setFont('helvetica', 'bold')
+      pdf.text('Note:', sideX + 2, sy)
+      const noteW = (pdf as any).getTextWidth ? (pdf as any).getTextWidth('Note:') : 18
+      pdf.setFont('helvetica', 'normal')
+      const wrapped = pdf.splitTextToSize(String(diagNote), Math.max(20, sideW - 4) - (noteW + 1))
+      pdf.text(wrapped, sideX + 2 + noteW + 1, sy)
+      sy += wrapped.length * 4 + 1
+    }
+
+    const diagDiscount = (data as any).diagnosticDiscount
+    if (diagDiscount != null && sy <= pageHeight - 30) {
+      pdf.setFontSize(8)
+      pdf.setFont('helvetica', 'bold')
+      pdf.text('Discount:', sideX + 2, sy)
+      const discW = (pdf as any).getTextWidth ? (pdf as any).getTextWidth('Discount:') : 22
+      pdf.setFont('helvetica', 'normal')
+      const wrapped = pdf.splitTextToSize(String(diagDiscount), Math.max(20, sideW - 4) - (discW + 1))
+      pdf.text(wrapped, sideX + 2 + discW + 1, sy)
+      sy += wrapped.length * 4 + 1
+    }
+  } catch {}
 
   // Big Rx mark and prep to draw Rx box border later
   pdf.setDrawColor(203,213,225)
   pdf.setLineWidth(0.4)
   pdf.setFont('helvetica','bold')
-  pdf.setFontSize(20)
+  pdf.setFontSize(17)
   pdf.setTextColor(30, 64, 175)
-  pdf.text('R', rxX + 6, rxY + 16)
+  pdf.text('Rx.', rxX + 4, rxY + 9)
   pdf.setTextColor(0,0,0)
 
   // Rx content starts with inner padding to avoid overlapping the 'R'
   const contentX = rxX + 16
+  const contentRight = rxX + rxW - 12 - rxRightBlankW
+  const rxInnerRight = rxX + rxW - 12
   let y = rxY + 14
   pdf.setFont('helvetica','normal')
   pdf.setFontSize(9)
 
-  // Clinical details (from Details tab) inside the Rx box, above Medication
-  const wrapRx = (txt: string) => pdf.splitTextToSize(txt, rxW - ((contentX - rxX) + 12))
-  const section = (label: string, value?: string) => {
-    const v = String(value || '').trim()
-    const out = v || 'N/A'
+  const toLabel = (k: string) => {
+    const s = String(k || '')
+      .replace(/_/g, ' ')
+      .replace(/([a-z])([A-Z])/g, '$1 $2')
+      .trim()
+    return s ? s.charAt(0).toUpperCase() + s.slice(1) : ''
+  }
+  const isEmpty = (v: any) => {
+    if (v == null) return true
+    if (typeof v === 'string') return v.trim() === ''
+    if (typeof v === 'number') return !isFinite(v)
+    if (typeof v === 'boolean') return v === false
+    if (Array.isArray(v)) return v.length === 0
+    if (typeof v === 'object') return Object.keys(v).length === 0
+    return false
+  }
+  const collectLines = (obj: any, prefix = ''): string[] => {
+    if (obj == null) return []
+    if (typeof obj === 'string' || typeof obj === 'number') {
+      const v = String(obj).trim()
+      if (!v) return []
+      return prefix ? [`${prefix}: ${v}`] : [v]
+    }
+    if (typeof obj === 'boolean') {
+      if (!obj) return []
+      return prefix ? [prefix] : ['Yes']
+    }
+    if (Array.isArray(obj)) {
+      const out: string[] = []
+      for (let i = 0; i < obj.length; i++) {
+        const it = obj[i]
+        if (it == null) continue
+        if (typeof it === 'string' || typeof it === 'number') {
+          const v = String(it).trim()
+          if (v) out.push(prefix ? `${prefix}: ${v}` : v)
+          continue
+        }
+        if (typeof it === 'boolean') {
+          if (it) out.push(prefix ? `${prefix}: Yes` : 'Yes')
+          continue
+        }
+        if (typeof it === 'object') {
+          const lines = collectLines(it, prefix ? `${prefix} #${i + 1}` : `#${i + 1}`)
+          out.push(...lines)
+        }
+      }
+      return out
+    }
+    if (typeof obj === 'object') {
+      const out: string[] = []
+      for (const key of Object.keys(obj)) {
+        const v = (obj as any)[key]
+        if (isEmpty(v)) continue
+        const label = toLabel(key)
+        const nextPrefix = prefix ? `${prefix} - ${label}` : label
+        if (typeof v === 'string' || typeof v === 'number') {
+          const sv = String(v).trim()
+          if (sv) out.push(`${nextPrefix}: ${sv}`)
+          continue
+        }
+        if (typeof v === 'boolean') {
+          if (v) out.push(nextPrefix)
+          continue
+        }
+        if (Array.isArray(v)) {
+          out.push(...collectLines(v, nextPrefix))
+          continue
+        }
+        if (typeof v === 'object') {
+          out.push(...collectLines(v, nextPrefix))
+          continue
+        }
+      }
+      return out
+    }
+    return []
+  }
+  const wrapW = Math.max(20, contentRight - contentX)
+  const block = (title: string, dataObj: any) => {
+    const lines = collectLines(dataObj)
+    if (!lines.length) return
     pdf.setFont('helvetica','bold')
-    pdf.text(label, contentX, y)
+    pdf.setFontSize(9)
+    pdf.text(title, contentX, y)
     y += 4
     pdf.setFont('helvetica','normal')
-    const lines = wrapRx(out)
-    pdf.text(lines, contentX, y)
-    y += Math.max(6, lines.length * 4.2 + 2)
+    pdf.setFontSize(9)
+    for (const ln of lines) {
+      const wrapped = pdf.splitTextToSize(String(ln), wrapW)
+      pdf.text(wrapped, contentX, y)
+      y += wrapped.length * 4
+    }
+    y += 2
   }
-  section('Primary Complaint', data.primaryComplaint)
-  section('History of Primary Complaint', data.primaryComplaintHistory)
-  section('Allergy History', data.allergyHistory)
-  section('Examination Findings', data.examFindings)
-  section('Family History', data.familyHistory)
-  section('Treatment History', data.treatmentHistory)
-  section('Medical History', (data as any).history)
-  section('Diagnosis', data.diagnosis)
-  section('Advice', data.advice)
-  y += 2
+
+  const therapyBlock = () => {
+    const tests = Array.isArray((data as any).therapyTests) ? (data as any).therapyTests.map((t: any) => String(t || '').trim()).filter(Boolean) : []
+    const plan: any = (data as any).therapyPlan || {}
+    const machines: any = (data as any).therapyMachines || {}
+    const note = String((data as any).therapyNotes || '').trim()
+    const discount = (data as any).therapyDiscount
+
+    const flattenMachines = (obj: any): string[] => {
+      if (!obj || typeof obj !== 'object') return []
+      const out: string[] = []
+      for (const k of Object.keys(obj)) {
+        if (k === '__custom') continue
+        const v = obj[k]
+        if (!v || typeof v !== 'object') continue
+        if (v.enabled !== true && v.Enabled !== true) continue
+        const opts: string[] = []
+        for (const optKey of Object.keys(v)) {
+          if (optKey === 'enabled' || optKey === 'Enabled') continue
+          const optVal = v[optKey]
+          if (optVal === true) {
+            const optLabel = (optKey: string) => {
+              const kk = String(k || '').toLowerCase()
+              const ok = String(optKey || '').toLowerCase()
+              if (kk === 'mcgspg' || kk === 'ms') {
+                if (ok === 'dashbar') return '--|'
+                if (ok === 'equal') return '='
+              }
+              return optKey
+            }
+            opts.push(String(optLabel(optKey) || '').trim())
+          } else if (typeof optVal === 'string' || typeof optVal === 'number') {
+            const s = String(optVal).trim()
+            if (s) opts.push(s)
+          }
+        }
+        if (opts.length) out.push(`${k}: ${opts.join(', ')}`)
+        else out.push(String(k))
+      }
+
+      try {
+        const custom: any = (obj as any)?.__custom
+        const defs = Array.isArray(custom?.defs) ? custom.defs : []
+        const st = custom?.state && typeof custom.state === 'object' ? custom.state : {}
+        for (const def of defs) {
+          const id = String(def?.id || '').trim()
+          if (!id) continue
+          const name = String(def?.name || '').trim() || id
+          const cur = (st as any)[id] || {}
+          if (!cur || cur.enabled !== true) continue
+          if (def?.kind === 'checkboxes') {
+            const checks = cur?.checks && typeof cur.checks === 'object' ? cur.checks : {}
+            const selected = Object.keys(checks).filter(x => (checks as any)[x] === true).map(x => String(x || '').trim()).filter(Boolean)
+            if (selected.length) out.push(`${name}: ${selected.join(', ')}`)
+            else out.push(name)
+          } else if (def?.kind === 'fields') {
+            const fields = cur?.fields && typeof cur.fields === 'object' ? cur.fields : {}
+            const entries = Object.keys(fields)
+              .map(x => {
+                const v = (fields as any)[x]
+                const sv = v != null ? String(v).trim() : ''
+                const sk = String(x || '').trim()
+                if (!sk || !sv) return ''
+                return `${sk}: ${sv}`
+              })
+              .filter(Boolean)
+            if (entries.length) out.push(`${name}: ${entries.join(', ')}`)
+            else out.push(name)
+          } else {
+            out.push(name)
+          }
+        }
+      } catch { }
+
+      return out
+    }
+
+    const lines = [...tests, ...flattenMachines(machines)].map(s => String(s || '').trim()).filter(Boolean)
+    const months = plan?.months != null && String(plan.months).trim() ? String(plan.months).trim() : ''
+    const days = plan?.days != null && String(plan.days).trim() ? String(plan.days).trim() : ''
+    const packages = (plan?.packages ?? plan?.package) != null && String(plan.packages ?? plan.package).trim() ? String(plan.packages ?? plan.package).trim() : ''
+    const planLine = [months ? `Months: ${months}` : '', days ? `Days: ${days}` : '', packages ? `Packages: ${packages}` : ''].filter(Boolean).join(', ')
+
+    if (!lines.length && !planLine && !note) return
+    block('Therapy Orders', lines.length ? lines.map(x => `• ${x}`).join('\n') : undefined)
+    if (planLine) block('Therapy Plan', planLine)
+    if (note) block('Note', note)
+    if (discount != null) block('Discount', String(discount))
+  }
+
+  pdf.setFont('helvetica','bold')
+  pdf.setFontSize(11)
+  pdf.text('Prescription', contentX, y)
+  y += 6
+  therapyBlock()
+  ;(() => {
+    const c: any = (data as any).counselling
+    if (!c || typeof c !== 'object') return
+    const lines: string[] = []
+    const lccOn = !!c.lcc
+    const lccMonth = c.lccMonth != null ? String(c.lccMonth).trim() : ''
+    if (lccOn) {
+      lines.push('Lcc')
+      if (lccMonth) lines.push(`Month: ${lccMonth}`)
+    }
+    const pkg: any = c.package || c.packages || {}
+    const pkgNames: string[] = []
+    const pkgMonths: string[] = []
+    const addPkg = (enabled: any, name: string, monthVal: any) => {
+      if (!enabled) return
+      pkgNames.push(name)
+      const m = monthVal != null ? String(monthVal).trim() : ''
+      if (m) pkgMonths.push(m)
+    }
+    addPkg(pkg?.d4, 'D4', pkg?.d4Month)
+    addPkg(pkg?.r4, 'R4', pkg?.r4Month)
+    if (pkgNames.length) lines.push(`Package - ${pkgNames.join(', ')}`)
+    if (pkgMonths.length) lines.push(`Month: ${pkgMonths.join(', ')}`)
+    const note = c.note != null ? String(c.note).trim() : ''
+    if (note) lines.push(`Note: ${note}`)
+    const disc = (data as any).counsellingDiscount
+    if (disc != null) lines.push(`Discount: ${disc}`)
+    if (lines.length) block('Counselling', lines.join('\n'))
+  })()
 
   const medRows = (data.items || []).map((m: any, idx: number) => {
-    return [ String(idx+1), String(m.name||'-'), String(m.frequency||'-'), String(m.dose||'-'), String(m.duration||'-'), String(m.instruction||'-'), String(m.route||'-') ]
+    const notes = String(m?.notes || '')
+    const mRoute = notes.match(/Route:\s*([^;]+)/i)
+    const mInstr = notes.match(/Instruction:\s*([^;]+)/i)
+    const route = m?.route != null && String(m.route).trim() ? String(m.route) : (mRoute?.[1]?.trim() || '-')
+    const instruction = m?.instruction != null && String(m.instruction).trim() ? String(m.instruction) : (mInstr?.[1]?.trim() || '-')
+    return [ String(idx+1), String(m.name||'-'), String(m.frequency||'-'), String(m.dose||'-'), String(m.duration||'-'), String(instruction||'-'), String(route||'-') ]
   })
   pdf.setFont('helvetica','bold')
   pdf.text('Medication', contentX, y)
   y += 4
   autoTable(pdf, {
     startY: y,
-    margin: { left: contentX, right: 12 },
+    margin: { left: contentX, right: pageWidth - rxInnerRight },
     head: [[ 'Sr.', 'Drug', 'Frequency', 'Dosage', 'Duration', 'Instruction', 'Route' ]],
     body: medRows,
     styles: { fontSize: 9, cellPadding: 2, valign: 'top' },

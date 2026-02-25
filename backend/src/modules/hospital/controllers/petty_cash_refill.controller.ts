@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { FinanceJournal } from '../models/FinanceJournal'
 import { PettyCashAccount } from '../models/PettyCashAccount'
 import { BankAccount } from '../models/BankAccount'
+import { notifyAdminTransaction } from '../services/finance_txn_notifications'
 
 function todayIso(){ return new Date().toISOString().slice(0,10) }
 
@@ -38,6 +39,10 @@ export async function refillPettyCash(req: Request, res: Response){
     ...req.body,
     amount: req.body?.amount != null ? Number(req.body.amount) : undefined,
   })
+
+  const payload: any = (req as any).user
+  const createdBy = payload?.sub ? String(payload.sub) : undefined
+  const actorRole = String(payload?.role || '')
   const petty: any = await PettyCashAccount.findOne({ code: pettyCode }).lean()
   if (!petty) return res.status(404).json({ error: 'Petty cash account not found' })
   if (petty.status !== 'Active') return res.status(400).json({ error: 'Petty cash account is not active' })
@@ -46,11 +51,13 @@ export async function refillPettyCash(req: Request, res: Response){
   if (!bank) return res.status(404).json({ error: 'Bank account not found' })
   const bankFinCode = String(bank.financeAccountCode || `BANK_${String(bank.accountNumber||'').slice(-4)}`.toUpperCase())
 
-  const bankBalance = await computeAccountBalance(bankFinCode)
-  if (bankBalance < amount) return res.status(400).json({ error: 'Insufficient bank balance' })
+  // Allow negative balance as requested
+  // const bankBalance = await computeAccountBalance(bankFinCode)
+  // if (bankBalance < amount) return res.status(400).json({ error: 'Insufficient bank balance' })
 
   const j = await FinanceJournal.create({
     dateIso: dateIso || todayIso(),
+    createdBy,
     refType: 'PETTY_CASH_REFILL',
     refId: `${pettyCode}:${bank._id}`,
     memo: memo || `Petty cash refill from bank ${bank.accountTitle || bank.bankName}`,
@@ -62,6 +69,21 @@ export async function refillPettyCash(req: Request, res: Response){
 
   const pettyBalance = await computeAccountBalance(pettyCode)
   const bankBalanceAfter = await computeAccountBalance(bankFinCode)
+
+  try {
+    if (createdBy) {
+      await notifyAdminTransaction({
+        actorUserId: createdBy,
+        actorRole,
+        fromAccountCode: bankFinCode,
+        toAccountCode: pettyCode,
+        amount,
+        refType: 'PETTY_CASH_REFILL',
+        txId: String((j as any)?.txId || ''),
+        memo: memo || undefined,
+      })
+    }
+  } catch { }
 
   return res.status(201).json({ ok: true, journalId: String(j._id), pettyBalance, bankBalance: bankBalanceAfter })
 }

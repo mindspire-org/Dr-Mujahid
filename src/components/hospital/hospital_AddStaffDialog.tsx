@@ -1,6 +1,6 @@
 import type React from 'react'
 import { useEffect, useState } from 'react'
-import { labApi } from '../../utils/api'
+import { hospitalApi } from '../../utils/api'
 
 export type Shift = { id: string; name: string }
 
@@ -25,15 +25,16 @@ type Props = {
   submitLabel?: string
 }
 
-export default function Lab_AddStaffDialog({ open, onClose, onSave, initial = null, title, submitLabel }: Props) {
+export default function Hospital_AddStaffDialog({ open, onClose, onSave, initial = null, title, submitLabel }: Props) {
   if (!open) return null
   const [shifts, setShifts] = useState<Shift[]>([])
+  const [selectedShiftId, setSelectedShiftId] = useState<string>(initial?.shiftId || '')
 
   useEffect(() => {
     let mounted = true
     ;(async () => {
       try {
-        const res = await labApi.listShifts()
+        const res = await hospitalApi.listShifts()
         if (!mounted) return
         const mapped: Shift[] = (res.items || []).map((x: any) => ({ id: x._id, name: x.name }))
         setShifts(mapped)
@@ -41,6 +42,10 @@ export default function Lab_AddStaffDialog({ open, onClose, onSave, initial = nu
     })()
     return () => { mounted = false }
   }, [])
+
+  useEffect(() => {
+    setSelectedShiftId(initial?.shiftId || '')
+  }, [initial])
 
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
@@ -74,8 +79,8 @@ export default function Lab_AddStaffDialog({ open, onClose, onSave, initial = nu
               <input name="name" defaultValue={initial?.name} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" required />
             </div>
             <div>
-              <label className="mb-1 block text-sm text-slate-700">Position</label>
-              <input name="position" defaultValue={initial?.position} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
+              <label className="mb-1 block text-sm text-slate-700">Role</label>
+              <input name="position" defaultValue={initial?.position} placeholder="e.g. Reception" className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
             </div>
             <div>
               <label className="mb-1 block text-sm text-slate-700">Phone Number</label>
@@ -87,7 +92,7 @@ export default function Lab_AddStaffDialog({ open, onClose, onSave, initial = nu
             </div>
             <div>
               <label className="mb-1 block text-sm text-slate-700">Shift</label>
-              <select name="shiftId" defaultValue={initial?.shiftId} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm">
+              <select name="shiftId" value={selectedShiftId} onChange={e=>setSelectedShiftId(e.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm">
                 <option value="">— Select shift —</option>
                 {shifts.map(s => (<option key={s.id} value={s.id}>{s.name}</option>))}
               </select>

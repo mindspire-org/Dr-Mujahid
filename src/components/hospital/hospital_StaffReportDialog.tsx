@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState } from 'react'
-import { labApi } from '../../utils/api'
+import { hospitalApi } from '../../utils/api'
+import Hospital_SalarySlipDialog from './hospital_SalarySlipDialog'
 
 type Attendance = { id?: string; staffId: string; date: string; shiftId?: string; status: 'present'|'absent'|'leave'; clockIn?: string; clockOut?: string; notes?: string }
 
 export type LabStaff = { id: string; name: string; position?: string; shiftId?: string; salary?: number }
-export type Shift = { id: string; name: string; start?: string; end?: string; absentCharges?: number; lateDeduction?: number; earlyOutDeduction?: number }
+export type Shift = { id: string; name: string; start?: string; end?: string; absentCharges?: number; lateDeduction?: number; earlyOutDeduction?: number; weekendDays?: number[] }
 
 type Props = {
   open: boolean
@@ -18,32 +19,98 @@ function formatMonth(yyyyMm: string){ const [y,m] = yyyyMm.split('-').map(Number
 function toMinutes(hm?: string){ if(!hm) return 0; const [h,m] = (hm||'').split(':').map(n=>parseInt(n||'0')); return (h*60 + m) }
 function fmtHours(min: number){ const h = Math.floor(min/60); const m = Math.round(min%60); return `${h}h ${m}m` }
 function formatPKR(n: number){ return `${Number(n).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 3 })} PKR` }
+function todayIso(){ return new Date().toISOString().slice(0,10) }
+function exactDateLabel(isoDate: string){
+  // Avoid timezone shifts by parsing at local midnight
+  try {
+    const dt = new Date(`${isoDate}T00:00:00`)
+    if (Number.isNaN(dt.getTime())) return isoDate
+    return `${isoDate} (${dt.toLocaleDateString(undefined, { weekday: 'short' })})`
+  } catch {
+    return isoDate
+  }
+}
 
-export default function Lab_StaffReportDialog({ open, onClose, staffList, initialMonth, initialStaffId }: Props){
+export default function Hospital_StaffReportDialog({ open, onClose, staffList, initialMonth, initialStaffId }: Props){
   const [query, setQuery] = useState('')
   const [month, setMonth] = useState<string>(initialMonth || new Date().toISOString().slice(0,7))
   const [selectedId, setSelectedId] = useState<string>(initialStaffId || (staffList[0]?.id ?? ''))
   const [att, setAtt] = useState<Attendance[]>([])
   const [shifts, setShifts] = useState<Shift[]>([])
   const [settings, setSettings] = useState<any>(null)
+  const [earnings, setEarnings] = useState<any[]>([])
+  const [payments, setPayments] = useState<any[]>([])
+  const [payAmount, setPayAmount] = useState<number>(0)
+  const [payNote, setPayNote] = useState<string>('')
+  const [bankAccounts, setBankAccounts] = useState<any[]>([])
+  const [payBankOpen, setPayBankOpen] = useState(false)
+  const [payBankId, setPayBankId] = useState<string>('')
+  const [payBankLoading, setPayBankLoading] = useState(false)
+  const [payMode, setPayMode] = useState<'full'|'half'|'custom'>('custom')
+  const [slipOpen, setSlipOpen] = useState(false)
+  const [slipExpense, setSlipExpense] = useState<any>(null)
+  const [slipPaidToDate, setSlipPaidToDate] = useState<number | undefined>(undefined)
+
+  const currentUser = useMemo(() => {
+    try {
+      const s = localStorage.getItem('hospital.session')
+      if (s) { const u = JSON.parse(s); return (u?.username || u?.name || '').toString() }
+    } catch {}
+    return 'admin'
+  }, [])
 
   const filtered = useMemo(()=> staffList.filter(s => s.name.toLowerCase().includes(query.toLowerCase())), [staffList, query])
   const selected = useMemo(()=> staffList.find(s => s.id === selectedId) ?? filtered[0] ?? null, [selectedId, staffList, filtered])
   const shiftById = useMemo(()=> Object.fromEntries(shifts.map(s => [s.id, s] as const)), [shifts])
   const shiftName = (id?: string)=> id? (shiftById[id]?.name || '—') : '—'
 
+  const weekendDaysForSelected = useMemo(()=>{
+    const sid = selected?.shiftId
+    if (sid) {
+      const shift: any = shiftById[sid]
+      const arr = Array.isArray(shift?.weekendDays) ? shift.weekendDays : []
+      return new Set(arr.map((n:any)=> Number(n)).filter((n:number)=> Number.isFinite(n) && n>=0 && n<=6))
+    }
+    // Fallback: if staff has no shift assigned, use union across all shifts
+    const acc = new Set<number>()
+    for (const s of shifts as any[]) {
+      const arr = Array.isArray(s?.weekendDays) ? s.weekendDays : []
+      for (const n of arr) {
+        const v = Number(n)
+        if (Number.isFinite(v) && v >= 0 && v <= 6) acc.add(v)
+      }
+    }
+    return acc
+  }, [selected?.shiftId, shiftById, shifts])
+
   useEffect(()=>{
     let mounted = true
     ;(async()=>{
       try {
         const [shiftRes, settingsRes] = await Promise.all([
-          labApi.listShifts(),
-          labApi.getSettings().catch(()=>null),
+          hospitalApi.listShifts(),
+          hospitalApi.getSettings().catch(()=>null),
         ])
         if (!mounted) return
-        setShifts((shiftRes.items||[]).map((x:any)=>({ id: x._id, name: x.name, start: x.start, end: x.end, absentCharges: x.absentCharges, lateDeduction: x.lateDeduction, earlyOutDeduction: x.earlyOutDeduction })))
+        setShifts((shiftRes.items||[]).map((x:any)=>({ id: x._id, name: x.name, start: x.start, end: x.end, absentCharges: x.absentCharges, lateDeduction: x.lateDeduction, earlyOutDeduction: x.earlyOutDeduction, weekendDays: Array.isArray(x.weekendDays) ? x.weekendDays : [] })))
         if (settingsRes) setSettings(settingsRes)
       } catch {}
+    })()
+    return ()=>{ mounted = false }
+  }, [open])
+
+  useEffect(()=>{
+    if (!open) return
+    let mounted = true
+    ;(async()=>{
+      try {
+        const res: any = await hospitalApi.listBankAccounts({ status: 'Active' })
+        if (!mounted) return
+        setBankAccounts(Array.isArray(res?.accounts) ? res.accounts : [])
+      } catch {
+        if (!mounted) return
+        setBankAccounts([])
+      }
     })()
     return ()=>{ mounted = false }
   }, [open])
@@ -51,17 +118,49 @@ export default function Lab_StaffReportDialog({ open, onClose, staffList, initia
   useEffect(()=>{ if (!open) return; if (initialStaffId && initialStaffId !== selectedId) setSelectedId(initialStaffId); if (initialMonth && initialMonth !== month) setMonth(initialMonth) }, [open, initialStaffId, initialMonth])
 
   useEffect(()=>{
-    if (!selected) { setAtt([]); return }
+    if (!selected) { setAtt([]); setEarnings([]); return }
     let mounted = true
     ;(async()=>{
       try {
         const from = `${month}-01`
         const dt = new Date(Number(month.slice(0,4)), Number(month.slice(5,7)), 0)
         const to = `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}-${String(dt.getDate()).padStart(2,'0')}`
-        const res = await labApi.listAttendance({ from, to, staffId: selected.id })
+        const [attRes, earnRes] = await Promise.allSettled([
+          hospitalApi.listAttendance({ from, to, staffId: selected.id, limit: 1000 }),
+          hospitalApi.listStaffEarnings({ from, to, staffId: selected.id, limit: 1000 }),
+        ])
         if (!mounted) return
-        setAtt((res.items||[]).map((x:any)=>({ id: x._id, staffId: x.staffId, date: x.date, shiftId: x.shiftId, status: x.status, clockIn: x.clockIn, clockOut: x.clockOut, notes: x.notes })))
-      } catch { setAtt([]) }
+        if (attRes.status === 'fulfilled') {
+          const attH: any = attRes.value
+          setAtt((attH.items||[]).map((x:any)=>({ id: x._id, staffId: x.staffId, date: x.date, shiftId: x.shiftId, status: x.status, clockIn: x.clockIn, clockOut: x.clockOut, notes: x.notes })))
+        } else {
+          setAtt([])
+        }
+        if (earnRes.status === 'fulfilled') {
+          const earnH: any = earnRes.value
+          setEarnings((earnH.items||[]))
+        } else {
+          setEarnings([])
+        }
+      } catch { setAtt([]); setEarnings([]) }
+    })()
+    return ()=>{ mounted = false }
+  }, [selectedId, month, open])
+
+  // Load salary payments (expenses) for selected staff/month
+  useEffect(()=>{
+    if (!selected) { setPayments([]); return }
+    let mounted = true
+    ;(async()=>{
+      try {
+        const from = `${month}-01`
+        const dt = new Date(Number(month.slice(0,4)), Number(month.slice(5,7)), 0)
+        const to = `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}-${String(dt.getDate()).padStart(2,'0')}`
+        const res: any = await hospitalApi.listExpenses({ from, to, category: 'Salaries', kind: 'salary', staffId: selected.id, salaryMonth: month })
+        const sal: any[] = Array.isArray(res?.expenses) ? res.expenses : []
+        if (!mounted) return
+        setPayments(sal)
+      } catch { setPayments([]) }
     })()
     return ()=>{ mounted = false }
   }, [selectedId, month, open])
@@ -72,24 +171,62 @@ export default function Lab_StaffReportDialog({ open, onClose, staffList, initia
     const dt = new Date(Number(month.slice(0,4)), Number(month.slice(5,7)), 0)
     const to = `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}-${String(dt.getDate()).padStart(2,'0')}`
     const recs = att.filter(a=> a.staffId===selected.id && a.date && a.date >= from && a.date <= to)
-    const list = recs.map(r => {
+
+    const byDate: Record<string, { status: 'present'|'absent'|'leave'|'holiday'; clockIn?: string; clockOut?: string; shift?: string; minutes: number }> = {}
+    for (const r of recs){
+      const d = r.date
       const ci = toMinutes(r.clockIn), co = toMinutes(r.clockOut)
       const diff = (ci && co) ? (co>=ci ? (co-ci) : (24*60 - ci + co)) : 0
       const normalizedStatus = (r.status==='leave') ? 'leave' : ((r.status==='present' || r.clockIn || r.clockOut) ? 'present' : 'absent')
-      return { date: r.date, shift: r.shiftId, status: normalizedStatus as 'present'|'absent'|'leave', clockIn: r.clockIn, clockOut: r.clockOut, minutes: diff }
-    })
-    list.sort((a,b)=> a.date<b.date? -1 : a.date>b.date? 1 : 0)
+      const next = { status: normalizedStatus as any, clockIn: r.clockIn, clockOut: r.clockOut, shift: r.shiftId, minutes: diff }
+      const cur = byDate[d]
+      if (!cur){ byDate[d] = next; continue }
+      // merge: earliest in, latest out, present overrides absent
+      if (next.clockIn && (!cur.clockIn || next.clockIn < cur.clockIn)) cur.clockIn = next.clockIn
+      if (next.clockOut && (!cur.clockOut || next.clockOut > cur.clockOut)) cur.clockOut = next.clockOut
+      if (next.shift && !cur.shift) cur.shift = next.shift
+      if (next.status === 'present') cur.status = 'present'
+      if (cur.status !== 'present' && next.status === 'leave') cur.status = 'leave'
+      cur.minutes = Math.max(cur.minutes || 0, next.minutes || 0)
+    }
+
+    const [y,m] = month.split('-').map(n=>parseInt(n||'0'))
+    const tIso = todayIso()
+    const ty = Number(tIso.slice(0,4))
+    const tm = Number(tIso.slice(5,7))
+    const td = Number(tIso.slice(8,10))
+    const curKey = ty*100 + tm
+    const targetKey = (y||0)*100 + (m||0)
+    const endOfMonth = new Date(y, m, 0).getDate()
+    const endDay = targetKey < curKey ? endOfMonth : targetKey > curKey ? 0 : td
+
+    const list: Array<{ date: string; shift?: string; status: string; clockIn?: string; clockOut?: string; minutes: number }> = []
+    for (let d=1; d<=endDay; d++){
+      const date = `${month}-${String(d).padStart(2,'0')}`
+      const rec = byDate[date]
+      const weekday = (()=>{ try { return new Date(`${date}T00:00:00`).getDay() } catch { return -1 } })()
+      const isWeekendHoliday = weekendDaysForSelected.has(weekday)
+      list.push({
+        date,
+        shift: rec?.shift || selected.shiftId,
+        status: (rec?.status || (isWeekendHoliday ? 'holiday' : 'absent')),
+        clockIn: rec?.clockIn,
+        clockOut: rec?.clockOut,
+        minutes: rec?.minutes || 0,
+      })
+    }
     return list
-  }, [att, selectedId, month])
+  }, [att, selectedId, month, selected?.shiftId, weekendDaysForSelected])
 
   const stats = useMemo(()=>{
     const presentDates = new Set(daily.filter(d=>d.status==='present').map(d=>d.date))
     const leaveDates = new Set(daily.filter(d=>d.status==='leave').map(d=>d.date))
+    const holidayDates = new Set(daily.filter(d=>d.status==='holiday').map(d=>d.date))
     const totalMinutes = daily.reduce((s,d)=> s + (d.status==='present'? d.minutes : 0), 0)
     const [y,m] = month.split('-').map(n=>parseInt(n||'0'))
-    const today = new Date(); const curKey = today.getFullYear()*100 + (today.getMonth()+1); const targetKey = (y||0)*100 + (m||0)
+    const tIso = todayIso(); const ty = Number(tIso.slice(0,4)); const tm = Number(tIso.slice(5,7)); const td = Number(tIso.slice(8,10)); const curKey = ty*100 + tm; const targetKey = (y||0)*100 + (m||0)
     const endOfMonth = new Date(y, m, 0).getDate()
-    const workingDays = targetKey < curKey ? endOfMonth : targetKey > curKey ? 0 : today.getDate()
+    const workingDays = targetKey < curKey ? endOfMonth : targetKey > curKey ? 0 : td
     let late = 0, early = 0
     for (const r of daily){
       if (r.status !== 'present') continue
@@ -99,7 +236,7 @@ export default function Lab_StaffReportDialog({ open, onClose, staffList, initia
       if (r.clockIn && sh.start){ if (toMinutes(r.clockIn) > toMinutes(sh.start) + grace) late++ }
       if (r.clockOut && sh.end){ if (toMinutes(r.clockOut) < toMinutes(sh.end)) early++ }
     }
-    const absentDays = Math.max(0, workingDays - presentDates.size - leaveDates.size)
+    const absentDays = Math.max(0, workingDays - presentDates.size - leaveDates.size - holidayDates.size)
     return { presentDays: presentDates.size, leaveDays: leaveDates.size, absentDays, totalMinutes, late, early, workingDays }
   }, [daily, shiftById, selected?.shiftId, month])
 
@@ -112,7 +249,75 @@ export default function Lab_StaffReportDialog({ open, onClose, staffList, initia
   const lateDeduction = stats.late * lateRate
   const earlyDeduction = stats.early * earlyRate
   const totalDeductions = absentDeduction + lateDeduction + earlyDeduction
-  const netSalary = Math.max(0, basicSalary - totalDeductions)
+  const additionalEarnings = useMemo(()=> (earnings||[]).reduce((s,n)=> s + Number(n?.amount||0), 0), [earnings])
+  const netSalary = Math.max(0, basicSalary - totalDeductions + additionalEarnings)
+
+  const approvedPaid = useMemo(()=>{
+    return (payments||[]).reduce((s,n)=>{
+      const st = String(n?.status || 'approved')
+      if (st === 'approved' || st === '' || st == null) return s + Number(n?.amount||0)
+      return s
+    }, 0)
+  }, [payments])
+
+  const pendingPaid = useMemo(()=>{
+    return (payments||[]).reduce((s,n)=>{
+      const st = String(n?.status || 'approved')
+      if (st === 'draft' || st === 'submitted') return s + Number(n?.amount||0)
+      return s
+    }, 0)
+  }, [payments])
+
+  const remaining = useMemo(()=> Math.max(0, netSalary - approvedPaid), [netSalary, approvedPaid])
+
+  const createSalaryExpense = async (amount: number, mode: 'full'|'half'|'custom', fromAccountCode: string, extraNote?: string) => {
+    if (!selected) return
+    if (!amount || amount <= 0) return
+    try {
+      const today = new Date().toISOString().slice(0,10)
+      const createdRes: any = await hospitalApi.createExpense({
+        dateIso: today,
+        category: 'Salaries',
+        amount: Number(amount),
+        note: `Salary (${mode})${extraNote? ' — '+extraNote : ''}`,
+        method: 'bank',
+        ref: 'salary',
+        createdBy: currentUser,
+        kind: 'salary',
+        staffId: selected.id,
+        salaryMonth: month,
+        paymentMode: mode,
+        fromAccountCode,
+      } as any)
+      const created: any = createdRes?.expense || createdRes
+      setPayments(p => [ ...(p||[]), created ])
+      setSlipExpense(created)
+      const newPaid = approvedPaid + Number(amount)
+      setSlipPaidToDate(newPaid)
+      setSlipOpen(true)
+      try { window.dispatchEvent(new Event('hospital:expenses:refresh')) } catch {}
+    } catch {}
+  }
+
+  const openPayDialog = (mode: 'full'|'half'|'custom') => {
+    const amt = mode === 'full' ? remaining : (mode === 'half' ? Math.max(0, Math.round(remaining / 2)) : Math.max(0, remaining || netSalary))
+    setPayMode(mode)
+    setPayAmount(amt)
+    setPayNote('')
+    setPayBankId('')
+    setPayBankOpen(true)
+  }
+
+  const [customPayOpen, setCustomPayOpen] = useState(false)
+  const confirmCustomPay = async () => {
+    const amt = Number(payAmount || 0)
+    if (!amt || amt <= 0) return
+    const bounded = remaining ? Math.min(amt, remaining) : amt
+    setCustomPayOpen(false)
+    // kept for backward compatibility; now handled by bank-account pay dialog
+    void bounded
+    setPayNote('')
+  }
 
   const exportCsv = () => {
     const rows = [['Month','Staff','Date','Status','Clock In','Clock Out','Hours']]
@@ -125,94 +330,83 @@ export default function Lab_StaffReportDialog({ open, onClose, staffList, initia
     const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `lab_monthly_${month}_${selected?.name||''}.csv`; a.click(); URL.revokeObjectURL(a.href)
   }
 
-  const exportPdf = () => {
+  const exportPdf = async () => {
     const staffName = selected?.name || ''
-    const right = [
-      `<div><div style='font-size:12px;color:#475569'>Month</div><div style='font-size:14px;font-weight:600;'>${formatMonth(month)}</div></div>`,
-      `<div><div style='font-size:12px;color:#475569'>Staff</div><div style='font-size:14px;font-weight:600;'>${staffName}</div></div>`,
-    ].join('')
-    const head = `
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
-        <div style="display:flex;align-items:center;gap:12px;">
-          ${settings?.logoDataUrl ? `<img src='${settings.logoDataUrl}' style='height:48px;object-fit:contain;'/>` : ''}
-          <div>
-            <div style="font-size:18px;font-weight:800;letter-spacing:.5px;">${(settings?.labName||'Lab').toUpperCase()}</div>
-            ${settings?.address ? `<div style='font-size:12px;color:#475569;'>${settings.address}</div>`:''}
-            ${(settings?.phone||settings?.email)? `<div style='font-size:12px;color:#475569;'>${settings?.phone? 'PHONE: '+settings.phone : ''} ${settings?.email? ' EMAIL: '+settings.email : ''}</div>`:''}
-          </div>
-        </div>
-        <div style="display:flex;gap:16px;">${right}</div>
-      </div>
-      <div style="font-size:16px;font-weight:600;margin:8px 0 12px;">Staff Report</div>
-    `
-
-    const card = (label:string, val:string) => `<div style='border-radius:8px;padding:10px;text-align:center;border:1px solid #e2e8f0;'>
-      <div style='font-size:18px;font-weight:700;'>${val}</div>
-      <div style='font-size:12px;color:#475569;'>${label}</div>
-    </div>`
-
-    const attCards = `
-      <div style='display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin:8px 0;'>
-        ${card('Present', String(stats.presentDays))}
-        ${card('Absents', String(stats.absentDays))}
-        ${card('Late Arrivals', String(stats.late))}
-        ${card('Working Days', String(stats.workingDays))}
-      </div>
-    `
-
-    const salary = `
-      <div style='border:1px solid #e2e8f0;border-radius:8px;padding:10px;font-size:13px;'>
-        <div style='display:flex;justify-content:space-between;'><div>Basic Salary</div><div style='font-weight:600;'>${formatPKR(basicSalary)}</div></div>
-        <div style='margin-top:6px;color:#475569;'>Deductions:</div>
-        <div style='display:flex;justify-content:space-between;color:#b91c1c;'><div>Late Arrivals (${stats.late})</div><div>-${formatPKR(stats.late * (Number(staffShift?.lateDeduction||0)))}</div></div>
-        <div style='display:flex;justify-content:space-between;color:#b91c1c;'><div>Absents (${stats.absentDays})</div><div>-${formatPKR(stats.absentDays * (Number(staffShift?.absentCharges||0)))}</div></div>
-        <div style='display:flex;justify-content:space-between;color:#b91c1c;'><div>Early Out (${stats.early})</div><div>-${formatPKR(stats.early * (Number(staffShift?.earlyOutDeduction||0)))}</div></div>
-        <div style='display:flex;justify-content:space-between;margin-top:4px;font-weight:600;'><div>Total Deductions</div><div style='color:#b91c1c;'>-${formatPKR(totalDeductions)}</div></div>
-        <div style='display:flex;justify-content:space-between;margin-top:6px;font-weight:700;'><div>Net Salary</div><div style='color:#047857;'>${formatPKR(netSalary)}</div></div>
-      </div>
-    `
-
-    const tableRows = daily.map(r=> `
-      <tr>
-        <td style='padding:6px 8px;border:1px solid #e2e8f0;'>${r.date}</td>
-        <td style='padding:6px 8px;border:1px solid #e2e8f0;'>${shiftName(r.shift)}</td>
-        <td style='padding:6px 8px;border:1px solid #e2e8f0;'>${r.status}</td>
-        <td style='padding:6px 8px;border:1px solid #e2e8f0;'>${r.clockIn||'—'}</td>
-        <td style='padding:6px 8px;border:1px solid #e2e8f0;'>${r.clockOut||'—'}</td>
-        <td style='padding:6px 8px;border:1px solid #e2e8f0;'>${r.status==='present'? fmtHours(r.minutes) : '—'}</td>
-      </tr>`).join('')
-
-    const table = `
-      <table style='width:100%;border-collapse:collapse;font-size:12px;margin-top:10px;'>
-        <thead>
-          <tr>
-            ${['Date','Shift','Status','Clock In','Clock Out','Hours'].map(h=>`<th style='text-align:left;padding:6px 8px;border:1px solid #e2e8f0;background:#f8fafc;'>${h}</th>`).join('')}
-          </tr>
-        </thead>
-        <tbody>${tableRows || `<tr><td colspan='6' style='text-align:center;padding:10px;border:1px solid #e2e8f0;color:#64748b;'>No records</td></tr>`}</tbody>
-      </table>
-    `
-
-    const html = `<!doctype html><html><head><meta charset='utf-8'/><title>Staff Report</title></head>
-      <body style='font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial;color:#0f172a;padding:16px;'>
-        ${head}
-        ${attCards}
-        ${salary}
-        ${table}
-      </body></html>`
-
-    const frame = document.createElement('iframe')
-    frame.style.position = 'fixed'
-    frame.style.right = '0'
-    frame.style.bottom = '0'
-    frame.style.width = '0'
-    frame.style.height = '0'
-    frame.style.border = '0'
-    document.body.appendChild(frame)
-    const doc = frame.contentWindow?.document || frame.contentDocument
-    if (!doc) return
-    doc.open(); doc.write(html); doc.close()
-    frame.onload = () => { try { frame.contentWindow?.focus(); frame.contentWindow?.print() } catch {} setTimeout(()=>{ document.body.removeChild(frame) }, 100) }
+    const loadJsPDF = () => new Promise<any>((resolve, reject) => {
+      const w: any = window as any
+      if (w.jspdf && w.jspdf.jsPDF) return resolve(w.jspdf)
+      const s = document.createElement('script')
+      s.src = 'https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js'
+      s.onload = () => resolve((window as any).jspdf)
+      s.onerror = reject
+      document.head.appendChild(s)
+    })
+    const jspdf = await loadJsPDF()
+    const { jsPDF } = jspdf
+    const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' })
+    const margin = 10
+    const pageW = doc.internal.pageSize.getWidth()
+    const pageH = doc.internal.pageSize.getHeight()
+    doc.setFont('courier', 'normal')
+    doc.setFontSize(14)
+    doc.text(String(settings?.name || 'Hospital'), margin, margin + 4)
+    doc.setFontSize(9)
+    let topY = margin + 10
+    const rightX = pageW - margin
+    doc.text(`Month: ${formatMonth(month)}`, rightX - 60, margin + 4)
+    doc.text(`Staff: ${staffName}`, rightX - 60, margin + 9)
+    doc.setLineWidth(0.2)
+    doc.line(margin, topY, pageW - margin, topY)
+    topY += 6
+    doc.setFontSize(12)
+    doc.text('Staff Report', margin, topY)
+    topY += 6
+    // Attendance cards
+    doc.setFontSize(9)
+    const cardW = 40, gap = 6
+    const cards = [
+      { label: 'Present', val: String(stats.presentDays) },
+      { label: 'Absents', val: String(stats.absentDays) },
+      { label: 'Late Arrivals', val: String(stats.late) },
+      { label: 'Working Days', val: String(stats.workingDays) },
+    ]
+    let x = margin
+    for (const c of cards){ doc.rect(x, topY, cardW, 16); doc.text(c.val, x+2, topY+6); doc.text(c.label, x+2, topY+12); x += cardW + gap }
+    topY += 22
+    // Salary summary
+    const lines: Array<[string,string]> = []
+    lines.push(['Basic Salary', `${Number(basicSalary).toLocaleString()} PKR`])
+    lines.push([`Late Arrivals (${stats.late})`, `- ${Number(lateDeduction).toLocaleString()} PKR`])
+    lines.push([`Absents (${stats.absentDays})`, `- ${Number(absentDeduction).toLocaleString()} PKR`])
+    lines.push([`Early Out (${stats.early})`, `- ${Number(earlyDeduction).toLocaleString()} PKR`])
+    lines.push(['Total Deductions', `- ${Number(totalDeductions).toLocaleString()} PKR`])
+    lines.push(['Additional Earnings', `+ ${Number(additionalEarnings).toLocaleString()} PKR`])
+    lines.push(['Net Salary', `${Number(netSalary).toLocaleString()} PKR`])
+    let y = topY
+    const colX = pageW/2
+    doc.setFontSize(10); doc.text('Salary Summary', margin, y); y += 4; doc.setFontSize(9)
+    for (const [k,v] of lines){ doc.text(k, margin+2, y); doc.text(v, colX-2, y, { align: 'right' as any }); y += 5 }
+    topY = y + 4
+    // Table
+    const cols = [
+      { title: 'Date', width: 26 },
+      { title: 'Shift', width: 34 },
+      { title: 'Status', width: 26 },
+      { title: 'Clock In', width: 26 },
+      { title: 'Clock Out', width: 26 },
+      { title: 'Hours', width: 26 },
+    ] as const
+    const drawHeader = (y0: number) => { doc.setFontSize(10); doc.text('Daily Attendance', margin, y0); y0+=4; doc.setFontSize(9); let xx = margin; for (const c of cols){ doc.text(c.title, xx+1, y0); xx += c.width } y0+=2; doc.setLineWidth(0.2); doc.line(margin, y0, pageW-margin, y0); return y0+4 }
+    y = drawHeader(topY)
+    doc.setFontSize(8)
+    for (const r of daily){
+      const data = [r.date, shiftName(r.shift), r.status, r.clockIn||'', r.clockOut||'', (r.status==='present'? fmtHours(r.minutes) : '—')]
+      let xx = margin
+      for (let i=0;i<cols.length;i++){ doc.text(String(data[i]||''), xx+1, y+3); xx += cols[i].width }
+      y += 5
+      if (y > pageH - margin - 10){ doc.addPage(); y = drawHeader(margin) }
+    }
+    doc.save(`hospital-staff-report-${staffName}-${month}.pdf`)
   }
 
   if (!open) return null
@@ -269,6 +463,16 @@ export default function Lab_StaffReportDialog({ open, onClose, staffList, initia
                     <div className="flex items-center justify-between text-rose-700"><div>Early Out ({stats.early})</div><div>-{formatPKR(earlyDeduction)}</div></div>
                     <div className="mt-1 flex items-center justify-between font-medium"><div>Total Deductions</div><div className="text-rose-600">-{formatPKR(totalDeductions)}</div></div>
                     <div className="mt-3 flex items-center justify-between font-semibold"><div>Net Salary</div><div className="text-emerald-600">{formatPKR(netSalary)}</div></div>
+                    <div className="mt-1 flex items-center justify-between"><div>Paid This Month</div><div className="text-emerald-700">+{formatPKR(approvedPaid)}</div></div>
+                    {pendingPaid > 0 && (
+                      <div className="mt-1 flex items-center justify-between"><div className="text-slate-700">(Pending) Amount</div><div className="text-amber-600">+{formatPKR(pendingPaid)}</div></div>
+                    )}
+                    <div className="mt-1 flex items-center justify-between font-medium"><div>Remaining</div><div className="text-slate-800">{formatPKR(remaining)}</div></div>
+                    <div className="mt-3 flex items-center gap-2">
+                      <button disabled={remaining<=0} onClick={()=>openPayDialog('full')} className="btn">Pay Full</button>
+                      <button disabled={remaining<=0} onClick={()=>openPayDialog('half')} className="btn-outline-navy">Pay Half</button>
+                      <button disabled={netSalary<=0} onClick={()=>openPayDialog('custom')} className="rounded-md border border-slate-300 px-3 py-1.5 text-sm">Pay Custom</button>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -290,9 +494,9 @@ export default function Lab_StaffReportDialog({ open, onClose, staffList, initia
                     <tbody className="divide-y divide-slate-200 text-slate-700">
                       {daily.map((r,idx)=> (
                         <tr key={idx}>
-                          <td className="px-3 py-2">{r.date}</td>
+                          <td className="px-3 py-2">{exactDateLabel(r.date)}</td>
                           <td className="px-3 py-2">{shiftName(r.shift)}</td>
-                          <td className="px-3 py-2"><span className={`rounded px-2 py-0.5 text-xs ${r.status==='present'?'bg-emerald-100 text-emerald-700': r.status==='absent'?'bg-rose-100 text-rose-700':'bg-amber-100 text-amber-700'}`}>{r.status}</span></td>
+                          <td className="px-3 py-2"><span className={`rounded px-2 py-0.5 text-xs ${r.status==='present'?'bg-emerald-100 text-emerald-700': r.status==='absent'?'bg-rose-100 text-rose-700': r.status==='holiday'?'bg-slate-100 text-slate-700':'bg-amber-100 text-amber-700'}`}>{r.status}</span></td>
                           <td className="px-3 py-2">{r.clockIn || '—'}</td>
                           <td className="px-3 py-2">{r.clockOut || '—'}</td>
                           <td className="px-3 py-2">{r.status==='present'? fmtHours(r.minutes) : '—'}</td>
@@ -308,6 +512,82 @@ export default function Lab_StaffReportDialog({ open, onClose, staffList, initia
           )}
         </div>
       </div>
+      {customPayOpen && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 px-4">
+          <div className="w-full max-w-sm rounded-lg bg-white p-4 shadow-xl">
+            <div className="mb-3 text-base font-semibold text-slate-800">Pay Salary (Custom)</div>
+            <div className="space-y-3">
+              <div>
+                <label className="mb-1 block text-sm text-slate-700">Amount</label>
+                <input type="number" value={payAmount} onChange={e=>setPayAmount(parseFloat(e.target.value||'0'))} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" placeholder="Amount" />
+                <div className="mt-1 text-xs text-slate-500">Remaining: {formatPKR(remaining)}</div>
+              </div>
+              <div>
+                <label className="mb-1 block text-sm text-slate-700">Note (optional)</label>
+                <input value={payNote} onChange={e=>setPayNote(e.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" placeholder="Note" />
+              </div>
+              <div className="flex items-center justify-end gap-2 pt-2">
+                <button onClick={()=>setCustomPayOpen(false)} className="btn-outline-navy">Cancel</button>
+                <button disabled={!payAmount || payAmount<=0} onClick={confirmCustomPay} className="btn">Pay</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {payBankOpen && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/50 px-4" onClick={()=>{ if (!payBankLoading) setPayBankOpen(false) }}>
+          <div className="w-full max-w-sm rounded-lg bg-white p-4 shadow-xl" onClick={e=>e.stopPropagation()}>
+            <div className="mb-3 text-base font-semibold text-slate-800">Pay Salary ({payMode})</div>
+            <div className="space-y-3">
+              <div>
+                <label className="mb-1 block text-sm text-slate-700">Bank Account</label>
+                <select value={payBankId} onChange={e=>setPayBankId(String(e.target.value||''))} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm">
+                  <option value="">Select bank account</option>
+                  {bankAccounts.map((b:any)=> (
+                    <option key={String(b.id||b._id)} value={String(b.id||b._id)}>
+                      {`${String(b.bankName||'')} — ${String(b.accountTitle||'')} (${String(b.accountNumber||'')})`}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="mb-1 block text-sm text-slate-700">Amount</label>
+                <input type="number" value={payAmount} onChange={e=>setPayAmount(parseFloat(e.target.value||'0'))} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" placeholder="Amount" />
+                <div className="mt-1 text-xs text-slate-500">Remaining: {formatPKR(remaining)}</div>
+              </div>
+              <div>
+                <label className="mb-1 block text-sm text-slate-700">Note (optional)</label>
+                <input value={payNote} onChange={e=>setPayNote(e.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" placeholder="Note" />
+              </div>
+              <div className="flex items-center justify-end gap-2 pt-2">
+                <button disabled={payBankLoading} onClick={()=>setPayBankOpen(false)} className="btn-outline-navy">Cancel</button>
+                <button
+                  disabled={payBankLoading || !payBankId || !payAmount || payAmount <= 0}
+                  onClick={async()=>{
+                    if (!selected) return
+                    const b = bankAccounts.find((x:any)=> String(x.id||x._id) === String(payBankId))
+                    const finCode = String(b?.financeAccountCode || `BANK_${String(b?.accountNumber||'').slice(-4)}`.toUpperCase()).trim().toUpperCase()
+                    if (!finCode) { alert('Invalid bank account'); return }
+                    const amt = Number(payAmount || 0)
+                    const bounded = remaining ? Math.min(amt, remaining) : amt
+                    setPayBankLoading(true)
+                    try {
+                      await createSalaryExpense(bounded, payMode, finCode, payNote || undefined)
+                      setPayBankOpen(false)
+                      setPayNote('')
+                    } finally {
+                      setPayBankLoading(false)
+                    }
+                  }}
+                  className="btn"
+                >Pay</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+      <Hospital_SalarySlipDialog open={slipOpen} onClose={()=>setSlipOpen(false)} expense={slipExpense} staffName={selected?.name} month={month} basicSalary={basicSalary} netSalary={netSalary} paidToDate={slipPaidToDate} />
     </div>
   )
 }

@@ -1,91 +1,136 @@
-import { NavLink, useNavigate } from 'react-router-dom'
-import { LogOut, Ticket, ListChecks, Calculator, Search } from 'lucide-react'
+import { NavLink, useLocation, useNavigate } from 'react-router-dom'
+import { LogOut, Ticket, ListChecks, Search, Wallet, LayoutDashboard, FileText, ScrollText, CalendarDays, Bell } from 'lucide-react'
 import { hospitalApi } from '../../utils/api'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import PortalSwitcher from '../PortalSwitcher'
 
 type Item = { to: string; label: string; icon: any; end?: boolean }
 type Group = { label: string; items: Item[] }
 
-export default function Reception_Sidebar({ collapsed = false, onExpand, collapseSignal: _collapseSignal }: { collapsed?: boolean; onExpand?: () => void; collapseSignal?: number }){
+export const receptionSidebarGroups: Group[] = [
+  {
+    label: 'Hospital',
+    items: [
+      { to: '/reception', label: 'Dashboard', icon: LayoutDashboard, end: true },
+      { to: '/reception/token-generator', label: 'Token Generator', icon: Ticket },
+      { to: "/reception/today-tokens", label: "Today's Tokens", icon: ListChecks },
+      { to: '/reception/token-history', label: 'Token History', icon: FileText },
+      { to: '/reception/appointments', label: 'Appointments', icon: CalendarDays },
+      { to: '/reception/search-patients', label: 'Patient History', icon: Search },
+      { to: '/reception/credit-patients', label: 'Credit Patients', icon: Wallet },
+      { to: '/reception/lab-reports-entry', label: 'Lab Report Entry', icon: FileText },
+      { to: '/reception/history-taking', label: 'History Taking', icon: ScrollText },
+      { to: '/reception/manage-petty-cash', label: 'Manage Petty Cash', icon: Wallet },
+      { to: '/reception/manage-bank-balance', label: 'Manage Bank Balance', icon: Wallet },
+      { to: '/reception/notifications', label: 'Notifications', icon: Bell },
+    ],
+  },
+  {
+    label: 'Diagnostics',
+    items: [
+      { to: '/reception/diagnostic/token-generator', label: 'Diagnostic Token Generator', icon: Ticket },
+      { to: '/reception/diagnostic/sample-tracking', label: 'Diagnostic Sample Tracking', icon: ListChecks },
+      { to: '/reception/diagnostic/appointments', label: 'Diagnostic Appointments', icon: CalendarDays },
+      { to: '/reception/diagnostic/credit-patients', label: 'Diagnostic Credit Patients', icon: Wallet },
+    ],
+  },
+]
+
+export default function Reception_Sidebar({ collapsed = false, onExpand, collapseSignal: _collapseSignal }: { collapsed?: boolean; onExpand?: () => void; collapseSignal?: number }) {
   const navigate = useNavigate()
+  const { pathname } = useLocation()
   const [logoutConfirmOpen, setLogoutConfirmOpen] = useState(false)
+  const [allowed, setAllowed] = useState<string[] | null>(null)
   const width = collapsed ? 'md:w-16' : 'md:w-64'
-  const groups: Group[] = [
-    {
-      label: 'Hospital',
-      items: [
-        { to: '/reception/token-generator', label: 'Token Generator', icon: Ticket },
-        { to: "/reception/today-tokens", label: "Today's Tokens", icon: ListChecks },
-        { to: '/reception/search-patients', label: 'Patient History', icon: Search },
-      ],
-    },
-    {
-      label: 'Laboratory',
-      items: [
-        { to: '/reception/lab/sample-intake', label: 'Lab Sample Intake', icon: Ticket },
-        { to: '/reception/lab/sample-tracking', label: 'Lab Sample Tracking', icon: ListChecks },
-      ],
-    },
-    {
-      label: 'Diagnostics',
-      items: [
-        { to: '/reception/diagnostic/token-generator', label: 'Diagnostic Token Generator', icon: Ticket },
-        { to: '/reception/diagnostic/sample-tracking', label: 'Diagnostic Sample Tracking', icon: ListChecks },
-      ],
-    },
-    {
-      label: 'Others',
-      items: [
-        { to: '/reception/lab/manager-cash-count', label: 'Manager Cash Count', icon: Calculator },
-      ],
-    },
-  ]
-  async function logout(){
+  const groups: Group[] = receptionSidebarGroups
+  async function logout() {
     try {
       const raw = localStorage.getItem('reception.session')
       const u = raw ? JSON.parse(raw) : null
-      await hospitalApi.logoutHospitalUser(u?.username||'reception')
-    } catch {}
-    try { localStorage.removeItem('reception.session') } catch {}
+      await hospitalApi.logoutHospitalUser(u?.username || 'reception')
+    } catch { }
+    try {
+      const receptionToken = localStorage.getItem('reception.token')
+      localStorage.removeItem('reception.session')
+      localStorage.removeItem('reception.token')
+
+      if (receptionToken && localStorage.getItem('token') === receptionToken) {
+        localStorage.removeItem('token')
+      }
+    } catch { }
     navigate('/reception/login')
   }
+
+  const isAllowed = (to: string) => {
+    if (!allowed) return false
+    if (allowed.includes('*')) return true
+    return allowed.includes(to)
+  }
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem('reception.session') || localStorage.getItem('hospital.session')
+      if (!raw) {
+        setAllowed([])
+        return
+      }
+      const s = JSON.parse(raw)
+      const role = String(s?.role || '')
+
+      if (role.toLowerCase() === 'admin') {
+        setAllowed(['*'])
+        return
+      }
+
+      const perms = s?.permissions
+      const a = perms?.reception
+      if (Array.isArray(a)) setAllowed(a)
+      else setAllowed([])
+    } catch {
+      setAllowed([])
+    }
+  }, [pathname])
   return (
     <aside
       className={`hidden md:flex ${width} md:flex-col md:border-r md:text-white min-h-0 overflow-hidden transition-[width] duration-200 ease-in-out`}
       style={{ background: 'linear-gradient(180deg, var(--navy) 0%, var(--navy-700) 100%)', borderColor: 'rgba(255,255,255,0.12)' }}
     >
       <nav className="hospital-sidebar-scroll flex-1 min-h-0 overflow-y-auto p-3 space-y-1">
-        {groups.map((g) => (
-          <div key={g.label} className="space-y-1">
-            {!collapsed && (
-              <div className="px-3 pt-2 pb-1 text-[11px] font-semibold uppercase tracking-wide text-white/60">
-                {g.label}
-              </div>
-            )}
-            {g.items.map((it) => {
-              const Icon = it.icon
-              return (
-                <NavLink
-                  key={it.to}
-                  to={it.to}
-                  end={it.end}
-                  className={({ isActive }) =>
-                    `rounded-md px-3 py-2 text-sm font-medium flex items-center ${collapsed ? 'justify-center gap-0' : 'gap-2'} ${isActive ? 'bg-white/10 text-white' : 'text-white/80 hover:bg-white/5'}`
-                  }
-                  title={collapsed ? it.label : undefined}
-                  onClick={() => {
-                    if (collapsed) onExpand?.()
-                  }}
-                >
-                  <Icon className="h-4 w-4" />
-                  {!collapsed && <span>{it.label}</span>}
-                </NavLink>
-              )
-            })}
-          </div>
-        ))}
+        {groups
+          .map(g => ({ ...g, items: g.items.filter(it => isAllowed(it.to)) }))
+          .filter(g => g.items.length > 0)
+          .map((g) => (
+            <div key={g.label} className="space-y-1">
+              {!collapsed && (
+                <div className="px-3 pt-2 pb-1 text-[11px] font-semibold uppercase tracking-wide text-white/60">
+                  {g.label}
+                </div>
+              )}
+              {g.items.map((it) => {
+                const Icon = it.icon
+                return (
+                  <NavLink
+                    key={it.to}
+                    to={it.to}
+                    end={it.end}
+                    className={({ isActive }) =>
+                      `rounded-md px-3 py-2 text-sm font-medium flex items-center ${collapsed ? 'justify-center gap-0' : 'gap-2'} ${isActive ? 'bg-white/10 text-white' : 'text-white/80 hover:bg-white/5'}`
+                    }
+                    title={collapsed ? it.label : undefined}
+                    onClick={() => {
+                      if (collapsed) onExpand?.()
+                    }}
+                  >
+                    <Icon className="h-4 w-4" />
+                    {!collapsed && <span>{it.label}</span>}
+                  </NavLink>
+                )
+              })}
+            </div>
+          ))}
 
         <div className="pt-2">
+          <PortalSwitcher collapsed={collapsed} onExpand={onExpand} />
           <div className="mx-2 border-t" style={{ borderColor: 'rgba(255,255,255,0.12)' }} />
           <button
             onClick={() => setLogoutConfirmOpen(true)}

@@ -5,7 +5,7 @@
   "type": "module",
   "main": "electron/main.js",
   "scripts": {
-    "dev": "concurrently -n FRONTEND,BACKEND,ELECTRON -c cyan,magenta,green \"npm run dev:front\" \"npm run dev:back\" \"npm run dev:electron\"",
+    "dev": "concurrently -n FRONTEND,BACKEND -c cyan,magenta \"npm run dev:front\" \"npm run dev:back\"",
     "dev:front": "vite --port 8080 --strictPort --host 127.0.0.1",
     "dev:back": "npm --prefix backend run dev",
     "dev:electron": "wait-on http://127.0.0.1:8080 && cross-env VITE_DEV_SERVER_URL=http://127.0.0.1:8080 NODE_ENV=development electron ./electron/main.js",

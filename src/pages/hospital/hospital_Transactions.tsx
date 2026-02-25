@@ -7,36 +7,33 @@ import { hospitalApi } from '../../utils/api'
   datetime: string // ISO
   type: 'OPD' | 'IPD' | 'Charge' | 'Expense'
   description: string
+  staff?: string
+  transBy?: string
+  supplierName?: string
+  invoiceNo?: string
+  fee?: number
+  discount?: number
   amount: number
   method?: 'cash' | 'bank' | 'card'
   ref?: string
   module?: string
 }
 
-function read<T>(key: string, def: T): T {
-  try {
-    const raw = localStorage.getItem(key)
-    if (!raw) return def
-    return JSON.parse(raw) as T
-  } catch {
-    return def
-  }
-}
-
-function readLocalTransactions(): Txn[] {
-  // Exclude legacy local 'Expense' entries so backend is the source of truth for expenses
-  const financeRaw = read<Txn[]>('finance.transactions', [])
-  const finance = financeRaw.filter(t => t.type !== 'Expense')
-  const opd = read<Txn[]>('opd.transactions', [])
-  const ipd = read<Txn[]>('ipd.transactions', [])
-  const charges = read<Txn[]>('hospital.charges', [])
-  const all = [...finance, ...opd, ...ipd, ...charges]
-  return all.filter(t => t && t.id && t.datetime && typeof t.amount === 'number')
-}
-
 function toCsv(rows: Txn[]) {
-  const headers = ['id','datetime','type','description','amount','method','ref','module']
-  const body = rows.map(r => [r.id, r.datetime, r.type, r.description, r.amount, r.method ?? '', r.ref ?? '', r.module ?? ''])
+  const headers = ['id','datetime','type','module','staff','description','fee','discount','amount','method','ref']
+  const body = rows.map(r => [
+    r.id,
+    r.datetime,
+    r.type,
+    r.module ?? '',
+    r.staff ?? '',
+    r.description,
+    r.fee ?? '',
+    r.discount ?? '',
+    r.amount,
+    r.method ?? '',
+    r.ref ?? '',
+  ])
   return [headers, ...body].map(arr => arr.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n')
 }
 
@@ -55,31 +52,23 @@ export default function Finance_Transactions() {
     let cancelled = false
     ;(async () => {
       try {
-        // Read local sources (OPD/IPD/Charges and any legacy finance entries)
-        const locals = readLocalTransactions()
-        // Fetch hospital expenses from backend
-        const res: any = await hospitalApi.listExpenses({ from: from || '1900-01-01', to: to || '2100-01-01' })
-        const list: Array<any> = Array.isArray(res?.expenses) ? res.expenses : []
-        const expenseTxns: Txn[] = list.map(r => {
-          const rawMethod = r.method ? String(r.method).toLowerCase() : undefined
-          const method: Txn['method'] = rawMethod === 'cash' || rawMethod === 'bank' || rawMethod === 'card' ? rawMethod : undefined
-          return {
-            id: String(r._id || r.id),
-            datetime: r.createdAt ? String(r.createdAt) : `${r.dateIso || ''}T00:00:00`,
-            type: 'Expense',
-            description: String(r.note || ''),
-            amount: Number(r.amount) || 0,
-            method,
-            ref: r.ref ? String(r.ref) : undefined,
-            module: 'Hospital',
-          }
-        })
-        const combined = [...locals, ...expenseTxns]
-          .filter(t => t && t.id && t.datetime && typeof t.amount === 'number')
-          .sort((a, b) => new Date(b.datetime).getTime() - new Date(a.datetime).getTime())
+        const res: any = await hospitalApi.listFinanceTransactions({ from: from || '1900-01-01', to: to || '2100-01-01', limit: 5000 })
+        const combined: Txn[] = (res?.items || []).map((x: any) => ({
+          id: String(x.id || x._id),
+          datetime: String(x.datetime || x.createdAt || ''),
+          type: x.type,
+          description: String(x.description || ''),
+          staff: x.staff ? String(x.staff) : undefined,
+          fee: x.fee != null ? Number(x.fee) : undefined,
+          discount: x.discount != null ? Number(x.discount) : undefined,
+          amount: Number(x.amount || 0),
+          method: x.method,
+          ref: x.ref,
+          module: x.module,
+        }))
         if (!cancelled) setAll(combined)
       } catch {
-        if (!cancelled) setAll(readLocalTransactions().sort((a,b)=> new Date(b.datetime).getTime() - new Date(a.datetime).getTime()))
+        if (!cancelled) setAll([])
       }
     })()
     return () => { cancelled = true }
@@ -92,7 +81,7 @@ export default function Finance_Transactions() {
       if (fromDate && new Date(r.datetime) < fromDate) return false
       if (toDate && new Date(r.datetime) > new Date(new Date(to).getTime() + 24*60*60*1000 - 1)) return false
       if (q) {
-        const hay = `${r.description} ${r.ref ?? ''} ${r.module ?? ''}`.toLowerCase()
+        const hay = `${r.description} ${r.staff ?? ''} ${r.transBy ?? ''} ${r.supplierName ?? ''} ${r.invoiceNo ?? ''} ${r.ref ?? ''} ${r.module ?? ''} ${r.fee ?? ''} ${r.discount ?? ''}`.toLowerCase()
         if (!hay.includes(q.toLowerCase())) return false
       }
       return true
@@ -168,7 +157,13 @@ export default function Finance_Transactions() {
                 <th className="px-4 py-2 font-medium">Date/Time</th>
                 <th className="px-4 py-2 font-medium">Type</th>
                 <th className="px-4 py-2 font-medium">Module</th>
+                <th className="px-4 py-2 font-medium">Staff</th>
+                <th className="px-4 py-2 font-medium">Transacted By</th>
+                <th className="px-4 py-2 font-medium">Supplier Name</th>
+                <th className="px-4 py-2 font-medium">Invoice</th>
                 <th className="px-4 py-2 font-medium">Description</th>
+                <th className="px-4 py-2 font-medium">Fee</th>
+                <th className="px-4 py-2 font-medium">Discount</th>
                 <th className="px-4 py-2 font-medium">Method</th>
                 <th className="px-4 py-2 font-medium">Ref</th>
                 <th className="px-4 py-2 font-medium">Amount</th>
@@ -180,7 +175,13 @@ export default function Finance_Transactions() {
                   <td className="px-4 py-2">{new Date(r.datetime).toLocaleString()}</td>
                   <td className="px-4 py-2">{r.type}</td>
                   <td className="px-4 py-2">{r.module || '-'}</td>
+                  <td className="px-4 py-2">{r.staff || '-'}</td>
+                  <td className="px-4 py-2">{r.transBy || '-'}</td>
+                  <td className="px-4 py-2">{r.supplierName || '-'}</td>
+                  <td className="px-4 py-2">{r.invoiceNo || '-'}</td>
                   <td className="px-4 py-2">{r.description}</td>
+                  <td className="px-4 py-2">{r.type === 'OPD' ? `Rs ${Number(r.fee || 0).toFixed(2)}` : '-'}</td>
+                  <td className="px-4 py-2">{r.type === 'OPD' ? `Rs ${Number(r.discount || 0).toFixed(2)}` : '-'}</td>
                   <td className="px-4 py-2">{r.method || '-'}</td>
                   <td className="px-4 py-2">{r.ref || '-'}</td>
                   <td className="px-4 py-2">Rs {r.amount.toFixed(2)}</td>
@@ -188,7 +189,7 @@ export default function Finance_Transactions() {
               ))}
               {filtered.length === 0 && (
                 <tr>
-                  <td colSpan={7} className="px-4 py-12 text-center text-slate-500">No transactions</td>
+                  <td colSpan={13} className="px-4 py-12 text-center text-slate-500">No transactions</td>
                 </tr>
               )}
             </tbody>

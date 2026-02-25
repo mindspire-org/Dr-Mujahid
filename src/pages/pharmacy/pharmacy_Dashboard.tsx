@@ -1,11 +1,13 @@
 import { useEffect, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { pharmacyApi } from '../../utils/api'
 import { TrendingUp, DollarSign, ShoppingCart, Package, AlertTriangle, Ban, RefreshCw, Clock, Bell, CreditCard } from 'lucide-react'
 
 export default function Pharmacy_Dashboard() {
+  const navigate = useNavigate()
   const [stats, setStats] = useState<{ stockSaleValue: number; lowStockCount: number; outOfStockCount: number; expiringSoonCount: number; totalInventoryOnHand: number } | null>(null)
   const [purchasesTotal, setPurchasesTotal] = useState<number>(0)
-  const [expiringSoon, setExpiringSoon] = useState<Array<{ name: string; lastExpiry: string; onHand: number }>>([])
+  const [expiringSoon, setExpiringSoon] = useState<Array<{ name: string; expiry: string; onHand: number }>>([])
   const [lastUpdated, setLastUpdated] = useState<string>('—')
   const [tick, setTick] = useState(0)
   const [salesToday, setSalesToday] = useState<number>(0)
@@ -21,61 +23,72 @@ export default function Pharmacy_Dashboard() {
     return `${y}-${m}-${day}`
   }
 
+  const qs = (params: Record<string, string | undefined>) => {
+    const sp = new URLSearchParams()
+    for (const [k, v] of Object.entries(params)) {
+      if (v != null && String(v).trim() !== '') sp.set(k, String(v))
+    }
+    const s = sp.toString()
+    return s ? `?${s}` : ''
+  }
+
+  // Instant cached summary for perceived speed
+  useEffect(()=>{
+    try {
+      const cached = JSON.parse(localStorage.getItem('pharmacy.inventory.summary') || 'null')
+      if (cached?.stats) setStats(cached.stats)
+      if (Array.isArray(cached?.expiringSoonItems)){
+        const arr = (cached.expiringSoonItems||[]).filter((it:any)=> Number(it.onHand||0) > 0)
+        setExpiringSoon(arr.map((it:any)=> ({ name: it.name, expiry: String(it.earliestExpiry||'').slice(0,10), onHand: Number(it.onHand||0) })))
+      }
+    } catch {}
+  }, [])
+
   useEffect(()=>{
     let mounted = true
     async function load(){
-      try {
-        const inv: any = await pharmacyApi.inventorySummary()
-        if (mounted){
-          setStats(inv?.stats || null)
-        }
-      } catch {}
-      // Build Expiring Soon list using LAST expiry within next 30 days
-      try {
-        const BIG_LIMIT = 2000
-        const res: any = await pharmacyApi.listInventory({ page: 1, limit: BIG_LIMIT })
-        const items: any[] = res?.items ?? res ?? []
-        const today = new Date(); today.setHours(0,0,0,0)
-        const soonDays = 30
-        const list = (items||[]).filter((it:any)=>{
-          const expStr = String(it.lastExpiry || '').slice(0,10)
-          if (!expStr) return false
-          const d = new Date(expStr + 'T00:00:00')
-          if (isNaN(d.getTime())) return false
-          const days = Math.floor((d.getTime() - today.getTime()) / 86400000)
-          return days >= 0 && days <= soonDays
-        }).map((it:any)=> ({ name: it.name || '-', lastExpiry: String(it.lastExpiry||'').slice(0,10), onHand: Number(it.onHand||0) }))
-        if (mounted){ setExpiringSoon(list) }
-      } catch {}
-      try {
-        const pur: any = await pharmacyApi.purchasesSummary()
-        if (mounted){
-          setPurchasesTotal(Number(pur?.totalAmount || 0))
-        }
-      } catch {}
-      try {
-        const today = new Date()
-        const firstMonth = new Date(today.getFullYear(), today.getMonth(), 1)
-        const fromToday = fmtDate(today)
-        const fromMonth = fmtDate(firstMonth)
-        const sToday: any = await pharmacyApi.salesSummary({ from: fromToday, to: fromToday })
-        const sMonth: any = await pharmacyApi.salesSummary({ from: fromMonth, to: fromToday })
-        const sCashToday: any = await pharmacyApi.salesSummary({ payment: 'Cash', from: fromToday, to: fromToday })
-        const sCreditToday: any = await pharmacyApi.salesSummary({ payment: 'Credit', from: fromToday, to: fromToday })
-        if (mounted){
-          setSalesToday(Number(sToday?.totalAmount || 0))
-          setSalesMonth(Number(sMonth?.totalAmount || 0))
-          setCashSalesToday(Number(sCashToday?.totalAmount || 0))
-          setCreditSalesToday(Number(sCreditToday?.totalAmount || 0))
-        }
-      } catch {}
-      try {
-        const res: any = await pharmacyApi.listSales({ limit: 5 })
-        if (mounted){
-          setRecentSales((res?.items||[]).slice(0,5).map((s:any)=> ({ billNo: s.billNo, total: s.total||0, datetime: s.datetime, customer: s.customer })))
-        }
-      } catch {}
-      if (mounted) setLastUpdated(new Date().toLocaleString())
+      const today = new Date()
+      const firstMonth = new Date(today.getFullYear(), today.getMonth(), 1)
+      const fromToday = fmtDate(today)
+      const fromMonth = fmtDate(firstMonth)
+
+      const tasks = await Promise.allSettled([
+        pharmacyApi.inventorySummaryCached(undefined, { ttlMs: 120_000, forceRefresh: tick>0 }),
+        pharmacyApi.purchasesSummaryCached({ from: fromMonth, to: fromToday }, { ttlMs: 120_000, forceRefresh: tick>0 }),
+        pharmacyApi.salesSummaryCached({ from: fromToday, to: fromToday }, { ttlMs: 60_000, forceRefresh: tick>0 }),
+        pharmacyApi.salesSummaryCached({ from: fromMonth, to: fromToday }, { ttlMs: 120_000, forceRefresh: tick>0 }),
+        pharmacyApi.salesSummaryCached({ payment: 'Cash', from: fromToday, to: fromToday }, { ttlMs: 60_000, forceRefresh: tick>0 }),
+        pharmacyApi.salesSummaryCached({ payment: 'Credit', from: fromToday, to: fromToday }, { ttlMs: 60_000, forceRefresh: tick>0 }),
+        pharmacyApi.listSalesCached({ limit: 5 }, { ttlMs: 60_000, forceRefresh: tick>0 }),
+      ])
+
+      if (!mounted) return
+
+      const inv = tasks[0].status === 'fulfilled' ? (tasks[0].value as any) : null
+      const pur = tasks[1].status === 'fulfilled' ? (tasks[1].value as any) : null
+      const sToday = tasks[2].status === 'fulfilled' ? (tasks[2].value as any) : null
+      const sMonth = tasks[3].status === 'fulfilled' ? (tasks[3].value as any) : null
+      const sCashToday = tasks[4].status === 'fulfilled' ? (tasks[4].value as any) : null
+      const sCreditToday = tasks[5].status === 'fulfilled' ? (tasks[5].value as any) : null
+      const listSales = tasks[6].status === 'fulfilled' ? (tasks[6].value as any) : null
+
+      if (inv){
+        setStats(inv?.stats || null)
+        // Use backend-provided expiringSoonItems but exclude out-of-stock from display
+        const arrRaw = Array.isArray(inv?.expiringSoonItems) ? inv.expiringSoonItems : []
+        const arr = arrRaw.filter((it:any)=> Number(it.onHand||0) > 0)
+        setExpiringSoon(arr.map((it:any)=> ({ name: it.name, expiry: String(it.earliestExpiry||'').slice(0,10), onHand: Number(it.onHand||0) })))
+        try { localStorage.setItem('pharmacy.inventory.summary', JSON.stringify({ stats: inv?.stats, expiringSoonItems: arrRaw, at: Date.now() })) } catch {}
+      }
+      if (pur){ setPurchasesTotal(Number(pur?.totalAmount || 0)) }
+      if (sToday){ setSalesToday(Number(sToday?.totalAmount || 0)) }
+      if (sMonth){ setSalesMonth(Number(sMonth?.totalAmount || 0)) }
+      if (sCashToday){ setCashSalesToday(Number(sCashToday?.totalAmount || 0)) }
+      if (sCreditToday){ setCreditSalesToday(Number(sCreditToday?.totalAmount || 0)) }
+      if (listSales){
+        setRecentSales((listSales?.items||[]).slice(0,5).map((s:any)=> ({ billNo: s.billNo, total: s.total||0, datetime: s.datetime, customer: s.customer })))
+      }
+      setLastUpdated(new Date().toLocaleString())
     }
     load()
     return ()=>{ mounted = false }
@@ -101,7 +114,17 @@ export default function Pharmacy_Dashboard() {
       <h2 className="text-2xl font-bold text-slate-900">Dashboard</h2>
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-        <div className={`rounded-xl border bg-emerald-50 border-emerald-200 p-4`}>
+        <div
+          role="button"
+          tabIndex={0}
+          onClick={() => {
+            const today = new Date()
+            const d = fmtDate(today)
+            navigate(`/pharmacy/sales-history${qs({ from: d, to: d })}`)
+          }}
+          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); const today = new Date(); const d = fmtDate(today); navigate(`/pharmacy/sales-history${qs({ from: d, to: d })}`) } }}
+          className={`cursor-pointer rounded-xl border bg-emerald-50 border-emerald-200 p-4 transition hover:shadow-md hover:-translate-y-[1px] focus:outline-none focus:ring-2 focus:ring-emerald-300`}
+        >
           <div className="flex items-start justify-between">
             <div>
               <div className="text-sm text-slate-600">Today's Sales</div>
@@ -110,7 +133,17 @@ export default function Pharmacy_Dashboard() {
             <div className="rounded-md bg-white/60 p-2 text-slate-700 shadow-sm"><DollarSign className="h-4 w-4" /></div>
           </div>
         </div>
-        <div className={`rounded-xl border bg-violet-50 border-violet-200 p-4`}>
+        <div
+          role="button"
+          tabIndex={0}
+          onClick={() => {
+            const today = new Date()
+            const firstMonth = new Date(today.getFullYear(), today.getMonth(), 1)
+            navigate(`/pharmacy/sales-history${qs({ from: fmtDate(firstMonth), to: fmtDate(today) })}`)
+          }}
+          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); const today = new Date(); const firstMonth = new Date(today.getFullYear(), today.getMonth(), 1); navigate(`/pharmacy/sales-history${qs({ from: fmtDate(firstMonth), to: fmtDate(today) })}`) } }}
+          className={`cursor-pointer rounded-xl border bg-violet-50 border-violet-200 p-4 transition hover:shadow-md hover:-translate-y-[1px] focus:outline-none focus:ring-2 focus:ring-violet-300`}
+        >
           <div className="flex items-start justify-between">
             <div>
               <div className="text-sm text-slate-600">This Month's Sales</div>
@@ -119,7 +152,17 @@ export default function Pharmacy_Dashboard() {
             <div className="rounded-md bg-white/60 p-2 text-slate-700 shadow-sm"><TrendingUp className="h-4 w-4" /></div>
           </div>
         </div>
-        <div className={`rounded-xl border bg-green-50 border-green-200 p-4`}>
+        <div
+          role="button"
+          tabIndex={0}
+          onClick={() => {
+            const today = new Date()
+            const d = fmtDate(today)
+            navigate(`/pharmacy/sales-history${qs({ payment: 'Cash', from: d, to: d })}`)
+          }}
+          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); const today = new Date(); const d = fmtDate(today); navigate(`/pharmacy/sales-history${qs({ payment: 'Cash', from: d, to: d })}`) } }}
+          className={`cursor-pointer rounded-xl border bg-green-50 border-green-200 p-4 transition hover:shadow-md hover:-translate-y-[1px] focus:outline-none focus:ring-2 focus:ring-green-300`}
+        >
           <div className="flex items-start justify-between">
             <div>
               <div className="text-sm text-slate-600">Cash Sales</div>
@@ -128,7 +171,17 @@ export default function Pharmacy_Dashboard() {
             <div className="rounded-md bg-white/60 p-2 text-slate-700 shadow-sm"><DollarSign className="h-4 w-4" /></div>
           </div>
         </div>
-        <div className={`rounded-xl border bg-amber-50 border-amber-200 p-4`}>
+        <div
+          role="button"
+          tabIndex={0}
+          onClick={() => {
+            const today = new Date()
+            const d = fmtDate(today)
+            navigate(`/pharmacy/sales-history${qs({ payment: 'Credit', from: d, to: d })}`)
+          }}
+          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); const today = new Date(); const d = fmtDate(today); navigate(`/pharmacy/sales-history${qs({ payment: 'Credit', from: d, to: d })}`) } }}
+          className={`cursor-pointer rounded-xl border bg-amber-50 border-amber-200 p-4 transition hover:shadow-md hover:-translate-y-[1px] focus:outline-none focus:ring-2 focus:ring-amber-300`}
+        >
           <div className="flex items-start justify-between">
             <div>
               <div className="text-sm text-slate-600">Credit Sales</div>
@@ -139,16 +192,32 @@ export default function Pharmacy_Dashboard() {
         </div>
 
         {/* Real data cards */}
-        <div className={`rounded-xl border bg-sky-50 border-sky-200 p-4`}>
+        <div
+          role="button"
+          tabIndex={0}
+          onClick={() => {
+            const today = new Date()
+            const firstMonth = new Date(today.getFullYear(), today.getMonth(), 1)
+            navigate(`/pharmacy/purchase-history${qs({ from: fmtDate(firstMonth), to: fmtDate(today) })}`)
+          }}
+          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); const today = new Date(); const firstMonth = new Date(today.getFullYear(), today.getMonth(), 1); navigate(`/pharmacy/purchase-history${qs({ from: fmtDate(firstMonth), to: fmtDate(today) })}`) } }}
+          className={`cursor-pointer rounded-xl border bg-sky-50 border-sky-200 p-4 transition hover:shadow-md hover:-translate-y-[1px] focus:outline-none focus:ring-2 focus:ring-sky-300`}
+        >
           <div className="flex items-start justify-between">
             <div>
-              <div className="text-sm text-slate-600">Total Purchases</div>
+              <div className="text-sm text-slate-600">This Month's Purchases</div>
               <div className="mt-1 text-xl font-semibold text-slate-900">Rs {purchasesTotal.toFixed(2)}</div>
             </div>
             <div className="rounded-md bg-white/60 p-2 text-slate-700 shadow-sm"><ShoppingCart className="h-4 w-4" /></div>
           </div>
         </div>
-        <div className={`rounded-xl border bg-cyan-50 border-cyan-200 p-4`}>
+        <div
+          role="button"
+          tabIndex={0}
+          onClick={() => navigate('/pharmacy/inventory?tab=all')}
+          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); navigate('/pharmacy/inventory?tab=all') } }}
+          className={`cursor-pointer rounded-xl border bg-cyan-50 border-cyan-200 p-4 transition hover:shadow-md hover:-translate-y-[1px] focus:outline-none focus:ring-2 focus:ring-cyan-300`}
+        >
           <div className="flex items-start justify-between">
             <div>
               <div className="text-sm text-slate-600">Total Inventory</div>
@@ -157,7 +226,13 @@ export default function Pharmacy_Dashboard() {
             <div className="rounded-md bg-white/60 p-2 text-slate-700 shadow-sm"><Package className="h-4 w-4" /></div>
           </div>
         </div>
-        <div className={`rounded-xl border bg-yellow-50 border-yellow-200 p-4`}>
+        <div
+          role="button"
+          tabIndex={0}
+          onClick={() => navigate('/pharmacy/inventory?tab=low')}
+          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); navigate('/pharmacy/inventory?tab=low') } }}
+          className={`cursor-pointer rounded-xl border bg-yellow-50 border-yellow-200 p-4 transition hover:shadow-md hover:-translate-y-[1px] focus:outline-none focus:ring-2 focus:ring-yellow-300`}
+        >
           <div className="flex items-start justify-between">
             <div>
               <div className="text-sm text-slate-600">Low Stock Items</div>
@@ -166,7 +241,13 @@ export default function Pharmacy_Dashboard() {
             <div className="rounded-md bg-white/60 p-2 text-slate-700 shadow-sm"><AlertTriangle className="h-4 w-4" /></div>
           </div>
         </div>
-        <div className={`rounded-xl border bg-rose-50 border-rose-200 p-4`}>
+        <div
+          role="button"
+          tabIndex={0}
+          onClick={() => navigate('/pharmacy/inventory?tab=out')}
+          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); navigate('/pharmacy/inventory?tab=out') } }}
+          className={`cursor-pointer rounded-xl border bg-rose-50 border-rose-200 p-4 transition hover:shadow-md hover:-translate-y-[1px] focus:outline-none focus:ring-2 focus:ring-rose-300`}
+        >
           <div className="flex items-start justify-between">
             <div>
               <div className="text-sm text-slate-600">Out of Stock</div>
@@ -175,7 +256,13 @@ export default function Pharmacy_Dashboard() {
             <div className="rounded-md bg-white/60 p-2 text-slate-700 shadow-sm"><Ban className="h-4 w-4" /></div>
           </div>
         </div>
-        <div className={`rounded-xl border bg-indigo-50 border-indigo-200 p-4`}>
+        <div
+          role="button"
+          tabIndex={0}
+          onClick={() => navigate('/pharmacy/inventory?tab=all')}
+          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); navigate('/pharmacy/inventory?tab=all') } }}
+          className={`cursor-pointer rounded-xl border bg-indigo-50 border-indigo-200 p-4 transition hover:shadow-md hover:-translate-y-[1px] focus:outline-none focus:ring-2 focus:ring-indigo-300`}
+        >
           <div className="flex items-start justify-between">
             <div>
               <div className="text-sm text-slate-600">Total Stock Value</div>
@@ -214,16 +301,16 @@ export default function Pharmacy_Dashboard() {
         <section className="rounded-xl border border-slate-200 bg-white p-4">
           <div className="mb-3 flex items-center gap-2">
             <AlertTriangle className="h-4 w-4 text-amber-600" />
-            <div className="text-sm font-medium text-slate-700">Expiring Soon</div>
+            <div className="text-sm font-medium text-slate-700">Expiring Soon / Expired</div>
           </div>
           {expiringSoon.length === 0 ? (
-            <div className="rounded-lg border border-slate-200 bg-slate-50 p-6 text-sm text-slate-500">No expiring medicines</div>
+            <div className="rounded-lg border border-slate-200 bg-slate-50 p-6 text-sm text-slate-500">No expiring or expired medicines</div>
           ) : (
             <div className="space-y-2">
               {expiringSoon.map((it, idx)=> (
                 <div key={idx} className="flex items-center justify-between rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm">
                   <div className="font-medium text-slate-800">{it.name}</div>
-                  <div className="text-slate-600">{it.lastExpiry}</div>
+                  <div className="text-slate-600">{it.expiry}</div>
                   <div className="text-slate-600">On hand: {it.onHand}</div>
                 </div>
               ))}
@@ -235,7 +322,7 @@ export default function Pharmacy_Dashboard() {
       <div className="flex items-center justify-end gap-3 text-xs text-slate-500">
         <Clock className="h-4 w-4" />
         <span>Last updated: {lastUpdated}</span>
-        <button onClick={()=> setTick(t=>t+1)} className="inline-flex items-center gap-1 rounded-md border border-slate-200 px-2 py-1 text-slate-700 hover:bg-slate-50">
+        <button type="button" onClick={()=> setTick(t=>t+1)} className="inline-flex items-center gap-1 rounded-md border border-slate-200 px-2 py-1 text-slate-700 hover:bg-slate-50">
           <RefreshCw className="h-3.5 w-3.5" /> Refresh
         </button>
       </div>

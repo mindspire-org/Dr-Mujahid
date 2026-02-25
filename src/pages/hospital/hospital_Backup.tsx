@@ -23,6 +23,12 @@ export default function Hospital_Backup() {
     }
   })
   const [banner, setBanner] = useState('')
+  const [loadingSettings, setLoadingSettings] = useState(false)
+  const [savingSettings, setSavingSettings] = useState(false)
+  const [runningBackup, setRunningBackup] = useState(false)
+  const [restoring, setRestoring] = useState(false)
+  const [purging, setPurging] = useState(false)
+  const [purgeDialogOpen, setPurgeDialogOpen] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const nextBackup = useMemo(() => {
@@ -33,12 +39,34 @@ export default function Hospital_Backup() {
     return next.toLocaleString()
   }, [settings.enabled, settings.minutes, lastBackup])
 
-  // Auto backup timer (page-scope)
+  // Load settings from backend (DB-authoritative)
   useEffect(() => {
-    if (!settings.enabled) return
-    const id = setInterval(() => doBackup(true), Math.max(1, settings.minutes) * 60 * 1000)
-    return () => clearInterval(id)
-  }, [settings.enabled, settings.minutes])
+    let mounted = true
+    ;(async () => {
+      setLoadingSettings(true)
+      try {
+        const s = await adminApi.getBackupSettings() as any
+        if (!mounted) return
+        setSettings(prev => ({
+          ...prev,
+          enabled: Boolean(s?.enabled),
+          minutes: Number(s?.intervalMinutes ?? s?.minutes ?? prev.minutes) || prev.minutes,
+          folderPath: String(s?.folderPath || ''),
+        }))
+        const last = s?.lastBackupAt || s?.lastBackup || null
+        if (last) {
+          const ts = new Date(last).toISOString()
+          localStorage.setItem(LAST_BACKUP_KEY, ts)
+          setLastBackup(ts)
+        }
+      } catch {
+        // Keep local fallback values.
+      } finally {
+        if (mounted) setLoadingSettings(false)
+      }
+    })()
+    return () => { mounted = false }
+  }, [])
 
   const showBanner = (msg: string) => {
     setBanner(msg)
@@ -47,6 +75,9 @@ export default function Hospital_Backup() {
 
   const doBackup = async (isAuto = false) => {
     try {
+      if (!isAuto) setRunningBackup(true)
+
+      // Always export a downloadable JSON for the user
       const payload = await adminApi.exportAll() as any
       const ts = String(payload?._meta?.ts || new Date().toISOString())
       const stamp = ts.replace(/[:T]/g, '-').slice(0, 19)
@@ -58,12 +89,21 @@ export default function Hospital_Backup() {
       a.click()
       URL.revokeObjectURL(a.href)
 
+      // Additionally, if auto backup is enabled, also trigger server-side disk backup
+      if (settings.enabled) {
+        try {
+          await adminApi.runBackupToDisk()
+        } catch {}
+      }
+
       localStorage.setItem(LAST_BACKUP_KEY, ts)
       setLastBackup(ts)
       if (!isAuto) showBanner('Backup created')
       logAudit('user_edit', isAuto ? 'auto backup created' : 'backup created')
     } catch (e:any) {
       showBanner('Backup failed')
+    } finally {
+      if (!isAuto) setRunningBackup(false)
     }
   }
 
@@ -73,6 +113,7 @@ export default function Hospital_Backup() {
     const file = e.target.files?.[0]
     if (!file) return
     try {
+      setRestoring(true)
       const text = await file.text()
       const data = JSON.parse(text)
       await adminApi.restoreAll(data)
@@ -81,13 +122,14 @@ export default function Hospital_Backup() {
     } catch (err:any) {
       showBanner('Invalid backup file or restore failed')
     } finally {
+      setRestoring(false)
       e.target.value = ''
     }
   }
 
   const deleteAll = async () => {
-    if (!confirm('Delete ALL data from the database (ALL modules)?')) return
     try {
+      setPurging(true)
       await adminApi.purgeAll()
       setLastBackup(null)
       showBanner('All data cleared (DB)')
@@ -95,13 +137,32 @@ export default function Hospital_Backup() {
       setTimeout(() => { try { window.location.reload() } catch {} }, 600)
     } catch(e:any){
       showBanner('Delete failed')
+    } finally {
+      setPurging(false)
     }
   }
 
-  const saveSettings = (e: React.FormEvent) => {
+  const saveSettings = async (e: React.FormEvent) => {
     e.preventDefault()
-    localStorage.setItem(AUTO_SETTINGS_KEY, JSON.stringify(settings))
-    showBanner('Settings saved')
+    try {
+      setSavingSettings(true)
+
+      // Persist admin key locally only
+      localStorage.setItem(AUTO_SETTINGS_KEY, JSON.stringify({ ...settings, adminKey: settings.adminKey || '' }))
+
+      // Persist operational settings to DB
+      await adminApi.updateBackupSettings({
+        enabled: Boolean(settings.enabled),
+        intervalMinutes: Math.max(1, Number(settings.minutes || 0)),
+        folderPath: String(settings.folderPath || ''),
+      })
+
+      showBanner('Settings saved')
+    } catch {
+      showBanner('Save failed')
+    } finally {
+      setSavingSettings(false)
+    }
   }
 
   return (
@@ -111,9 +172,9 @@ export default function Hospital_Backup() {
         <p className="mt-1 text-sm text-slate-600">Manage your application data. It's recommended to create backups regularly.</p>
 
         <div className="mt-4 flex flex-wrap items-center gap-2">
-          <button onClick={() => doBackup(false)} className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:opacity-90">Backup Now</button>
-          <button onClick={triggerRestore} className="rounded-md border border-slate-300 px-4 py-2 text-sm font-medium hover:bg-slate-50">Restore from Backup</button>
-          <button onClick={deleteAll} className="rounded-md bg-rose-600 px-4 py-2 text-sm font-medium text-white hover:bg-rose-700">Delete All Data</button>
+          <button disabled={runningBackup || loadingSettings} onClick={() => doBackup(false)} className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50">Backup Now</button>
+          <button disabled={restoring || loadingSettings} onClick={triggerRestore} className="rounded-md border border-slate-300 px-4 py-2 text-sm font-medium hover:bg-slate-50 disabled:opacity-50">Restore from Backup</button>
+          <button disabled={purging || loadingSettings} onClick={()=>setPurgeDialogOpen(true)} className="rounded-md bg-rose-600 px-4 py-2 text-sm font-medium text-white hover:bg-rose-700 disabled:opacity-50">Delete All Data</button>
           <input ref={fileInputRef} onChange={onRestoreFile} type="file" accept="application/json" className="hidden" />
         </div>
 
@@ -139,7 +200,7 @@ export default function Hospital_Backup() {
             <div>
               <label className="mb-1 block text-sm font-medium text-slate-700">Backup Folder Path</label>
               <input value={settings.folderPath} onChange={e=>setSettings(s=>({ ...s, folderPath: e.target.value }))} placeholder="e.g. C:\\HospitalBackups" className="w-full rounded-md border border-slate-300 px-3 py-2 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-200" />
-              <p className="mt-1 text-xs text-slate-500">Note: Browsers download to your default folder; this is for reference only.</p>
+              <p className="mt-1 text-xs text-slate-500">Used by the server for scheduled disk backups.</p>
             </div>
             <div>
               <label className="mb-1 block text-sm font-medium text-slate-700">Admin Key (for server admin endpoints)</label>
@@ -149,11 +210,37 @@ export default function Hospital_Backup() {
           </div>
 
           <div className="mt-4">
-            <button type="submit" className="rounded-md bg-sky-600 px-4 py-2 text-sm font-medium text-white hover:bg-sky-700">Save Settings</button>
+            <button disabled={savingSettings || loadingSettings} type="submit" className="rounded-md bg-sky-600 px-4 py-2 text-sm font-medium text-white hover:bg-sky-700 disabled:opacity-50">Save Settings</button>
             {banner && <span className="ml-3 text-sm text-emerald-600">{banner}</span>}
           </div>
         </form>
       </div>
+
+      {purgeDialogOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4 py-6" onClick={()=>{ if (purging) return; setPurgeDialogOpen(false) }}>
+          <div className="w-full max-w-md overflow-hidden rounded-xl bg-white shadow-2xl ring-1 ring-black/5" onClick={(e)=>e.stopPropagation()}>
+            <div className="flex items-center justify-between border-b border-slate-200 px-5 py-3">
+              <div className="text-base font-semibold text-slate-800">Delete All Data</div>
+              <button onClick={()=>{ if (purging) return; setPurgeDialogOpen(false) }} className="rounded-md border border-slate-300 px-3 py-1.5 text-sm">Close</button>
+            </div>
+            <div className="px-5 py-4 space-y-2 text-sm text-slate-700">
+              <div>This will permanently delete ALL data from the database across all modules.</div>
+              <div className="font-medium text-slate-900">Users and Roles will NOT be deleted.</div>
+              <div className="text-rose-700">This action cannot be undone.</div>
+            </div>
+            <div className="flex items-center justify-end gap-2 border-t border-slate-200 px-5 py-3">
+              <button onClick={()=>{ if (purging) return; setPurgeDialogOpen(false) }} className="rounded-md border border-slate-300 px-3 py-1.5 text-sm">Cancel</button>
+              <button
+                disabled={purging}
+                onClick={async()=>{ if (purging) return; setPurgeDialogOpen(false); await deleteAll() }}
+                className="rounded-md bg-rose-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-rose-700 disabled:opacity-50"
+              >
+                {purging ? 'Deleting...' : 'Confirm Delete'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

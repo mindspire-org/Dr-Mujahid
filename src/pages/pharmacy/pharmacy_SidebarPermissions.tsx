@@ -248,7 +248,7 @@ export default function Pharmacy_SidebarPermissions() {
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <div className="text-slate-600 dark:text-slate-300">Loading permissions...</div>
+        <div className="text-slate-600">Loading permissions...</div>
       </div>
     )
   }
@@ -256,11 +256,11 @@ export default function Pharmacy_SidebarPermissions() {
   return (
     <div className="space-y-6">
       {toast && (
-        <div className="fixed right-4 top-4 z-[60] w-[min(92vw,420px)]">
+        <div className="fixed right-4 top-4 z-60 w-[min(92vw,420px)]">
           <div
-            className={`flex items-start gap-3 rounded-xl border p-4 shadow-lg ring-1 ring-black/5 dark:ring-white/10 ${toast.type === 'success'
-              ? 'border-emerald-200 bg-emerald-50 text-emerald-900 dark:border-emerald-900/50 dark:bg-emerald-900/30 dark:text-emerald-100'
-              : 'border-rose-200 bg-rose-50 text-rose-900 dark:border-rose-900/50 dark:bg-rose-900/30 dark:text-rose-100'
+            className={`flex items-start gap-3 rounded-xl border p-4 shadow-lg ring-1 ring-black/5 ${toast.type === 'success'
+              ? 'border-emerald-200 bg-emerald-50 text-emerald-900'
+              : 'border-rose-200 bg-rose-50 text-rose-900'
             }`}
             role="status"
             aria-live="polite"
@@ -301,22 +301,23 @@ export default function Pharmacy_SidebarPermissions() {
       )}
 
       <div>
-        <h1 className="text-2xl font-bold text-slate-800 dark:text-slate-100">Sidebar Permissions</h1>
-        <p className="text-slate-600 mt-1 dark:text-slate-300">Manage which sidebar pages are visible to different user roles</p>
+        <h1 className="text-2xl font-bold text-slate-800">Sidebar Permissions</h1>
+        <p className="text-slate-600 mt-1">Manage which sidebar pages are visible to different user roles</p>
       </div>
 
-      <div className="rounded-xl border border-slate-200 bg-white p-6 dark:border-slate-700 dark:bg-slate-900">
+      <div className="rounded-xl border border-slate-200 bg-white p-6">
         <div className="mb-6">
-          <label className="block text-sm font-medium text-slate-700 mb-2 dark:text-slate-200">Select Role</label>
+          <label className="block text-sm font-medium text-slate-700 mb-2">Select Role</label>
           <div className="flex flex-wrap gap-2">
             {roles.map(role => (
               <button
                 key={role}
+                type="button"
                 onClick={() => setSelectedRole(role)}
                 className={`px-4 py-2 rounded-md font-medium capitalize transition-colors ${
                   selectedRole === role
                     ? 'bg-navy text-white'
-                    : 'bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700'
+                    : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
                 }`}
               >
                 {role}
@@ -328,10 +329,11 @@ export default function Pharmacy_SidebarPermissions() {
             <input
               value={newRoleName}
               onChange={(e) => setNewRoleName(e.target.value)}
-              className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-950/30 dark:text-slate-100"
+              className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
               placeholder="Create new role (e.g. cashier)"
             />
             <button
+              type="button"
               onClick={createRole}
               disabled={creatingRole || !newRoleName.trim()}
               className="px-4 py-2 text-sm font-medium text-white bg-navy rounded-md hover:bg-navy-600 disabled:opacity-50"
@@ -344,12 +346,13 @@ export default function Pharmacy_SidebarPermissions() {
         {currentPermissions && (
           <div className="space-y-4">
             <div className="flex items-center justify-between">
-              <h3 className="text-lg font-semibold text-slate-800 capitalize dark:text-slate-100">
+              <h3 className="text-lg font-semibold text-slate-800 capitalize">
                 {selectedRole} Permissions
               </h3>
               <div className="flex gap-2">
                 {!['admin', 'pharmacist', 'salesman'].includes(String(selectedRole || '').toLowerCase()) && (
                   <button
+                    type="button"
                     onClick={() => deleteRole(selectedRole)}
                     disabled={saving}
                     className="px-4 py-2 text-sm font-medium text-white bg-rose-600 rounded-md hover:bg-rose-700 disabled:opacity-50"
@@ -358,13 +361,15 @@ export default function Pharmacy_SidebarPermissions() {
                   </button>
                 )}
                 <button
+                  type="button"
                   onClick={resetToDefaults}
                   disabled={saving}
-                  className="px-4 py-2 text-sm font-medium text-slate-700 bg-slate-100 rounded-md hover:bg-slate-200 disabled:opacity-50 dark:text-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700"
+                  className="px-4 py-2 text-sm font-medium text-slate-700 bg-slate-100 rounded-md hover:bg-slate-200 disabled:opacity-50"
                 >
                   Reset to Defaults
                 </button>
                 <button
+                  type="button"
                   onClick={savePermissions}
                   disabled={saving}
                   className="px-4 py-2 text-sm font-medium text-white bg-navy rounded-md hover:bg-navy-600 disabled:opacity-50"
@@ -374,7 +379,7 @@ export default function Pharmacy_SidebarPermissions() {
               </div>
             </div>
 
-            <div className="text-sm text-slate-600 mb-4 dark:text-slate-300">
+            <div className="text-sm text-slate-600 mb-4">
               Last updated by: {currentPermissions.updatedBy || 'Unknown'}
             </div>
 
@@ -384,35 +389,38 @@ export default function Pharmacy_SidebarPermissions() {
                 .map((permission) => (
                   <div
                     key={permission.path}
-                    className="flex items-center gap-3 p-3 rounded-lg border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900"
+                    className="flex items-center gap-3 p-3 rounded-lg border border-slate-200 bg-white"
                   >
                     <div className="flex-1">
-                      <div className="font-medium text-slate-800 dark:text-slate-100">{permission.label}</div>
-                      <div className="text-xs text-slate-500 dark:text-slate-400">{permission.path}</div>
+                      <div className="font-medium text-slate-800">{permission.label}</div>
+                      <div className="text-xs text-slate-500">{permission.path}</div>
                     </div>
                     
                     <div className="flex items-center gap-2">
                       <button
+                        type="button"
                         onClick={() => reorderItem(permission.path, 'up')}
                         disabled={permission.order === 1}
-                        className="p-1 rounded text-slate-500 hover:bg-slate-100 disabled:opacity-30 dark:text-slate-300 dark:hover:bg-slate-800"
+                        className="p-1 rounded text-slate-500 hover:bg-slate-100 disabled:opacity-30"
                         title="Move up"
                       >
                         ↑
                       </button>
                       <button
+                        type="button"
                         onClick={() => reorderItem(permission.path, 'down')}
                         disabled={permission.order === currentPermissions.permissions.length}
-                        className="p-1 rounded text-slate-500 hover:bg-slate-100 disabled:opacity-30 dark:text-slate-300 dark:hover:bg-slate-800"
+                        className="p-1 rounded text-slate-500 hover:bg-slate-100 disabled:opacity-30"
                         title="Move down"
                       >
                         ↓
                       </button>
                       
                       <button
+                        type="button"
                         onClick={() => toggleVisibility(permission.path)}
                         className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                          permission.visible ? 'bg-navy' : 'bg-slate-300 dark:bg-slate-700'
+                          permission.visible ? 'bg-navy' : 'bg-slate-300'
                         }`}
                       >
                         <span
@@ -422,7 +430,7 @@ export default function Pharmacy_SidebarPermissions() {
                         />
                       </button>
                       
-                      <span className="text-sm text-slate-600 min-w-[60px] dark:text-slate-300">
+                      <span className="text-sm text-slate-600 min-w-[60px]">
                         {permission.visible ? 'Visible' : 'Hidden'}
                       </span>
                     </div>

@@ -1,10 +1,38 @@
 import { Link } from 'react-router-dom'
 import { Menu } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { hospitalApi } from '../../utils/api'
 
 type Props = { onToggleSidebar?: () => void; collapsed?: boolean; onToggleTheme?: () => void; theme?: 'light'|'dark' }
 
 export default function Finance_Header({ onToggleSidebar, collapsed, onToggleTheme, theme }: Props) {
-  const user = (()=>{ try { return JSON.parse(localStorage.getItem('finance.session')||'{}') } catch { return {} } })()
+  const user = (()=>{ try { return JSON.parse(localStorage.getItem('finance.session') || localStorage.getItem('hospital.session') || '{}') } catch { return {} } })()
+  const DEFAULT_CLINIC_NAME = "Men's Care Clinic"
+  const [brand, setBrand] = useState<{ name?: string; logoDataUrl?: string }>(() => ({
+    name: DEFAULT_CLINIC_NAME,
+    logoDataUrl: undefined,
+  }))
+
+  useEffect(() => {
+    let mounted = true
+    ;(async () => {
+      try {
+        const s: any = await hospitalApi.getSettings()
+        if (!mounted) return
+        const name = String(s?.name || s?.hospitalName || s?.clinicName || '').trim()
+        const logoDataUrl = String(s?.logoDataUrl || '').trim()
+        setBrand({
+          name: name || DEFAULT_CLINIC_NAME,
+          logoDataUrl: logoDataUrl || undefined,
+        })
+      } catch {
+        if (!mounted) return
+        setBrand({ name: DEFAULT_CLINIC_NAME, logoDataUrl: undefined })
+      }
+    })()
+    return () => { mounted = false }
+  }, [])
+
   function handleToggleTheme(){
     const next = theme === 'dark' ? 'light' : 'dark'
     try { localStorage.setItem('finance.theme', next) } catch {}
@@ -45,10 +73,16 @@ export default function Finance_Header({ onToggleSidebar, collapsed, onToggleThe
           </button>
 
           <Link to="/finance" className="ml-3 flex items-center gap-2">
-            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-amber-100 text-amber-600 shadow-inner">
-              <svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='currentColor' className='h-5 w-5'><path d='M4 6.75A2.75 2.75 0 0 1 6.75 4h10.5A2.75 2.75 0 0 1 20 6.75v10.5A2.75 2.75 0 0 1 17.25 20H6.75A2.75 2.75 0 0 1 4 17.25V6.75Zm5.25.75a.75.75 0 0 0 0 1.5h7a.75.75 0 0 0 0-1.5h-7Zm-.75 4.5c0-.414.336-.75.75-.75h7a.75.75 0 0 1 0 1.5h-7a.75.75 0 0 1-.75-.75Zm.75 3a.75.75 0 0 0 0 1.5h3.5a.75.75 0 0 0 0-1.5H9.25Z'/></svg>
+            <div className="flex h-8 w-8 items-center justify-center overflow-hidden rounded-full bg-white/10 ring-1 ring-white/15">
+              {brand.logoDataUrl ? (
+                <img src={brand.logoDataUrl} alt="Logo" className="h-full w-full object-cover" />
+              ) : (
+                <div className="flex h-full w-full items-center justify-center bg-amber-100 text-amber-600 shadow-inner">
+                  <svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='currentColor' className='h-5 w-5'><path d='M4 6.75A2.75 2.75 0 0 1 6.75 4h10.5A2.75 2.75 0 0 1 20 6.75v10.5A2.75 2.75 0 0 1 17.25 20H6.75A2.75 2.75 0 0 1 4 17.25V6.75Zm5.25.75a.75.75 0 0 0 0 1.5h7a.75.75 0 0 0 0-1.5h-7Zm-.75 4.5c0-.414.336-.75.75-.75h7a.75.75 0 0 1 0 1.5h-7a.75.75 0 0 1-.75-.75Zm.75 3a.75.75 0 0 0 0 1.5h3.5a.75.75 0 0 0 0-1.5H9.25Z'/></svg>
+                </div>
+              )}
             </div>
-            <div className="font-semibold text-white">Finance &amp; Accounts</div>
+            <div className="font-semibold text-white">{String(brand.name || '').trim() || DEFAULT_CLINIC_NAME}</div>
             <span className="ml-2 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700">Online</span>
           </Link>
 

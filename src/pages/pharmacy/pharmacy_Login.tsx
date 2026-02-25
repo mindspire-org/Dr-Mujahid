@@ -1,6 +1,6 @@
- import { useEffect, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { pharmacyApi } from '../../utils/api'
+import { hospitalApi, pharmacyApi } from '../../utils/api'
 
 export default function Pharmacy_Login() {
   const navigate = useNavigate()
@@ -8,26 +8,47 @@ export default function Pharmacy_Login() {
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState('')
-  const [theme] = useState<'light'|'dark'>(()=>{
-    try { return (localStorage.getItem('pharmacy.theme') as 'light'|'dark') || 'light' } catch { return 'light' }
+  const [theme] = useState<'light' | 'dark'>(() => {
+    try { return (localStorage.getItem('pharmacy.theme') as 'light' | 'dark') || 'light' } catch { return 'light' }
   })
-  useEffect(()=>{
+  useEffect(() => {
     const html = document.documentElement
-    try { html.classList.toggle('dark', theme === 'dark') } catch {}
-    return () => { try { html.classList.remove('dark') } catch {} }
+    try { html.classList.toggle('dark', theme === 'dark') } catch { }
+    return () => { try { html.classList.remove('dark') } catch { } }
   }, [theme])
 
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     try {
       setError('')
-      try { localStorage.removeItem('pharmacy.token') } catch {}
-      const res: any = await pharmacyApi.loginUser(username.trim(), password)
+      const res: any = await hospitalApi.loginHospitalUser(username.trim(), password)
+      const u = res?.user
+      const token = res?.token
+      const permissions = (u?.permissions && typeof u.permissions === 'object') ? u.permissions : undefined
+
+      const canPharmacy = (() => {
+        if (String(u?.role || '') === 'Admin') return true
+        const arr = (permissions as any)?.pharmacy
+        return Array.isArray(arr) && arr.length > 0
+      })()
+
+      if (!canPharmacy) {
+        setError('Not permitted')
+        return
+      }
+
       try {
-        localStorage.setItem('pharmacy.user', JSON.stringify(res?.user || { username }))
+        if (token) {
+          localStorage.setItem('hospital.token', String(token))
+          localStorage.setItem('pharmacy.token', String(token))
+          localStorage.setItem('token', String(token))
+        }
+        const sess = { username: u?.username || username.trim(), role: u?.role || '', permissions }
+        localStorage.setItem('hospital.session', JSON.stringify(sess))
+        localStorage.setItem('pharmacy.session', JSON.stringify(sess))
+        localStorage.setItem('pharmacy.user', JSON.stringify(sess))
         localStorage.setItem('pharma_user', username.trim())
-        if (res?.token) localStorage.setItem('pharmacy.token', String(res.token))
-      } catch {}
+      } catch { }
       try {
         await pharmacyApi.createAuditLog({
           actor: username || 'pharmacy',
@@ -38,11 +59,11 @@ export default function Pharmacy_Login() {
           at: new Date().toISOString(),
           detail: 'User login',
         })
-      } catch {}
+      } catch { }
       navigate('/pharmacy')
     } catch (e: any) {
       const raw = (e?.message || '').trim(); let msg = raw
-      try { const j = JSON.parse(raw); if (j?.error) msg = j.error } catch {}
+      try { const j = JSON.parse(raw); if (j?.error) msg = j.error } catch { }
       setError(msg || 'Invalid credentials')
     }
   }
@@ -80,9 +101,9 @@ export default function Pharmacy_Login() {
                   <label className="mb-2 block text-sm font-bold text-white/90">Username</label>
                   <div className="relative group">
                     <div className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-sky-300/60 transition-colors group-focus-within:text-sky-300">
-                      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="h-5 w-5"><path d="M12 12a4 4 0 1 0-4-4 4 4 0 0 0 4 4Zm0 2c-4.42 0-8 2-8 4.5V20h16v-1.5c0-2.5-3.58-4.5-8-4.5Z"/></svg>
+                      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="h-5 w-5"><path d="M12 12a4 4 0 1 0-4-4 4 4 0 0 0 4 4Zm0 2c-4.42 0-8 2-8 4.5V20h16v-1.5c0-2.5-3.58-4.5-8-4.5Z" /></svg>
                     </div>
-                    <input type="text" value={username} onChange={(e)=>setUsername(e.target.value)} className="w-full rounded-2xl border-2 border-white/10 bg-white/5 backdrop-blur-sm px-12 py-3.5 text-white placeholder-white/40 outline-none transition-all focus:border-sky-400/50 focus:bg-white/10 focus:ring-4 focus:ring-sky-400/20" placeholder="Enter username" autoComplete="username" />
+                    <input type="text" value={username} onChange={(e) => setUsername(e.target.value)} className="w-full rounded-2xl border-2 border-white/10 bg-white/5 backdrop-blur-sm px-12 py-3.5 text-white placeholder-white/40 outline-none transition-all focus:border-sky-400/50 focus:bg-white/10 focus:ring-4 focus:ring-sky-400/20" placeholder="Enter username" autoComplete="username" />
                   </div>
                 </div>
 
@@ -90,14 +111,14 @@ export default function Pharmacy_Login() {
                   <label className="mb-2 block text-sm font-bold text-white/90">Password</label>
                   <div className="relative group">
                     <div className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-blue-300/60 transition-colors group-focus-within:text-blue-300">
-                      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="h-5 w-5"><path d="M17 8h-1V6a4 4 0 0 0-8 0v2H7a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-8a2 2 0 0 0-2-2Zm-7-2a2 2 0 0 1 4 0v2h-4Z"/></svg>
+                      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="h-5 w-5"><path d="M17 8h-1V6a4 4 0 0 0-8 0v2H7a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-8a2 2 0 0 0-2-2Zm-7-2a2 2 0 0 1 4 0v2h-4Z" /></svg>
                     </div>
-                    <input type={showPassword ? 'text' : 'password'} value={password} onChange={(e)=>setPassword(e.target.value)} className="w-full rounded-2xl border-2 border-white/10 bg-white/5 backdrop-blur-sm px-12 py-3.5 pr-14 text-white placeholder-white/40 outline-none transition-all focus:border-blue-400/50 focus:bg-white/10 focus:ring-4 focus:ring-blue-400/20" placeholder="Enter password" autoComplete="current-password" />
-                    <button type="button" onClick={()=>setShowPassword(s=>!s)} className="absolute right-4 top-1/2 -translate-y-1/2 text-white/50 hover:text-white" aria-label={showPassword ? 'Hide password' : 'Show password'}>
+                    <input type={showPassword ? 'text' : 'password'} value={password} onChange={(e) => setPassword(e.target.value)} className="w-full rounded-2xl border-2 border-white/10 bg-white/5 backdrop-blur-sm px-12 py-3.5 pr-14 text-white placeholder-white/40 outline-none transition-all focus:border-blue-400/50 focus:bg-white/10 focus:ring-4 focus:ring-blue-400/20" placeholder="Enter password" autoComplete="current-password" />
+                    <button type="button" onClick={() => setShowPassword(s => !s)} className="absolute right-4 top-1/2 -translate-y-1/2 text-white/50 hover:text-white" aria-label={showPassword ? 'Hide password' : 'Show password'}>
                       {showPassword ? (
-                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="h-5 w-5"><path d="M3.53 2.47 2.47 3.53 5.3 6.36A11.6 11.6 0 0 0 1.4 12c2.1 4.4 6.33 7.5 10.6 7.5 2.07 0 4.1-.66 5.9-1.84l2.6 2.6 1.06-1.06L3.53 2.47ZM12 7.5c.63 0 1.22.18 1.72.48l-5.7 5.7A4.5 4.5 0 0 1 12 7.5Zm0-3c-4.27 0-8.5 3.1-10.6 7.5a12.8 12.8 0 0 0 3 4.05l2.14-2.14A6 6 0 0 1 18 12c0-.52-.06-1.02-.18-1.5H20c-2.1-4.4-6.33-7.5-10.6-7.5Z"/></svg>
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="h-5 w-5"><path d="M3.53 2.47 2.47 3.53 5.3 6.36A11.6 11.6 0 0 0 1.4 12c2.1 4.4 6.33 7.5 10.6 7.5 2.07 0 4.1-.66 5.9-1.84l2.6 2.6 1.06-1.06L3.53 2.47ZM12 7.5c.63 0 1.22.18 1.72.48l-5.7 5.7A4.5 4.5 0 0 1 12 7.5Zm0-3c-4.27 0-8.5 3.1-10.6 7.5a12.8 12.8 0 0 0 3 4.05l2.14-2.14A6 6 0 0 1 18 12c0-.52-.06-1.02-.18-1.5H20c-2.1-4.4-6.33-7.5-10.6-7.5Z" /></svg>
                       ) : (
-                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="h-5 w-5"><path d="M12 4.5c-4.27 0-8.5 3.1-10.6 7.5 2.1 4.4 6.33 7.5 10.6 7.5s8.5-3.1 10.6-7.5C20.5 7.6 16.27 4.5 12 4.5Zm0 12a4.5 4.5 0 1 1 0-9 4.5 4.5 0 0 1 0 9Zm0-2a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5Z"/></svg>
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="h-5 w-5"><path d="M12 4.5c-4.27 0-8.5 3.1-10.6 7.5 2.1 4.4 6.33 7.5 10.6 7.5s8.5-3.1 10.6-7.5C20.5 7.6 16.27 4.5 12 4.5Zm0 12a4.5 4.5 0 1 1 0-9 4.5 4.5 0 0 1 0 9Zm0-2a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5Z" /></svg>
                       )}
                     </button>
                   </div>
@@ -107,14 +128,14 @@ export default function Pharmacy_Login() {
 
                 <button type="submit" className="group relative mt-2 w-full overflow-hidden rounded-2xl bg-gradient-to-r from-sky-500 via-blue-500 to-indigo-600 px-4 py-4 font-bold text-white shadow-2xl shadow-sky-500/30 transition-all hover:shadow-sky-500/50 hover:scale-[1.02] focus:outline-none focus:ring-4 focus:ring-sky-400/50">
                   <div className="absolute inset-0 bg-gradient-to-r from-sky-400 via-blue-400 to-indigo-500 opacity-0 transition-opacity group-hover:opacity-100" />
-                  <span className="relative flex items-center justify-center gap-2">Login<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="h-5 w-5 transition-transform group-hover:translate-x-1"><path d="M13.3 17.3 18.6 12l-5.3-5.3-1.4 1.4 3.2 3.2H4v2h11.1l-3.2 3.2 1.4 1.5Z"/></svg></span>
+                  <span className="relative flex items-center justify-center gap-2">Login<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="h-5 w-5 transition-transform group-hover:translate-x-1"><path d="M13.3 17.3 18.6 12l-5.3-5.3-1.4 1.4 3.2 3.2H4v2h11.1l-3.2 3.2 1.4 1.5Z" /></svg></span>
                 </button>
                 <button
                   type="button"
                   onClick={() => navigate('/')}
                   className="mt-3 w-full rounded-2xl border-2 border-white/20 bg-white/5 px-4 py-3 font-semibold text-white/90 hover:text-white hover:bg-white/10 focus:outline-none focus:ring-4 focus:ring-sky-400/30 transition-colors flex items-center justify-center gap-2"
                 >
-                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="h-5 w-5"><path d="M10 19 3 12l7-7 1.4 1.4L6.8 11H21v2H6.8l4.6 4.6L10 19Z"/></svg>
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="h-5 w-5"><path d="M10 19 3 12l7-7 1.4 1.4L6.8 11H21v2H6.8l4.6 4.6L10 19Z" /></svg>
                   <span>Back to Portal</span>
                 </button>
               </form>

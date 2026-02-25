@@ -4,11 +4,34 @@ import { DiagnosticCounter } from '../models/Counter'
 import { DiagnosticAuditLog } from '../models/AuditLog'
 import jwt from 'jsonwebtoken'
 import { env } from '../../../config/env'
-import { diagnosticOrderCreateSchema, diagnosticOrderQuerySchema, diagnosticOrderTrackUpdateSchema, diagnosticOrderUpdateSchema } from '../validators/order'
+import { diagnosticOrderCreateSchema, diagnosticOrderPaySchema, diagnosticOrderQuerySchema, diagnosticOrderTrackUpdateSchema, diagnosticOrderUpdateSchema } from '../validators/order'
 import { DiagnosticTest } from '../models/Test'
 import { resolveTestPrice } from '../../corporate/utils/price'
 import { CorporateTransaction } from '../../corporate/models/Transaction'
 import { CorporateCompany } from '../../corporate/models/Company'
+import { FinanceJournal } from '../../hospital/models/FinanceJournal'
+import { DiagnosticAccount } from '../models/DiagnosticAccount'
+import { LabPatient } from '../../lab/models/Patient'
+
+const clamp0 = (n: any) => Math.max(0, Number(n || 0))
+
+async function ensureAccount(patientId: string, snap?: { mrn?: string; fullName?: string; phone?: string }){
+  const nowIso = new Date().toISOString()
+  const doc = await DiagnosticAccount.findOneAndUpdate(
+    { patientId },
+    {
+      $setOnInsert: { patientId, dues: 0, advance: 0 },
+      $set: {
+        mrn: snap?.mrn,
+        fullName: snap?.fullName,
+        phone: snap?.phone,
+        updatedAtIso: nowIso,
+      },
+    },
+    { upsert: true, new: true }
+  ).lean()
+  return { doc, dues: clamp0((doc as any)?.dues), advance: clamp0((doc as any)?.advance) }
+}
 
 function getActor(req: Request){
   try {
@@ -25,9 +48,27 @@ async function nextToken(date?: Date){
   const y = d.getFullYear(); const m = String(d.getMonth()+1).padStart(2,'0'); const day = String(d.getDate()).padStart(2,'0')
   const yyyymmdd = `${y}${m}${day}`
   const key = `diagnostic_token_${yyyymmdd}`
-  const c: any = await (DiagnosticCounter as any).findByIdAndUpdate(key, { $inc: { seq: 1 } }, { upsert: true, new: true, setDefaultsOnInsert: true })
-  const seq = String((c?.seq) || 1).padStart(3,'0')
-  return `DG${day}${m}${y}-${seq}`
+  let c: any = await (DiagnosticCounter as any).findByIdAndUpdate(key, { $inc: { seq: 1 } }, { upsert: true, new: true, setDefaultsOnInsert: true })
+  if (c && Number(c.seq) === 1){
+    try {
+      const prefix = `D${day}${m}${y}-`
+      const rx = new RegExp('^' + prefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+      const docs: any[] = await DiagnosticOrder.find({ tokenNo: rx }).select('tokenNo').lean()
+      const maxSeq = (docs||[]).reduce((mx, o: any) => {
+        try {
+          const s = String(o?.tokenNo || '')
+          const part = s.split('-')[1] || ''
+          const n = parseInt(part, 10)
+          return isNaN(n) ? mx : Math.max(mx, n)
+        } catch { return mx }
+      }, 0)
+      if (maxSeq > 0){
+        c = await (DiagnosticCounter as any).findOneAndUpdate({ _id: key, seq: 1 }, { $set: { seq: maxSeq + 1 } }, { new: true }) || c
+      }
+    } catch {}
+  }
+  const seq = String((c?.seq || 1)).padStart(3,'0')
+  return `D${day}${m}${y}-${seq}`
 }
 
 export async function list(req: Request, res: Response){
@@ -57,6 +98,8 @@ export async function list(req: Request, res: Response){
 
 export async function create(req: Request, res: Response){
   const data = diagnosticOrderCreateSchema.parse(req.body)
+  const actor = getActor(req) as any
+  const createdBy = actor?.actorId ? String(actor.actorId) : undefined
   if ((data as any).corporateId){
     const comp = await CorporateCompany.findById(String((data as any).corporateId)).lean()
     if (!comp) return res.status(400).json({ error: 'Invalid corporateId' })
@@ -64,9 +107,124 @@ export async function create(req: Request, res: Response){
   }
   const tokenNo = (data as any).tokenNo || await nextToken(new Date())
   const items = (data.tests || []).map(tid => ({ testId: tid, status: 'received' as const }))
-  const doc = await DiagnosticOrder.create({ ...data, items, tokenNo, status: 'received' })
+  const paymentStatus = ((data as any).paymentStatus || 'paid') as any
+
+  // Dues/Advance accounting (mirrors Therapy module)
+  const patientId = String((data as any).patientId || '').trim()
+  let accountSnap: any = null
   try {
-    const actor = getActor(req) as any
+    accountSnap = await LabPatient.findById(patientId).lean()
+  } catch {}
+  const acct = await ensureAccount(patientId, {
+    mrn: (data as any)?.patient?.mrn || accountSnap?.mrn,
+    fullName: (data as any)?.patient?.fullName || accountSnap?.fullName,
+    phone: (data as any)?.patient?.phone || accountSnap?.phoneNormalized || accountSnap?.phone,
+  })
+
+  const duesBefore = acct.dues
+  const advanceBefore = acct.advance
+  const net = clamp0((data as any).net)
+
+  const useAdvance = paymentStatus === 'unpaid' ? false : !!(data as any).useAdvance
+  const payPreviousDues = paymentStatus === 'unpaid' ? false : !!(data as any).payPreviousDues
+
+  let advanceApplied = 0
+  let netDueToday = net
+  let advanceLeft = advanceBefore
+  if (useAdvance){
+    advanceApplied = Math.min(advanceBefore, netDueToday)
+    netDueToday = Math.max(0, netDueToday - advanceApplied)
+    advanceLeft = Math.max(0, advanceBefore - advanceApplied)
+  }
+
+  let amountReceivedNow = paymentStatus === 'unpaid' ? 0 : clamp0((data as any).amountReceived)
+  let amt = amountReceivedNow
+  let duesPaid = 0
+  let paidForToday = 0
+  let advanceAdded = 0
+  let duesAfter = duesBefore
+
+  if (payPreviousDues){
+    duesPaid = Math.min(duesAfter, amt)
+    duesAfter = Math.max(0, duesAfter - duesPaid)
+    amt -= duesPaid
+  }
+
+  paidForToday = Math.min(netDueToday, amt)
+  netDueToday = Math.max(0, netDueToday - paidForToday)
+  amt -= paidForToday
+
+  advanceAdded = clamp0(amt)
+  duesAfter = duesAfter + netDueToday
+  const advanceAfter = advanceLeft + advanceAdded
+  const doc = await DiagnosticOrder.create({
+    ...data,
+    items,
+    tokenNo,
+    status: 'received',
+    paymentStatus,
+    duesBefore,
+    advanceBefore,
+    payPreviousDues,
+    useAdvance,
+    advanceApplied,
+    amountReceived: amountReceivedNow,
+    duesPaid,
+    paidForToday,
+    advanceAdded,
+    duesAfter,
+    advanceAfter,
+    receptionistName: (data as any).receptionistName,
+    paymentMethod: paymentStatus === 'paid' ? (data as any).paymentMethod : undefined,
+    accountNumberIban: paymentStatus === 'paid' && (data as any).paymentMethod === 'Card' ? (data as any).accountNumberIban : undefined,
+    receivedToAccountCode: paymentStatus === 'paid' ? (data as any).receivedToAccountCode : undefined,
+  })
+
+  // Update patient account balances
+  try {
+    await DiagnosticAccount.findOneAndUpdate(
+      { patientId },
+      {
+        $setOnInsert: { patientId },
+        $set: {
+          mrn: (data as any)?.patient?.mrn,
+          fullName: (data as any)?.patient?.fullName,
+          phone: (data as any)?.patient?.phone,
+          dues: duesAfter,
+          advance: advanceAfter,
+          updatedAtIso: new Date().toISOString(),
+        },
+      },
+      { upsert: true }
+    )
+  } catch {}
+
+  // Finance: post diagnostic order journal (paid => selected/CASH/BANK, unpaid => AR)
+  try {
+    const existing = await FinanceJournal.findOne({ refType: 'diag_order', refId: String((doc as any)._id) }).lean()
+    if (!existing){
+      const receivedTo = String((doc as any).receivedToAccountCode || (data as any).receivedToAccountCode || '').trim().toUpperCase()
+      const paidMethod = String((doc as any).paymentMethod || '').toUpperCase() === 'CARD' ? 'Bank' : 'Cash'
+      const debitAccount = (paymentStatus === 'unpaid') ? 'AR' : (receivedTo || (paidMethod === 'Bank' ? 'BANK' : 'CASH'))
+      const amt = Number((doc as any).net || (doc as any).subtotal || 0)
+      if (debitAccount && amt > 0){
+        await FinanceJournal.create({
+          dateIso: new Date().toISOString().slice(0,10),
+          createdBy,
+          refType: 'diag_order',
+          refId: String((doc as any)._id),
+          memo: `Diagnostic Order ${String((doc as any).tokenNo || '')}`.trim(),
+          lines: [
+            { account: debitAccount, debit: amt },
+            { account: 'DIAGNOSTIC_REVENUE', credit: amt },
+          ],
+        })
+      }
+    }
+  } catch (e){
+    console.warn('Finance journal failed for Diagnostic order create', e)
+  }
+  try {
     await DiagnosticAuditLog.create({
       action: 'order.create',
       subjectType: 'Order',
@@ -126,6 +284,69 @@ export async function create(req: Request, res: Response){
     }
   } catch (e) { console.warn('Failed to create corporate transactions for Diagnostic order', e) }
   res.status(201).json(doc)
+}
+
+export async function pay(req: Request, res: Response){
+  const { id } = req.params
+  const data = diagnosticOrderPaySchema.parse(req.body)
+  const actor = getActor(req) as any
+  const createdBy = actor?.actorId ? String(actor.actorId) : undefined
+  const before: any = await DiagnosticOrder.findById(id).lean()
+  if (!before) return res.status(404).json({ message: 'Order not found' })
+  const patch: any = {
+    paymentStatus: 'paid',
+    receptionistName: data.receptionistName,
+    paymentMethod: data.paymentMethod,
+    accountNumberIban: data.paymentMethod === 'Card' ? data.accountNumberIban : undefined,
+  }
+  if ((data as any).receivedToAccountCode != null){
+    patch.receivedToAccountCode = String((data as any).receivedToAccountCode || '').trim().toUpperCase()
+  }
+  const doc = await DiagnosticOrder.findByIdAndUpdate(id, { $set: patch }, { new: true })
+  if (!doc) return res.status(404).json({ message: 'Order not found' })
+
+  // Finance: if order was previously unpaid (AR) and now paid, move from AR to selected received account.
+  try {
+    const wasUnpaid = String(before?.paymentStatus || '').toLowerCase() === 'unpaid'
+    if (wasUnpaid){
+      const existing = await FinanceJournal.findOne({ refType: 'diag_order_payment', refId: String((doc as any)._id) }).lean()
+      if (!existing){
+        const receivedTo = String((doc as any).receivedToAccountCode || (data as any).receivedToAccountCode || '').trim().toUpperCase()
+        const settlementAccount = receivedTo || (data.paymentMethod === 'Card' ? 'BANK' : 'CASH')
+        const amt = Number((doc as any).net || (doc as any).subtotal || 0)
+        if (settlementAccount && amt > 0){
+          await FinanceJournal.create({
+            dateIso: new Date().toISOString().slice(0,10),
+            createdBy,
+            refType: 'diag_order_payment',
+            refId: String((doc as any)._id),
+            memo: `Diagnostic Order Payment ${String((doc as any).tokenNo || '')}`.trim(),
+            lines: [
+              { account: settlementAccount, debit: amt },
+              { account: 'AR', credit: amt },
+            ],
+          })
+        }
+      }
+    }
+  } catch (e){
+    console.warn('Finance settlement failed for Diagnostic order pay', e)
+  }
+  try {
+    const actor = getActor(req) as any
+    await DiagnosticAuditLog.create({
+      action: 'order.pay',
+      subjectType: 'Order',
+      subjectId: String((doc as any)?._id||id),
+      message: `Payment marked paid for order ${doc?.tokenNo || id}`,
+      data: { patch },
+      actorId: actor.actorId,
+      actorUsername: actor.actorUsername,
+      ip: req.ip,
+      userAgent: String(req.headers['user-agent']||''),
+    })
+  } catch {}
+  res.json(doc)
 }
 
 export async function updateTrack(req: Request, res: Response){

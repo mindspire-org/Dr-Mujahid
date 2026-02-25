@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import Pharmacy_AddSupplierDialog, { type Supplier } from '../../components/pharmacy/pharmacy_AddSupplierDialog'
 import Pharmacy_SupplierDetailsDialog from '../../components/pharmacy/pharmacy_SupplierDetailsDialog'
+import Pharmacy_AssignSupplierCompaniesDialog from '../../components/pharmacy/pharmacy_AssignSupplierCompaniesDialog'
 import { pharmacyApi } from '../../utils/api'
 
 export default function Pharmacy_Suppliers() {
@@ -13,6 +14,7 @@ export default function Pharmacy_Suppliers() {
   const [editOpen, setEditOpen] = useState(false)
   const [detailsOpen, setDetailsOpen] = useState(false)
   const [selected, setSelected] = useState<Supplier | null>(null)
+  const [assignCompaniesOpen, setAssignCompaniesOpen] = useState(false)
 
   const [suppliers, setSuppliers] = useState<Supplier[]>([])
   const [paymentFor, setPaymentFor] = useState<string | null>(null)
@@ -80,15 +82,23 @@ export default function Pharmacy_Suppliers() {
   
 
   const addSupplier = async (s: Supplier) => {
-    const created = await pharmacyApi.createSupplier({
-      name: s.name,
-      company: s.company,
-      phone: s.phone,
-      address: s.address,
-      taxId: s.taxId,
-      status: s.status,
-    })
-    setSuppliers(prev => [{ ...s, id: created._id }, ...prev])
+    try {
+      const created = await pharmacyApi.createSupplier({
+        name: s.name,
+        company: s.company,
+        phone: s.phone,
+        address: s.address,
+        taxId: s.taxId,
+        status: s.status,
+      })
+      // If a company was selected in the dialog, assign it to this supplier server-side
+      if (s.companyIds && s.companyIds.length) {
+        try { await pharmacyApi.assignSupplierCompanies(created._id, { companyIds: s.companyIds }) } catch {}
+      }
+      setSuppliers(prev => [{ ...s, id: created._id }, ...prev])
+    } catch (e) {
+      console.error(e)
+    }
   }
   const openEdit = (s: Supplier) => { setSelected(s); setEditOpen(true) }
   const saveEdit = async (s: Supplier) => {
@@ -108,6 +118,8 @@ export default function Pharmacy_Suppliers() {
   }
 
   const openDetails = (s: Supplier) => { setSelected(s); setDetailsOpen(true) }
+
+  const openAssignCompanies = (s: Supplier) => { setSelected(s); setAssignCompaniesOpen(true) }
 
   const startPayment = async (s: Supplier) => {
     setPaymentFor(s.id)
@@ -137,13 +149,15 @@ export default function Pharmacy_Suppliers() {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <div className="text-xl font-bold text-slate-800">Supplier Management</div>
-        <button onClick={()=>setAddOpen(true)} className="btn">+ Add Supplier</button>
+        <div className="flex items-center gap-2">
+          <button type="button" onClick={()=>setAddOpen(true)} className="btn">+ Add Supplier</button>
+        </div>
       </div>
 
       <div className="rounded-xl border border-slate-200 bg-white p-3">
         <div className="flex items-center gap-3">
-          <input value={query} onChange={e=>{ setQuery(e.target.value); setPage(1) }} placeholder="Search suppliers.." className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
-          <select value={limit} onChange={e=>{ setLimit(parseInt(e.target.value)); setPage(1) }} className="rounded-md border border-slate-300 px-2 py-1 text-sm text-slate-700">
+          <input value={query} onChange={e=>{ setQuery(e.target.value); setPage(1) }} placeholder="Search suppliers.." className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900" />
+          <select value={limit} onChange={e=>{ setLimit(parseInt(e.target.value)); setPage(1) }} className="rounded-md border border-slate-300 bg-white px-2 py-1 text-sm text-slate-700">
             <option value={10}>10</option>
             <option value={20}>20</option>
             <option value={50}>50</option>
@@ -168,44 +182,47 @@ export default function Pharmacy_Suppliers() {
                       <span>Last Order: {s.lastOrder || '-'}</span>
                     </div>
                     <div className="mt-2 flex flex-wrap gap-2 text-xs">
-                      <span className="rounded bg-slate-800 px-2 py-1 text-white">Total Purchases: PKR {(s.totalPurchases || 0).toFixed(0)}</span>
+                      <span className="rounded bg-slate-100 px-2 py-1 text-slate-700">Total Purchases: PKR {(s.totalPurchases || 0).toFixed(0)}</span>
                       <span className="rounded bg-emerald-100 px-2 py-1 text-emerald-700">Paid: PKR {(s.paid || 0).toFixed(0)}</span>
                       <span className="rounded bg-rose-100 px-2 py-1 text-rose-700">Remaining: PKR {remaining.toFixed(0)}</span>
-                      <span className={`rounded px-2 py-1 ${s.status==='Active'?'bg-navy text-white':'bg-slate-100 text-slate-700'}`}>{s.status}</span>
+                      <span className={`rounded px-2 py-1 ${s.status==='Active'?'bg-sky-100 text-sky-800':'bg-slate-100 text-slate-700'}`}>{s.status}</span>
                     </div>
                   </div>
                 </div>
 
                 <div className="flex items-center gap-2">
-                  <button onClick={()=>startPayment(s)} className="rounded-md border border-slate-300 px-2 py-1 text-xs hover:bg-slate-50">Record Payment</button>
-                  <button onClick={()=>openEdit(s)} className="rounded-md border border-slate-300 px-2 py-1 text-xs hover:bg-slate-50">✎</button>
-                  <button onClick={()=>remove(s.id)} className="rounded-md border border-slate-300 px-2 py-1 text-xs hover:bg-slate-50">🗑</button>
+                  <button type="button" onClick={()=>startPayment(s)} className="rounded-md border border-slate-300 px-2 py-1 text-xs hover:bg-slate-50">Record Payment</button>
+                  <button type="button" onClick={()=>openEdit(s)} className="rounded-md border border-slate-300 px-2 py-1 text-xs hover:bg-slate-50">✎</button>
+                  <button type="button" onClick={()=>remove(s.id)} className="rounded-md border border-slate-300 px-2 py-1 text-xs hover:bg-slate-50">🗑</button>
+                  <button type="button" onClick={()=>openAssignCompanies(s)} className="rounded-md border border-slate-300 px-2 py-1 text-xs hover:bg-slate-50">Assign Companies</button>
                 </div>
               </div>
 
               {payOpen && (
-                <div className="mt-3 grid gap-3 md:grid-cols-[1fr_1fr_160px_1fr_160px_auto_auto]">
-                  <select value={paymentDraft.purchaseId || ''} onChange={e=>setPaymentDraft(p=>({ ...p, purchaseId: e.target.value || undefined }))} className="rounded-md border border-slate-300 px-3 py-2 text-sm">
+                <div className="mt-3 grid gap-3 grid-cols-1 md:grid-cols-[1fr_1fr_160px_1fr_160px_auto_auto]">
+                  <select value={paymentDraft.purchaseId || ''} onChange={e=>setPaymentDraft(p=>({ ...p, purchaseId: e.target.value || undefined }))} className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 md:col-span-2">
                     <option value="">General payment (no specific invoice)</option>
                     {payingPurchases.map(p => (
                       <option key={p._id} value={p._id}>{p.invoice} · Total Rs {Number(p.totalAmount||0).toFixed(0)} · Remaining Rs {Number(p.remaining||0).toFixed(0)}</option>
                     ))}
                   </select>
-                  <input value={paymentDraft.amount} onChange={e=>setPaymentDraft(p=>({ ...p, amount: e.target.value }))} placeholder="Amount" className="rounded-md border border-slate-300 px-3 py-2 text-sm" />
-                  <select value={paymentDraft.method} onChange={e=>setPaymentDraft(p=>({ ...p, method: e.target.value }))} className="rounded-md border border-slate-300 px-3 py-2 text-sm">
+                  <input value={paymentDraft.amount} onChange={e=>setPaymentDraft(p=>({ ...p, amount: e.target.value }))} placeholder="Amount" className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900" />
+                  <select value={paymentDraft.method} onChange={e=>setPaymentDraft(p=>({ ...p, method: e.target.value }))} className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900">
                     <option>cash</option>
                     <option>bank</option>
                     <option>card</option>
                   </select>
-                  <input value={paymentDraft.note} onChange={e=>setPaymentDraft(p=>({ ...p, note: e.target.value }))} placeholder="Note" className="rounded-md border border-slate-300 px-3 py-2 text-sm" />
-                  <input value={paymentDraft.date} onChange={e=>setPaymentDraft(p=>({ ...p, date: e.target.value }))} type="date" className="rounded-md border border-slate-300 px-3 py-2 text-sm" />
-                  <button onClick={()=>savePayment(s)} className="btn">Save</button>
-                  <button onClick={cancelPayment} className="btn-outline-navy">Cancel</button>
+                  <input value={paymentDraft.note} onChange={e=>setPaymentDraft(p=>({ ...p, note: e.target.value }))} placeholder="Note" className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900" />
+                  <input value={paymentDraft.date} onChange={e=>setPaymentDraft(p=>({ ...p, date: e.target.value }))} type="date" className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900" />
+                  <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-end">
+                    <button type="button" onClick={()=>savePayment(s)} className="btn">Save</button>
+                    <button type="button" onClick={cancelPayment} className="btn-outline-navy">Cancel</button>
+                  </div>
                 </div>
               )}
 
               <div className="mt-3 text-right">
-                <button onClick={()=>openDetails(s)} className="rounded-md border border-slate-300 px-2 py-1 text-xs hover:bg-slate-50">View Details</button>
+                <button type="button" onClick={()=>openDetails(s)} className="rounded-md border border-slate-300 px-2 py-1 text-xs hover:bg-slate-50">View Details</button>
               </div>
             </div>
           )
@@ -221,9 +238,9 @@ export default function Pharmacy_Suppliers() {
             ) : 'No results'}
           </div>
           <div className="flex items-center gap-2">
-            <button disabled={page<=1} onClick={()=>setPage(p=>Math.max(1,p-1))} className="rounded-md border border-slate-300 px-2 py-1 disabled:opacity-50">Prev</button>
+            <button type="button" disabled={page<=1} onClick={()=>setPage(p=>Math.max(1,p-1))} className="rounded-md border border-slate-300 px-2 py-1 disabled:opacity-50">Prev</button>
             <div>Page {page} of {totalPages}</div>
-            <button disabled={page>=totalPages} onClick={()=>setPage(p=>Math.min(totalPages,p+1))} className="rounded-md border border-slate-300 px-2 py-1 disabled:opacity-50">Next</button>
+            <button type="button" disabled={page>=totalPages} onClick={()=>setPage(p=>Math.min(totalPages,p+1))} className="rounded-md border border-slate-300 px-2 py-1 disabled:opacity-50">Next</button>
           </div>
         </div>
       </div>
@@ -231,6 +248,7 @@ export default function Pharmacy_Suppliers() {
       <Pharmacy_AddSupplierDialog open={addOpen} onClose={()=>setAddOpen(false)} onSave={addSupplier} />
       <Pharmacy_AddSupplierDialog open={editOpen} onClose={()=>setEditOpen(false)} onSave={saveEdit} initial={selected ?? undefined} title="Edit Supplier" submitLabel="Save" />
       <Pharmacy_SupplierDetailsDialog open={detailsOpen} onClose={()=>setDetailsOpen(false)} supplier={selected} />
+      <Pharmacy_AssignSupplierCompaniesDialog open={assignCompaniesOpen} onClose={()=>setAssignCompaniesOpen(false)} supplier={selected} />
     </div>
   )
 }

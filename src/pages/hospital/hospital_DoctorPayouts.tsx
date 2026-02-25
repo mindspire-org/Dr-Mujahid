@@ -9,11 +9,41 @@ export default function Finance_DoctorPayouts(){
   const [amount, setAmount] = useState('')
   const [method, setMethod] = useState<'Cash'|'Bank'>('Cash')
   const [memo, setMemo] = useState('')
+  const [accounts, setAccounts] = useState<Array<{ code: string; label: string }>>([])
+  const [fromAccountCode, setFromAccountCode] = useState('')
   const [loading, setLoading] = useState(false)
   const [tick, setTick] = useState(0)
 
   useEffect(()=>{ loadDoctors() }, [])
   useEffect(()=>{ if (doctorId) { loadBalance(); loadPayouts() } else { setBalance(null); setPayouts([]) }}, [doctorId, tick])
+
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      try {
+        const [pettyRes, bankRes]: any[] = await Promise.all([
+          hospitalApi.listPettyCashAccounts({ status: 'Active' } as any),
+          hospitalApi.listBankAccounts({ status: 'Active' } as any),
+        ])
+        const petty = (pettyRes?.accounts || []).map((a: any) => ({
+          code: String(a.code || '').trim().toUpperCase(),
+          label: `Petty: ${String(a.name || a.code || '').trim()}`.trim(),
+        })).filter((x: any) => x.code)
+        const bank = (bankRes?.accounts || []).map((b: any) => ({
+          code: String(b.financeAccountCode || '').trim().toUpperCase(),
+          label: `Bank: ${String(b.bankName || '').trim()} - ${String(b.accountTitle || '').trim()}`.trim(),
+        })).filter((x: any) => x.code)
+        const all = [...petty, ...bank]
+        if (!cancelled) {
+          setAccounts(all)
+          if (all.length) setFromAccountCode(s => s || all[0].code)
+        }
+      } catch {
+        if (!cancelled) setAccounts([])
+      }
+    })()
+    return () => { cancelled = true }
+  }, [])
 
   async function loadDoctors(){
     try {
@@ -40,7 +70,7 @@ export default function Finance_DoctorPayouts(){
     if (!(amt>0) || !doctorId) return
     setLoading(true)
     try {
-      await financeApi.doctorPayout({ doctorId, amount: amt, method, memo: memo || undefined })
+      await financeApi.doctorPayout({ doctorId, amount: amt, method, memo: memo || undefined, fromAccountCode: fromAccountCode || undefined })
       setAmount('')
       setMemo('')
       setTick(t=>t+1)
@@ -75,6 +105,12 @@ export default function Finance_DoctorPayouts(){
         <div>
           <label className="mb-1 block text-sm text-slate-700">Amount (Rs)</label>
           <input value={amount} onChange={e=>setAmount(e.target.value)} type="number" step="0.01" className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" placeholder="0.00" />
+        </div>
+        <div>
+          <label className="mb-1 block text-sm text-slate-700">Account</label>
+          <select value={fromAccountCode} onChange={e=>setFromAccountCode(e.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" required>
+            {accounts.map(a => (<option key={a.code} value={a.code}>{a.label}</option>))}
+          </select>
         </div>
         <div>
           <label className="mb-1 block text-sm text-slate-700">Method</label>

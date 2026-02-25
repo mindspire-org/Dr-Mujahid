@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
-import Lab_AddStaffDialog, { type PharmacyStaff } from '../../components/lab/lab_AddStaffDialog'
-import { labApi } from '../../utils/api'
+import Hospital_AddStaffDialog, { type PharmacyStaff } from '../../components/hospital/hospital_AddStaffDialog'
+import Hospital_StaffEarningsDialog from '../../components/hospital/hospital_StaffEarningsDialog'
+import { hospitalApi } from '../../utils/api'
 
 type Shift = { id: string; name: string }
 
@@ -18,57 +19,71 @@ export default function Pharmacy_StaffManagement(){
   const [notice, setNotice] = useState<{ text: string; kind: 'success'|'error' } | null>(null)
   const [deleteOpen, setDeleteOpen] = useState(false)
   const [deleteId, setDeleteId] = useState<string | null>(null)
+  const [earningsOpen, setEarningsOpen] = useState(false)
+  const [earningsStaff, setEarningsStaff] = useState<{ id: string; name: string } | null>(null)
 
   useEffect(()=>{
     let mounted = true
     ;(async () => {
       try {
         const [staffRes, shiftRes] = await Promise.all([
-          labApi.listStaff({ page, limit }),
-          labApi.listShifts(),
+          (hospitalApi as any).listStaff({ page, limit }),
+          (hospitalApi as any).listShifts(),
         ])
         if (!mounted) return
-        const list = (staffRes.items||[]).map((x:any)=>({ id: x._id, name: x.name, position: x.position, phone: x.phone, joinDate: x.joinDate, address: x.address, status: x.status, salary: x.salary, shiftId: x.shiftId }))
+        const rawStaff: any[] = (staffRes?.items || staffRes?.staff || staffRes || [])
+        const list = rawStaff.map((x:any)=>({
+          id: x._id,
+          name: x.name,
+          position: x.position || x.role || '',
+          phone: x.phone,
+          joinDate: x.joinDate || '',
+          address: x.address || '',
+          status: x.status || (x.active===false? 'Inactive' : 'Active'),
+          salary: x.salary,
+          shiftId: x.shiftId,
+        }))
         setStaff(list)
-        setTotal(Number(staffRes.total || list.length || 0))
-        setTotalPages(Number(staffRes.totalPages || 1))
-        setShifts((shiftRes.items||[]).map((x:any)=>({ id: x._id, name: x.name })))
+        setTotal(Number(staffRes?.total || list.length || 0))
+        setTotalPages(Number(staffRes?.totalPages || 1))
+        const rawShifts: any[] = (shiftRes?.items || shiftRes?.shifts || shiftRes || [])
+        setShifts(rawShifts.map((x:any)=>({ id: x._id, name: x.name })))
       } catch (e) { console.error(e) }
     })()
     return ()=>{ mounted = false }
   }, [page, limit, reloadTick])
 
   const addStaff = async (s: PharmacyStaff) => {
-    await labApi.createStaff({
+    await hospitalApi.createStaff({
       name: s.name,
-      position: s.position,
+      role: s.position as any,
       phone: s.phone,
-      joinDate: s.joinDate,
-      address: s.address,
-      status: s.status,
       salary: s.salary,
       shiftId: s.shiftId,
+      joinDate: s.joinDate,
+      address: s.address,
+      active: s.status !== 'Inactive',
     })
     setReloadTick(t=>t+1)
   }
   const requestDelete = (id: string) => { setDeleteId(id); setDeleteOpen(true) }
   const performDelete = async () => {
     const id = deleteId; if (!id) { setDeleteOpen(false); return }
-    try { await labApi.deleteStaff(id); setReloadTick(t=>t+1); setNotice({ text: 'Staff deleted', kind: 'success' }) }
+    try { await hospitalApi.deleteStaff(id); setReloadTick(t=>t+1); setNotice({ text: 'Staff deleted', kind: 'success' }) }
     catch(e){ console.error(e); setNotice({ text: 'Failed to delete staff', kind: 'error' }) }
     finally { setDeleteOpen(false); setDeleteId(null); try { setTimeout(()=> setNotice(null), 2500) } catch {} }
   }
   const openEdit = (row: PharmacyStaff) => { setEditing(row); setEditOpen(true) }
   const saveEdit = async (updated: PharmacyStaff) => {
-    await labApi.updateStaff(updated.id, {
+    await hospitalApi.updateStaff(updated.id, {
       name: updated.name,
-      position: updated.position,
+      role: updated.position as any,
       phone: updated.phone,
-      joinDate: updated.joinDate,
-      address: updated.address,
-      status: updated.status,
       salary: updated.salary,
       shiftId: updated.shiftId,
+      joinDate: updated.joinDate,
+      address: updated.address,
+      active: updated.status !== 'Inactive',
     })
     setReloadTick(t=>t+1)
   }
@@ -101,7 +116,7 @@ export default function Pharmacy_StaffManagement(){
             <thead className="bg-slate-50 text-slate-700">
               <tr>
                 <th className="px-4 py-2 font-medium">Name</th>
-                <th className="px-4 py-2 font-medium">Position</th>
+                <th className="px-4 py-2 font-medium">Role</th>
                 <th className="px-4 py-2 font-medium">Phone</th>
                 <th className="px-4 py-2 font-medium">Shift</th>
                 <th className="px-4 py-2 font-medium">Salary</th>
@@ -121,6 +136,7 @@ export default function Pharmacy_StaffManagement(){
                   <td className="px-4 py-2">
                     <div className="flex items-center gap-2">
                       <button onClick={()=>openEdit(s)} className="rounded-md bg-sky-600 px-2 py-1 text-xs text-white hover:bg-sky-700">Edit</button>
+                      <button onClick={()=>{ setEarningsStaff({ id: s.id, name: s.name }); setEarningsOpen(true) }} className="rounded-md bg-emerald-600 px-2 py-1 text-xs text-white hover:bg-emerald-700">Earnings</button>
                       <button onClick={()=>requestDelete(s.id)} className="rounded-md bg-rose-600 px-2 py-1 text-xs text-white hover:bg-rose-700">Delete</button>
                     </div>
                   </td>
@@ -148,8 +164,15 @@ export default function Pharmacy_StaffManagement(){
         </div>
       </div>
 
-      <Lab_AddStaffDialog open={addOpen} onClose={()=>setAddOpen(false)} onSave={addStaff} />
-      <Lab_AddStaffDialog open={editOpen} onClose={()=>setEditOpen(false)} onSave={saveEdit} initial={editing ?? undefined} title="Edit Staff" submitLabel="Save" />
+      <Hospital_AddStaffDialog open={addOpen} onClose={()=>setAddOpen(false)} onSave={addStaff} />
+      <Hospital_AddStaffDialog open={editOpen} onClose={()=>setEditOpen(false)} onSave={saveEdit} initial={editing ?? undefined} title="Edit Staff" submitLabel="Save" />
+      {earningsStaff && (
+        <Hospital_StaffEarningsDialog
+          open={earningsOpen}
+          onClose={()=>{ setEarningsOpen(false); setEarningsStaff(null) }}
+          staff={{ id: earningsStaff.id, name: earningsStaff.name }}
+        />
+      )}
 
       {deleteOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">

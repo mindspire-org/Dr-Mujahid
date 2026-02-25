@@ -1,7 +1,14 @@
-import { Route, Routes } from 'react-router-dom'
+import { useEffect } from 'react'
+import { Navigate, Route, Routes } from 'react-router-dom'
 import Home from './pages/Home'
 import Hospital_Login from './pages/hospital/hospital_Login'
+import TherapyLab_Login from './pages/therapyLab/therapyLab_Login'
+import TherapyLab_Layout from './pages/therapyLab/therapyLab_Layout'
 import Hospital_Layout from './pages/hospital/hospital_Layout'
+import TherapyLab_TokenGenerator from './pages/therapyLab/therapyLab_TokenGenerator'
+import TherapyLab_Packages from './pages/therapyLab/therapyLab_MachinePackages'
+import TherapyLab_Management from './pages/therapyLab/therapyLab_Management'
+import ErrorBoundary from './components/ErrorBoundary'
 import Hospital_BedManagement from './pages/hospital/hospital_BedManagement'
 import Hospital_TokenGenerator from './pages/hospital/hospital_TokenGenerator'
 import Hospital_TodayTokens from './pages/hospital/hospital_TodayTokens'
@@ -12,7 +19,7 @@ import Hospital_UserManagement from './pages/hospital/hospital_UserManagement'
 import Hospital_AuditLogs from './pages/hospital/hospital_AuditLogs'
 import Hospital_Settings from './pages/hospital/hospital_Settings'
 import Hospital_Backup from './pages/hospital/hospital_Backup'
-import Hospital_Doctors from './pages/hospital/hospital_Doctors' 
+import Hospital_Doctors from './pages/hospital/hospital_Doctors'
 import Hospital_PatientList from './pages/hospital/hospital_PatientList.tsx'
 import Hospital_PatientProfile from './pages/hospital/hospital_PatientProfile.tsx'
 import Hospital_DischargeWizard from './pages/hospital/hospital_DischargeWizard.tsx'
@@ -50,15 +57,18 @@ import Hospital_CorporateTransactions from './pages/hospital/corporate/hospital_
 import Hospital_CorporateClaims from './pages/hospital/corporate/hospital_CorporateClaims'
 import Hospital_CorporatePayments from './pages/hospital/corporate/hospital_CorporatePayments'
 import Hospital_CorporateReports from './pages/hospital/corporate/hospital_CorporateReports'
- 
+import Hospital_CreditPatients from './pages/hospital/hospital_CreditPatients'
+
 import Doctor_Layout from './pages/doctor/doctor_Layout'
+import Doctor_Login from './pages/doctor/doctor_Login'
 import Doctor_Dashboard from './pages/doctor/doctor_Dashboard'
 import Doctor_Patients from './pages/doctor/doctor_Patients'
 import Doctor_Prescription from './pages/doctor/doctor_Prescription'
 import Doctor_PrescriptionHistory from './pages/doctor/doctor_PrescriptionHistory'
-import Doctor_Notifications from './pages/doctor/doctor_Notifications'
 import Doctor_Reports from './pages/doctor/doctor_Reports'
 import Doctor_Settings from './pages/doctor/doctor_Settings'
+import Doctor_PreviousHistoryView from './pages/doctor/doctor_PreviousHistoryView'
+import Doctor_PreviousLabEntryView from './pages/doctor/doctor_PreviousLabEntryView'
 
 import Lab_Login from './pages/lab/lab_Login'
 import Lab_Layout from './pages/lab/lab_Layout'
@@ -77,7 +87,7 @@ import Lab_ReturnHistory from './pages/lab/lab_ReturnHistory.tsx'
 import Lab_UserManagement from './pages/lab/lab_UserManagement'
 import Lab_Expenses from './pages/lab/lab_Expenses'
 import Lab_AuditLogs from './pages/lab/lab_AuditLogs'
-import Lab_Reports from './pages/lab/lab_Reports' 
+import Lab_Reports from './pages/lab/lab_Reports'
 import Lab_StaffAttendance from './pages/lab/lab_StaffAttendance'
 import Lab_StaffManagement from './pages/lab/lab_StaffManagement'
 import Lab_StaffSettings from './pages/lab/lab_StaffSettings'
@@ -100,8 +110,11 @@ import Finance_OpeningBalances from './pages/finance/finance_OpeningBalances'
 import Finance_ManagePettyCash from './pages/finance/finance_ManagePettyCash'
 import Finance_PettyCashAccounts from './pages/finance/finance_PettyCashAccounts'
 import Finance_BankAccounts from './pages/finance/finance_BankAccounts'
+import Finance_CollectionReport from './pages/finance/finance_CollectionReport'
 import Hospital_DoctorPayouts from './pages/hospital/hospital_DoctorPayouts'
 import Hospital_PettyCashBalance from './pages/hospital/hospital_PettyCashBalance'
+import Hospital_Notifications from './pages/hospital/hospital_Notifications'
+import Hospital_ManageBankBalance from './pages/hospital/hospital_ManageBankBalance'
 import Pharmacy_Login from './pages/pharmacy/pharmacy_Login'
 import Pharmacy_Layout from './pages/pharmacy/pharmacy_Layout'
 import Pharmacy_Dashboard from './pages/pharmacy/pharmacy_Dashboard'
@@ -113,6 +126,7 @@ import Pharmacy_Inventory from './pages/pharmacy/pharmacy_Inventory'
 import Pharmacy_AddInvoicePage from './components/pharmacy/pharmacy_AddInvoicePage'
 import Pharmacy_Customers from './pages/pharmacy/pharmacy_Customers'
 import Pharmacy_Suppliers from './pages/pharmacy/pharmacy_Suppliers'
+import Pharmacy_Companies from './pages/pharmacy/pharmacy_Companies'
 import Pharmacy_Settings from './pages/pharmacy/pharmacy_Settings'
 import Pharmacy_PayInOut from './pages/pharmacy/pharmacy_PayInOut'
 import Pharmacy_ManagerCashCount from './pages/pharmacy/pharmacy_ManagerCashCount'
@@ -120,18 +134,17 @@ import Pharmacy_SalesHistory from './pages/pharmacy/pharmacy_SalesHistory'
 import Pharmacy_PurchaseHistory from './pages/pharmacy/pharmacy_PurchaseHistory'
 import Pharmacy_ReturnHistory from './pages/pharmacy/pharmacy_ReturnHistory'
 import Pharmacy_Reports from './pages/pharmacy/pharmacy_Reports'
-import Pharmacy_UserManagement from './pages/pharmacy/pharmacy_UserManagement'
 import Pharmacy_Notifications from './pages/pharmacy/pharmacy_Notifications'
 import Pharmacy_AuditLogs from './pages/pharmacy/pharmacy_AuditLogs'
 import Pharmacy_Expenses from './pages/pharmacy/pharmacy_Expenses'
 import Pharmacy_CustomerReturns from './pages/pharmacy/pharmacy_CustomerReturns'
 import Pharmacy_SupplierReturns from './pages/pharmacy/pharmacy_SupplierReturns'
 import Pharmacy_Guidelines from './pages/pharmacy/pharmacy_Guidelines'
-import Pharmacy_StaffAttendance from './pages/pharmacy/pharmacy_StaffAttendance'
-import Pharmacy_StaffManagement from './pages/pharmacy/pharmacy_StaffManagement'
 import Pharmacy_StaffSettings from './pages/pharmacy/pharmacy_StaffSettings'
 import Pharmacy_StaffMonthly from './pages/pharmacy/pharmacy_StaffMonthly'
 import Pharmacy_SidebarPermissions from './pages/pharmacy/pharmacy_SidebarPermissions'
+import Pharmacy_PurchaseDrafts from './pages/pharmacy/pharmacy_PurchaseDrafts'
+import Pharmacy_HoldSales from './pages/pharmacy/pharmacy_HoldSales'
 import Diagnostic_Login from './pages/diagnostic/diagnostic_Login'
 import Diagnostic_Layout from './pages/diagnostic/diagnostic_Layout'
 import Diagnostic_Dashboard from './pages/diagnostic/diagnostic_Dashboard'
@@ -142,10 +155,12 @@ import Diagnostic_ResultEntry from './pages/diagnostic/diagnostic_ResultEntry'
 import Diagnostic_ReportGenerator from './pages/diagnostic/diagnostic_ReportGenerator'
 import Diagnostic_AuditLogs from './pages/diagnostic/diagnostic_AuditLogs'
 import Diagnostic_Settings from './pages/diagnostic/diagnostic_Settings'
-import Diagnostic_UserManagement from './pages/diagnostic/diagnostic_UserManagement'
 import Diagnostic_Referrals from './pages/diagnostic/diagnostic_Referrals'
+import Diagnostic_Appointments from './pages/diagnostic/diagnostic_Appointments'
+import Diagnostic_CreditPatients from './pages/diagnostic/diagnostic_CreditPatients'
 import Reception_Login from './pages/reception/reception_Login.tsx'
 import Reception_Layout from './pages/reception/reception_Layout.tsx'
+import Reception_Dashboard from './pages/reception/reception_Dashboard.tsx'
 import Reception_IPDBilling from './pages/reception/reception_IPDBilling'
 import Reception_IPDTransactions from './pages/reception/reception_IPDTransactions'
 import Aesthetic_Login from './pages/aesthetic/aesthetic_Login'
@@ -173,17 +188,96 @@ import Aesthetic_ProcedureCatalog from './pages/aesthetic/aesthetic_ProcedureCat
 import Aesthetic_DoctorFinance from './pages/aesthetic/aesthetic_DoctorFinance'
 import Aesthetic_DoctorPayouts from './pages/aesthetic/aesthetic_DoctorPayouts'
 
+import Counselling_Login from './pages/counselling/counselling_Login'
+
+import { hospitalApi } from './utils/api'
+
 export default function App() {
+  useEffect(() => {
+    const DEFAULT_TITLE = 'MindSpire HMS'
+    const DEFAULT_ICON = '/hospital_icon.ico'
+
+    const applyBranding = (raw: any) => {
+      const name = String(raw?.name || '').trim() || DEFAULT_TITLE
+      try { document.title = name } catch { }
+
+      const href = String(raw?.logoDataUrl || '').trim() || DEFAULT_ICON
+      try {
+        const head = document.head
+        if (!head) return
+        let link = head.querySelector("link[rel~='icon']") as HTMLLinkElement | null
+        if (!link) {
+          link = document.createElement('link')
+          link.rel = 'icon'
+          head.appendChild(link)
+        }
+        link.href = href
+      } catch { }
+    }
+
+    const loadFromCache = () => {
+      try {
+        const raw = localStorage.getItem('hospital.settings')
+        if (!raw) return
+        applyBranding(JSON.parse(raw))
+      } catch { }
+    }
+
+    loadFromCache()
+
+    const onUpdated = (ev: any) => {
+      applyBranding(ev?.detail)
+    }
+    try { window.addEventListener('hospital:settings-updated', onUpdated as any) } catch { }
+
+    ;(async () => {
+      try {
+        const s: any = await hospitalApi.getSettings()
+        if (s) applyBranding(s)
+      } catch { }
+    })()
+
+    return () => {
+      try { window.removeEventListener('hospital:settings-updated', onUpdated as any) } catch { }
+    }
+  }, [])
+
   return (
     <Routes>
       <Route path="/" element={<Home />} />
       <Route path="/hospital/login" element={<Hospital_Login />} />
+      <Route path="/therapy-lab/login" element={<TherapyLab_Login />} />
+      <Route path="/counselling/login" element={<Counselling_Login />} />
+      <Route path="/therapy-lab" element={<TherapyLab_Layout />}>
+        <Route index element={<Navigate to="lab-reports-entry" replace />} />
+        <Route path="lab-reports-entry" element={<Hospital_LabReportsEntry />} />
+        <Route path="manage-petty-cash" element={<Hospital_PettyCashBalance />} />
+        <Route path="manage-bank-balance" element={<Hospital_ManageBankBalance />} />
+        <Route path="notifications" element={<Hospital_Notifications />} />
+        <Route
+          path="token-generator"
+          element={
+            <ErrorBoundary
+              title="Therapy Token Generator crashed"
+              localStorageKeysToClear={[
+                'therapyLab.therapyMachines.custom',
+                'therapyLab.therapyMachines.hidden',
+              ]}
+            >
+              <TherapyLab_TokenGenerator />
+            </ErrorBoundary>
+          }
+        />
+        <Route path="packages" element={<TherapyLab_Packages />} />
+        <Route path="management" element={<TherapyLab_Management />} />
+      </Route>
       <Route path="/aesthetic/login" element={<Aesthetic_Login />} />
       <Route path="/hospital" element={<Hospital_Layout />}>
         <Route index element={<Hospital_Dashboard />} />
         <Route path="today-tokens" element={<Hospital_TodayTokens />} />
         <Route path="token-history" element={<Hospital_TokenHistory />} />
         <Route path="token-generator" element={<Hospital_TokenGenerator />} />
+        <Route path="credit-patients" element={<Hospital_CreditPatients />} />
         <Route path="appointments" element={<Hospital_Appointments />} />
         <Route path="departments" element={<Hospital_Departments />} />
         <Route path="bed-management" element={<Hospital_BedManagement />} />
@@ -204,6 +298,7 @@ export default function App() {
         <Route path="finance/transactions" element={<Finance_Transactions />} />
         <Route path="finance/expenses" element={<Finance_ExpenseHistory />} />
         <Route path="finance/petty-cash-balance" element={<Hospital_PettyCashBalance />} />
+        <Route path="finance/manage-bank-balance" element={<Hospital_ManageBankBalance />} />
         <Route path="finance/doctors" element={<Hospital_DoctorFinance />} />
         <Route path="finance/doctor-payouts" element={<Hospital_DoctorPayouts />} />
         <Route path="search-patients" element={<Hospital_SearchPatients />} />
@@ -224,6 +319,7 @@ export default function App() {
         <Route path="ipd/admissions/:id/billing" element={<Hospital_IpdBilling />} />
         <Route path="user-management" element={<Hospital_UserManagement />} />
         <Route path="audit" element={<Hospital_AuditLogs />} />
+        <Route path="notifications" element={<Hospital_Notifications />} />
         <Route path="settings" element={<Hospital_Settings />} />
         <Route path="backup" element={<Hospital_Backup />} />
         {/* Corporate Panel */}
@@ -263,24 +359,34 @@ export default function App() {
       <Route path="/diagnostic" element={<Diagnostic_Layout />}>
         <Route index element={<Diagnostic_Dashboard />} />
         <Route path="token-generator" element={<Diagnostic_TokenGenerator />} />
+        <Route path="manage-petty-cash" element={<Hospital_PettyCashBalance />} />
+        <Route path="manage-bank-balance" element={<Hospital_ManageBankBalance />} />
+        <Route path="notifications" element={<Hospital_Notifications />} />
         <Route path="tests" element={<Diagnostic_Tests />} />
         <Route path="sample-tracking" element={<Diagnostic_SampleTracking />} />
+        <Route path="credit-patients" element={<Diagnostic_CreditPatients />} />
         <Route path="result-entry" element={<Diagnostic_ResultEntry />} />
         <Route path="report-generator" element={<Diagnostic_ReportGenerator />} />
+        <Route path="appointments" element={<Diagnostic_Appointments />} />
         <Route path="referrals" element={<Diagnostic_Referrals />} />
-        <Route path="user-management" element={<Diagnostic_UserManagement />} />
+        <Route path="user-management" element={<Navigate to="/hospital/user-management" replace />} />
         <Route path="audit-logs" element={<Diagnostic_AuditLogs />} />
         <Route path="settings" element={<Diagnostic_Settings />} />
       </Route>
+      <Route path="/doctor/login" element={<Doctor_Login />} />
       <Route path="/doctor" element={<Doctor_Layout />}>
         <Route index element={<Doctor_Dashboard />} />
         <Route path="patients" element={<Doctor_Patients />} />
         <Route path="patient-search" element={<Hospital_SearchPatients />} />
         <Route path="prescription" element={<Doctor_Prescription />} />
+        <Route path="previous-history/:id" element={<Doctor_PreviousHistoryView />} />
+        <Route path="previous-lab-entry/:id" element={<Doctor_PreviousLabEntryView />} />
         <Route path="prescriptions" element={<Doctor_PrescriptionHistory />} />
         <Route path="prescription-history" element={<Doctor_PrescriptionHistory />} />
         <Route path="reports" element={<Doctor_Reports />} />
-        <Route path="notifications" element={<Doctor_Notifications />} />
+        <Route path="manage-petty-cash" element={<Hospital_PettyCashBalance />} />
+        <Route path="manage-bank-balance" element={<Hospital_ManageBankBalance />} />
+        <Route path="notifications" element={<Hospital_Notifications />} />
         <Route path="settings" element={<Doctor_Settings />} />
       </Route>
       <Route path="/lab/login" element={<Lab_Login />} />
@@ -318,13 +424,17 @@ export default function App() {
       <Route path="/pharmacy" element={<Pharmacy_Layout />}>
         <Route index element={<Pharmacy_Dashboard />} />
         <Route path="pos" element={<Pharmacy_POS />} />
+        <Route path="manage-petty-cash" element={<Hospital_PettyCashBalance />} />
+        <Route path="manage-bank-balance" element={<Hospital_ManageBankBalance />} />
         <Route path="prescriptions" element={<Pharmacy_Prescriptions />} />
         <Route path="referrals" element={<Pharmacy_Referrals />} />
         <Route path="prescriptions/:id" element={<Pharmacy_PrescriptionIntake />} />
         <Route path="inventory" element={<Pharmacy_Inventory />} />
         <Route path="inventory/add-invoice" element={<Pharmacy_AddInvoicePage />} />
+        <Route path="inventory/edit-invoice/:id" element={<Pharmacy_AddInvoicePage />} />
         <Route path="customers" element={<Pharmacy_Customers />} />
         <Route path="suppliers" element={<Pharmacy_Suppliers />} />
+        <Route path="companies" element={<Pharmacy_Companies />} />
         <Route path="sales-history" element={<Pharmacy_SalesHistory />} />
         <Route path="purchase-history" element={<Pharmacy_PurchaseHistory />} />
         <Route path="return-history" element={<Pharmacy_ReturnHistory />} />
@@ -332,14 +442,14 @@ export default function App() {
         <Route path="notifications" element={<Pharmacy_Notifications />} />
         <Route path="supplier-returns" element={<Pharmacy_SupplierReturns />} />
         <Route path="customer-returns" element={<Pharmacy_CustomerReturns />} />
-        <Route path="staff-attendance" element={<Pharmacy_StaffAttendance />} />
-        <Route path="staff-management" element={<Pharmacy_StaffManagement />} />
         <Route path="staff-settings" element={<Pharmacy_StaffSettings />} />
         <Route path="staff-monthly" element={<Pharmacy_StaffMonthly />} />
+        <Route path="purchase-drafts" element={<Pharmacy_PurchaseDrafts />} />
+        <Route path="hold-sales" element={<Pharmacy_HoldSales />} />
         <Route path="guidelines" element={<Pharmacy_Guidelines />} />
         <Route path="settings" element={<Pharmacy_Settings />} />
         <Route path="sidebar-permissions" element={<Pharmacy_SidebarPermissions />} />
-        <Route path="user-management" element={<Pharmacy_UserManagement />} />
+        <Route path="user-management" element={<Navigate to="/hospital/user-management" replace />} />
         <Route path="audit-logs" element={<Pharmacy_AuditLogs />} />
         <Route path="expenses" element={<Pharmacy_Expenses />} />
         <Route path="pay-in-out" element={<Pharmacy_PayInOut />} />
@@ -354,28 +464,39 @@ export default function App() {
         <Route path="manage-petty-cash" element={<Finance_ManagePettyCash />} />
         <Route path="petty-cash" element={<Finance_PettyCashAccounts />} />
         <Route path="bank-accounts" element={<Finance_BankAccounts />} />
+        <Route path="collection-report" element={<Finance_CollectionReport />} />
         <Route path="add-expense" element={<Finance_AddExpense />} />
         <Route path="transactions" element={<Finance_Transactions />} />
         <Route path="expenses" element={<Finance_ExpenseHistory />} />
+        <Route path="doctors" element={<Hospital_DoctorFinance />} />
         <Route path="doctor-payouts" element={<Hospital_DoctorPayouts />} />
         <Route path="pharmacy-reports" element={<Pharmacy_Reports />} />
         <Route path="lab-reports" element={<Lab_Reports />} />
         <Route path="diagnostics-dashboard" element={<Diagnostic_Dashboard />} />
         <Route path="staff-dashboard" element={<Hospital_StaffDashboard />} />
         <Route path="hospital-dashboard" element={<Hospital_Dashboard />} />
+        <Route path="manage-bank-balance" element={<Hospital_ManageBankBalance />} />
       </Route>
       <Route path="/reception/login" element={<Reception_Login />} />
       <Route path="/reception" element={<Reception_Layout />}>
+        <Route index element={<Reception_Dashboard />} />
         <Route path="token-generator" element={<Hospital_TokenGenerator />} />
         <Route path="today-tokens" element={<Hospital_TodayTokens />} />
+        <Route path="token-history" element={<Hospital_TokenHistory />} />
+        <Route path="credit-patients" element={<Hospital_CreditPatients />} />
+        <Route path="diagnostic/credit-patients" element={<Diagnostic_CreditPatients />} />
+        <Route path="appointments" element={<Hospital_Appointments />} />
         <Route path="search-patients" element={<Hospital_SearchPatients />} />
+        <Route path="lab-reports-entry" element={<Hospital_LabReportsEntry />} />
+        <Route path="history-taking" element={<Hospital_HistoryTaking />} />
+        <Route path="manage-petty-cash" element={<Hospital_PettyCashBalance />} />
+        <Route path="manage-bank-balance" element={<Hospital_ManageBankBalance />} />
+        <Route path="notifications" element={<Hospital_Notifications />} />
         <Route path="ipd-billing" element={<Reception_IPDBilling />} />
         <Route path="ipd-transactions" element={<Reception_IPDTransactions />} />
         <Route path="diagnostic/token-generator" element={<Diagnostic_TokenGenerator />} />
         <Route path="diagnostic/sample-tracking" element={<Diagnostic_SampleTracking />} />
-        <Route path="lab/sample-intake" element={<Lab_Orders />} />
-        <Route path="lab/sample-tracking" element={<Lab_Tracking />} />
-        <Route path="lab/manager-cash-count" element={<Lab_ManagerCashCount />} />
+        <Route path="diagnostic/appointments" element={<Diagnostic_Appointments />} />
       </Route>
     </Routes>
   )
