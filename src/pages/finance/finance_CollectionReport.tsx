@@ -99,20 +99,20 @@ export default function Finance_CollectionReport() {
   }
 
   return (
-    <div className="w-full px-6 py-8 space-y-4">
-      <div className="flex items-center justify-between">
+    <div className="w-full px-3 sm:px-6 py-5 sm:py-8 space-y-4">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
           <div className="text-2xl font-bold text-slate-800">Collection Report</div>
           <div className="text-sm text-slate-500">Petty cash collections, payments, and balances</div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <button onClick={() => setTick(t => t + 1)} className="btn-outline-navy">Refresh</button>
           <button onClick={exportCsv} className="btn-outline-navy">Export CSV</button>
         </div>
       </div>
 
       <div className="rounded-xl border border-slate-200 bg-white p-4">
-        <div className="grid items-end gap-3 md:grid-cols-7">
+        <div className="grid items-end gap-3 sm:grid-cols-2 lg:grid-cols-7">
           <div>
             <label className="mb-1 block text-sm text-slate-700">Department</label>
             <select value={department} onChange={e => setDepartment(e.target.value as any)} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm">
@@ -159,12 +159,12 @@ export default function Finance_CollectionReport() {
           </div>
         </div>
 
-        <div className="mt-3 grid items-end gap-3 md:grid-cols-7">
-          <div className="md:col-span-4">
+        <div className="mt-3 grid items-end gap-3 sm:grid-cols-2 lg:grid-cols-7">
+          <div className="sm:col-span-2 lg:col-span-4">
             <label className="mb-1 block text-sm text-slate-700">Search</label>
             <input value={q} onChange={e => setQ(e.target.value)} placeholder="owner, customer, invoice, txn..." className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
           </div>
-          <div className="md:col-span-3" />
+          <div className="hidden lg:block lg:col-span-3" />
         </div>
       </div>
 

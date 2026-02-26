@@ -72,8 +72,8 @@ export default function Finance_Header({ onToggleSidebar, collapsed, onToggleThe
             <Menu className="h-5 w-5" />
           </button>
 
-          <Link to="/finance" className="ml-3 flex items-center gap-2">
-            <div className="flex h-8 w-8 items-center justify-center overflow-hidden rounded-full bg-white/10 ring-1 ring-white/15">
+          <Link to="/finance" className="ml-3 flex min-w-0 items-center gap-2">
+            <div className="flex h-7 w-7 sm:h-8 sm:w-8 items-center justify-center overflow-hidden rounded-full bg-white/10 ring-1 ring-white/15">
               {brand.logoDataUrl ? (
                 <img src={brand.logoDataUrl} alt="Logo" className="h-full w-full object-cover" />
               ) : (
@@ -82,8 +82,8 @@ export default function Finance_Header({ onToggleSidebar, collapsed, onToggleThe
                 </div>
               )}
             </div>
-            <div className="font-semibold text-white">{String(brand.name || '').trim() || DEFAULT_CLINIC_NAME}</div>
-            <span className="ml-2 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700">Online</span>
+            <div className="min-w-0 font-semibold text-white text-sm sm:text-base truncate">{String(brand.name || '').trim() || DEFAULT_CLINIC_NAME}</div>
+            <span className="ml-2 hidden sm:inline-flex rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700">Online</span>
           </Link>
 
           <div className="ml-auto flex items-center gap-3 text-sm">

@@ -159,16 +159,16 @@ export default function Hospital_Doctors() {
 
   return (
     <div>
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <h2 className="text-xl font-semibold text-slate-800">Doctors</h2>
-        <div className="flex items-center gap-2">
-          <input value={q} onChange={e=>setQ(e.target.value)} placeholder="Search doctors..." className="w-56 rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-200" />
-          <button onClick={()=>setShowAdd(true)} className="rounded-md bg-sky-600 px-3 py-2 text-sm font-medium text-white hover:bg-sky-700">+ Add Doctor</button>
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-2">
+          <input value={q} onChange={e=>setQ(e.target.value)} placeholder="Search doctors..." className="w-full sm:w-56 rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-200" />
+          <button onClick={()=>setShowAdd(true)} className="w-full sm:w-auto rounded-md bg-sky-600 px-3 py-2 text-sm font-medium text-white hover:bg-sky-700">+ Add Doctor</button>
         </div>
       </div>
 
-      <div className="mt-4 overflow-hidden rounded-xl border border-slate-200 bg-white">
-        <table className="min-w-full divide-y divide-slate-200 text-sm">
+      <div className="mt-4 w-full overflow-x-auto rounded-xl border border-slate-200 bg-white">
+        <table className="min-w-max w-full divide-y divide-slate-200 text-sm">
           <thead className="bg-slate-50 text-slate-600">
             <tr>
               <th className="px-4 py-2 text-left">Name</th>

@@ -100,16 +100,16 @@ export default function Finance_Transactions() {
   }
 
   return (
-    <div className="w-full px-6 py-8 space-y-4">
-      <div className="flex items-center justify-between">
+    <div className="w-full px-4 py-6 sm:px-6 sm:py-8 space-y-4">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <div className="text-2xl font-bold text-slate-800">Transactions</div>
           <div className="text-sm text-slate-500">OPD, IPD, Charges, and Expenses</div>
         </div>
-        <div className="flex items-center gap-2">
-          <button onClick={()=>setTick(t=>t+1)} className="btn-outline-navy">Refresh</button>
-          <button onClick={exportCsv} className="btn-outline-navy">Export CSV</button>
-          <Link to={`${base}/add-expense`} className="btn">+ Add Expense</Link>
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-2">
+          <button onClick={()=>setTick(t=>t+1)} className="btn-outline-navy w-full sm:w-auto">Refresh</button>
+          <button onClick={exportCsv} className="btn-outline-navy w-full sm:w-auto">Export CSV</button>
+          <Link to={`${base}/add-expense`} className="btn w-full sm:w-auto">+ Add Expense</Link>
         </div>
       </div>
 
@@ -150,8 +150,8 @@ export default function Finance_Transactions() {
 
       <div className="rounded-xl border border-slate-200 bg-white">
         <div className="border-b border-slate-200 px-4 py-3 font-medium text-slate-800">Results</div>
-        <div className="overflow-x-auto">
-          <table className="min-w-full text-left text-sm">
+        <div className="w-full overflow-x-auto">
+          <table className="min-w-max w-full text-left text-sm">
             <thead className="bg-slate-50 text-slate-700">
               <tr>
                 <th className="px-4 py-2 font-medium">Date/Time</th>

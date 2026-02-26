@@ -510,8 +510,8 @@ export default function Hospital_Appointments() {
         </div>
       </div>
 
-      <div className="mt-4 overflow-hidden rounded-xl border border-slate-200 bg-white">
-        <table className="min-w-full divide-y divide-slate-200 text-sm">
+      <div className="mt-4 w-full overflow-x-auto rounded-xl border border-slate-200 bg-white">
+        <table className="min-w-max w-full divide-y divide-slate-200 text-sm">
           <thead className="bg-slate-50 text-slate-600">
             <tr>
               <th className="px-4 py-2 text-left">Date</th>

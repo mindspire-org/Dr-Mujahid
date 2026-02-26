@@ -171,7 +171,7 @@ export default function Pharmacy_PurchaseHistory() {
       <div className="text-xl font-bold text-slate-800">Purchase History</div>
 
       <div className="rounded-xl border border-slate-200 bg-white p-4">
-        <div className="grid gap-3 md:grid-cols-5">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
           <div>
             <label className="mb-1 block text-sm text-slate-700">From</label>
             <input type="date" value={from} onChange={e=>setFrom(e.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
@@ -184,10 +184,10 @@ export default function Pharmacy_PurchaseHistory() {
             <label className="mb-1 block text-sm text-slate-700">Search</label>
             <input value={search} onChange={e=>setSearch(e.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" placeholder="medicine, supplier, invoice" />
           </div>
-          <div className="flex items-end gap-2">
-            <button onClick={()=>{ setPage(1); setSearchTick(t=>t+1) }} className="btn">Apply</button>
-            <button type="button" onClick={exportCsv} disabled={exporting} className="btn-outline-navy disabled:opacity-60">{exporting? 'Exporting...' : 'Download'}</button>
-            <select value={limit} onChange={e=>{ setLimit(parseInt(e.target.value)); setPage(1) }} className="rounded-md border border-slate-300 px-2 py-1 text-sm text-slate-700">
+          <div className="grid grid-cols-1 gap-2 sm:flex sm:items-end sm:gap-2">
+            <button onClick={()=>{ setPage(1); setSearchTick(t=>t+1) }} className="btn w-full sm:w-auto">Apply</button>
+            <button type="button" onClick={exportCsv} disabled={exporting} className="btn-outline-navy w-full disabled:opacity-60 sm:w-auto">{exporting? 'Exporting...' : 'Download'}</button>
+            <select value={limit} onChange={e=>{ setLimit(parseInt(e.target.value)); setPage(1) }} className="w-full rounded-md border border-slate-300 px-2 py-2 text-sm text-slate-700 sm:w-auto sm:py-1">
               <option value={10}>10</option>
               <option value={20}>20</option>
               <option value={50}>50</option>
@@ -200,7 +200,7 @@ export default function Pharmacy_PurchaseHistory() {
       <div className="rounded-xl border border-slate-200 bg-white">
         <div className="border-b border-slate-200 px-4 py-3 font-medium text-slate-800">Results</div>
         <div className="overflow-x-auto">
-          <table className="min-w-full text-left text-sm">
+          <table className="min-w-max w-full text-left text-sm">
             <thead className="bg-slate-50 text-slate-700">
               <tr>
                 <th className="px-4 py-2 font-medium">Date</th>

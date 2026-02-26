@@ -47,9 +47,9 @@ const nav = [
 
 export const pharmacySidebarNav = nav
 
-type Props = { collapsed?: boolean; onExpand?: () => void }
+type Props = { collapsed?: boolean; onExpand?: () => void; mobileOpen?: boolean; onCloseMobile?: () => void }
 
-export default function Pharmacy_Sidebar({ collapsed = false, onExpand }: Props) {
+export default function Pharmacy_Sidebar({ collapsed = false, onExpand, mobileOpen = false, onCloseMobile }: Props) {
   const navigate = useNavigate()
   const [username, setUsername] = useState<string>('')
   const [items, setItems] = useState(nav)
@@ -119,45 +119,89 @@ export default function Pharmacy_Sidebar({ collapsed = false, onExpand }: Props)
 
     setItems(nav.filter(it => canSee(it.to)))
   }, [])
-  return (
-    <aside
-      className={`hidden md:flex ${collapsed ? 'md:w-16' : 'md:w-64'} md:flex-col md:border-r md:text-white min-h-0 overflow-hidden transition-[width] duration-200 ease-in-out`}
-      style={{ background: 'linear-gradient(180deg, var(--navy) 0%, var(--navy-700) 100%)', borderColor: 'rgba(255,255,255,0.12)' }}
-    >
-      <nav className="hospital-sidebar-scroll flex-1 min-h-0 overflow-y-auto p-3 space-y-1">
-        {items.map(item => {
-          const Icon = item.Icon
-          return (
-            <NavLink
-              key={item.to}
-              to={item.to}
-              className={({ isActive }) =>
-                `flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium ${isActive ? 'bg-white/10 text-white' : 'text-white/80 hover:bg-white/5'
-                }`
-              }
-              end={item.end}
-              onClick={() => {
-                if (collapsed) onExpand?.()
-              }}
-            >
-              <Icon className="h-4 w-4 shrink-0" />
-              {!collapsed && <span className="truncate">{item.label}</span>}
-            </NavLink>
-          )
-        })}
-        <div className="pt-2">
-          <PortalSwitcher collapsed={collapsed} onExpand={onExpand} />
-          <div className="mx-2 border-t" style={{ borderColor: 'rgba(255,255,255,0.12)' }} />
-          <button
-            type="button"
-            onClick={handleLogout}
-            className="mt-2 w-full inline-flex items-center justify-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors duration-150 hover:bg-rose-600/80 hover:text-white"
-            style={{ backgroundColor: 'rgba(255,255,255,0.08)', color: '#ffffff', border: '1px solid rgba(255,255,255,0.14)' }}
+
+  const renderNav = ({ isCollapsed }: { isCollapsed: boolean }) => (
+    <nav className="hospital-sidebar-scroll flex-1 min-h-0 overflow-y-auto p-3 space-y-1">
+      {items.map(item => {
+        const Icon = item.Icon
+        return (
+          <NavLink
+            key={item.to}
+            to={item.to}
+            className={({ isActive }) =>
+              `flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium ${isActive ? 'bg-white/10 text-white' : 'text-white/80 hover:bg-white/5'
+              }`
+            }
+            end={item.end}
+            onClick={() => {
+              if (isCollapsed) onExpand?.()
+              onCloseMobile?.()
+            }}
           >
-            Logout
-          </button>
-        </div>
-      </nav>
-    </aside>
+            <Icon className="h-4 w-4 shrink-0" />
+            {!isCollapsed && <span className="truncate">{item.label}</span>}
+          </NavLink>
+        )
+      })}
+      <div className="pt-2">
+        <PortalSwitcher collapsed={isCollapsed} onExpand={onExpand} />
+        <div className="mx-2 border-t" style={{ borderColor: 'rgba(255,255,255,0.12)' }} />
+        <button
+          type="button"
+          onClick={() => {
+            onCloseMobile?.()
+            void handleLogout()
+          }}
+          className="mt-2 w-full inline-flex items-center justify-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors duration-150 hover:bg-rose-600/80 hover:text-white"
+          style={{ backgroundColor: 'rgba(255,255,255,0.08)', color: '#ffffff', border: '1px solid rgba(255,255,255,0.14)' }}
+        >
+          Logout
+        </button>
+      </div>
+    </nav>
+  )
+
+  return (
+    <>
+      {mobileOpen && (
+        <div
+          className="fixed inset-0 z-40 bg-black/40 md:hidden"
+          onClick={() => onCloseMobile?.()}
+          aria-hidden="true"
+        />
+      )}
+
+      {mobileOpen && (
+        <aside
+          className="fixed inset-y-0 left-0 z-50 w-64 transform md:hidden transition-transform duration-200 ease-in-out translate-x-0"
+          style={{ background: 'linear-gradient(180deg, var(--navy) 0%, var(--navy-700) 100%)' }}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Pharmacy navigation"
+        >
+          <div className="flex h-full flex-col text-white">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-white/10">
+              <div className="text-sm font-semibold text-white">Menu</div>
+              <button
+                type="button"
+                onClick={() => onCloseMobile?.()}
+                className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-white/15 text-white hover:bg-white/10"
+                aria-label="Close sidebar"
+              >
+                <span aria-hidden="true">×</span>
+              </button>
+            </div>
+            {renderNav({ isCollapsed: false })}
+          </div>
+        </aside>
+      )}
+
+      <aside
+        className={`hidden md:flex ${collapsed ? 'md:w-16' : 'md:w-64'} md:flex-col md:border-r md:text-white min-h-0 overflow-hidden transition-[width] duration-200 ease-in-out`}
+        style={{ background: 'linear-gradient(180deg, var(--navy) 0%, var(--navy-700) 100%)', borderColor: 'rgba(255,255,255,0.12)' }}
+      >
+        {renderNav({ isCollapsed: collapsed })}
+      </aside>
+    </>
   )
 }

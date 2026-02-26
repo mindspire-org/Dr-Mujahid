@@ -1,24 +1,24 @@
 import { useEffect, useMemo, useState } from 'react'
 import { hospitalApi } from '../../utils/api'
 
-function formatPKR(n?: number){
-  return `Rs. ${new Intl.NumberFormat('en-PK', { maximumFractionDigits: 0 }).format(Number(n||0))}`
+function formatPKR(n?: number) {
+  return `Rs. ${new Intl.NumberFormat('en-PK', { maximumFractionDigits: 0 }).format(Number(n || 0))}`
 }
 
-export default function Finance_PettyCashRefill(){
+export default function Finance_PettyCashRefill() {
   const [pettyList, setPettyList] = useState<any[]>([])
   const [bankList, setBankList] = useState<any[]>([])
   const [pettyCode, setPettyCode] = useState('')
   const [bankId, setBankId] = useState('')
   const [amount, setAmount] = useState<number>(0)
-  const [dateIso, setDateIso] = useState<string>(()=> new Date().toISOString().slice(0,10))
+  const [dateIso, setDateIso] = useState<string>(() => new Date().toISOString().slice(0, 10))
   const [memo, setMemo] = useState('')
-  const [status, setStatus] = useState<any|null>(null)
+  const [status, setStatus] = useState<any | null>(null)
   const [submitting, setSubmitting] = useState(false)
-  
 
-  useEffect(()=>{
-    (async ()=>{
+
+  useEffect(() => {
+    (async () => {
       try {
         const [p, b]: any = await Promise.all([
           hospitalApi.listPettyCashAccounts(),
@@ -26,12 +26,12 @@ export default function Finance_PettyCashRefill(){
         ])
         setPettyList(p?.accounts || [])
         setBankList(b?.accounts || [])
-      } catch {}
+      } catch { }
     })()
   }, [])
 
-  useEffect(()=>{
-    (async ()=>{
+  useEffect(() => {
+    (async () => {
       if (!pettyCode) { setStatus(null); return }
       try {
         const res: any = await hospitalApi.getPettyCashStatus(pettyCode)
@@ -40,32 +40,32 @@ export default function Finance_PettyCashRefill(){
     })()
   }, [pettyCode])
 
-  const pettyAccountName = useMemo(()=>{
-    const a = pettyList.find(x=> x.code===pettyCode)
+  const pettyAccountName = useMemo(() => {
+    const a = pettyList.find(x => x.code === pettyCode)
     return a?.name || ''
   }, [pettyList, pettyCode])
 
-  async function submit(){
+  async function submit() {
     if (!pettyCode) return alert('Select petty cash account')
     if (!bankId) return alert('Select bank account')
-    const amt = Number(amount||0)
-    if (!(amt>0)) return alert('Enter a valid amount')
+    const amt = Number(amount || 0)
+    if (!(amt > 0)) return alert('Enter a valid amount')
     setSubmitting(true)
     try {
-      const resp: any = await hospitalApi.refillPettyCash({ pettyCode, bankId, amount: amt, dateIso, memo })
+      await hospitalApi.refillPettyCash({ pettyCode, bankId, amount: amt, dateIso, memo })
       alert('Refill recorded successfully')
       setAmount(0); setMemo('')
       // refresh status after refill
       try {
-        const res: any = await hospitalApi.getPettyCashStatus(pettyCode); setStatus(res||null)
-      } catch {}
-    } catch(e:any){
+        const res: any = await hospitalApi.getPettyCashStatus(pettyCode); setStatus(res || null)
+      } catch { }
+    } catch (e: any) {
       alert(e?.message || 'Failed to refill petty cash')
     } finally { setSubmitting(false) }
   }
 
   return (
-    <div className="w-full px-6 py-6 space-y-4">
+    <div className="w-full px-3 sm:px-6 py-5 sm:py-6 space-y-4">
       <div>
         <div className="text-2xl font-bold text-slate-800">Petty Cash Refill / Top-Up</div>
         <div className="text-sm text-slate-500">Transfer funds from a bank account to a petty cash account</div>
@@ -75,33 +75,33 @@ export default function Finance_PettyCashRefill(){
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           <div>
             <label className="mb-1 block text-sm font-medium text-slate-700">Petty Cash Account</label>
-            <select value={pettyCode} onChange={e=> setPettyCode(e.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm">
+            <select value={pettyCode} onChange={e => setPettyCode(e.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm">
               <option value="">Select petty cash</option>
-              {pettyList.map((p:any)=> (
+              {pettyList.map((p: any) => (
                 <option key={p.code} value={p.code}>{p.code} — {p.name}</option>
               ))}
             </select>
           </div>
           <div>
             <label className="mb-1 block text-sm font-medium text-slate-700">Bank Account (Source)</label>
-            <select value={bankId} onChange={e=> setBankId(e.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm">
+            <select value={bankId} onChange={e => setBankId(e.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm">
               <option value="">Select bank</option>
-              {bankList.map((b:any)=> (
+              {bankList.map((b: any) => (
                 <option key={b.id} value={b.id}>{b.bankName} — {b.accountTitle}</option>
               ))}
             </select>
           </div>
           <div>
             <label className="mb-1 block text-sm font-medium text-slate-700">Refill Date</label>
-            <input type="date" value={dateIso} onChange={e=> setDateIso(e.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
+            <input type="date" value={dateIso} onChange={e => setDateIso(e.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
           </div>
           <div>
             <label className="mb-1 block text-sm font-medium text-slate-700">Refill Amount</label>
-            <input value={amount || ''} onChange={e=> setAmount(Number(e.target.value||0))} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" placeholder="0" />
+            <input value={amount || ''} onChange={e => setAmount(Number(e.target.value || 0))} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" placeholder="0" />
           </div>
           <div className="lg:col-span-2">
             <label className="mb-1 block text-sm font-medium text-slate-700">Remarks</label>
-            <input value={memo} onChange={e=> setMemo(e.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" placeholder="Monthly petty cash top-up" />
+            <input value={memo} onChange={e => setMemo(e.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" placeholder="Monthly petty cash top-up" />
           </div>
         </div>
         <div className="flex justify-end">

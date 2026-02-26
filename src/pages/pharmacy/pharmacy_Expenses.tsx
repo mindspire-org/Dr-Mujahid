@@ -39,37 +39,37 @@ export default function Pharmacy_Expenses() {
     try {
       const raw = localStorage.getItem('pharmacy.user')
       if (raw) { const u = JSON.parse(raw); if (u && typeof u.username === 'string') return u.username }
-    } catch {}
+    } catch { }
     try { return localStorage.getItem('pharma_user') || 'admin' } catch { return 'admin' }
   }, [])
 
   useEffect(() => {
     let mounted = true
-    ;(async () => {
-      try {
-        const res: any = await pharmacyApi.listExpenses({ from: from || undefined, to: to || undefined, minAmount, search: search || undefined, type: etype === 'All Types' ? undefined : etype, user: user || undefined, page, limit })
-        if (!mounted) return
-        const mapped: Expense[] = (res.items || []).map((x: any) => ({ id: x._id, date: x.date, datetime: x.datetime, type: x.type, note: x.note || '', amount: x.amount, createdBy: x.createdBy }))
-        setItems(mapped)
-        setTotal(Number(res.total || mapped.length || 0))
-        setTotalPages(Number(res.totalPages || 1))
-      } catch (e) {
-        console.error(e)
-      }
-    })()
+      ; (async () => {
+        try {
+          const res: any = await pharmacyApi.listExpenses({ from: from || undefined, to: to || undefined, minAmount, search: search || undefined, type: etype === 'All Types' ? undefined : etype, user: user || undefined, page, limit } as any)
+          if (!mounted) return
+          const mapped: Expense[] = (res.items || []).map((x: any) => ({ id: x._id, date: x.date, datetime: x.datetime, type: x.type, note: x.note || '', amount: x.amount, createdBy: x.createdBy }))
+          setItems(mapped)
+          setTotal(Number(res.total || mapped.length || 0))
+          setTotalPages(Number(res.totalPages || 1))
+        } catch (e) {
+          console.error(e)
+        }
+      })()
     return () => { mounted = false }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tick, from, to, minAmount, search, user, etype, page, limit])
 
-  const refresh = () => setTick(t=>t+1)
+  const refresh = () => setTick(t => t + 1)
 
-  useEffect(()=>{
+  useEffect(() => {
     const onRefresh = () => { setPage(1); refresh() }
-    try { window.addEventListener('pharmacy:expenses:refresh', onRefresh as any) } catch {}
-    return () => { try { window.removeEventListener('pharmacy:expenses:refresh', onRefresh as any) } catch {} }
+    try { window.addEventListener('pharmacy:expenses:refresh', onRefresh as any) } catch { }
+    return () => { try { window.removeEventListener('pharmacy:expenses:refresh', onRefresh as any) } catch { } }
   }, [])
 
-  
+
 
   const remove = async (id: string) => {
     await pharmacyApi.deleteExpense(id)
@@ -81,7 +81,7 @@ export default function Pharmacy_Expenses() {
       const s = String(v ?? '')
       return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s
     }
-    const header = ['Date','Time','Amount','Note','Type','User'].map(escape).join(',')
+    const header = ['Date', 'Time', 'Amount', 'Note', 'Type', 'User'].map(escape).join(',')
     const lines = items.map(e => [
       e.date,
       e.datetime ? new Date(e.datetime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '',
@@ -95,7 +95,7 @@ export default function Pharmacy_Expenses() {
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
-    a.download = `expenses-${new Date().toISOString().slice(0,10)}.csv`
+    a.download = `expenses-${new Date().toISOString().slice(0, 10)}.csv`
     a.click()
     URL.revokeObjectURL(url)
   }
@@ -160,10 +160,10 @@ export default function Pharmacy_Expenses() {
       y += maxLines * 4 + 2
       doc.line(margin, y, pageW - margin, y)
     }
-    doc.save(`expenses-${new Date().toISOString().slice(0,10)}.pdf`)
+    doc.save(`expenses-${new Date().toISOString().slice(0, 10)}.pdf`)
   }
 
-  
+
 
   return (
     <div className="space-y-4">
@@ -178,13 +178,13 @@ export default function Pharmacy_Expenses() {
           <div>
             <label className="mb-1 block text-sm text-slate-700">Date Range</label>
             <div className="grid grid-cols-2 gap-2">
-              <input type="date" value={from} onChange={e=>setFrom(e.target.value)} className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900" placeholder="Start" />
-              <input type="date" value={to} onChange={e=>setTo(e.target.value)} className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900" placeholder="End" />
+              <input type="date" value={from} onChange={e => setFrom(e.target.value)} className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900" placeholder="Start" />
+              <input type="date" value={to} onChange={e => setTo(e.target.value)} className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900" placeholder="End" />
             </div>
           </div>
           <div>
             <label className="mb-1 block text-sm text-slate-700">Expense Type</label>
-            <select value={etype} onChange={e=>{ setEtype(e.target.value as any); setPage(1) }} className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900">
+            <select value={etype} onChange={e => { setEtype(e.target.value as any); setPage(1) }} className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900">
               <option>All Types</option>
               <option>Rent</option>
               <option>Utilities</option>
@@ -196,15 +196,15 @@ export default function Pharmacy_Expenses() {
           </div>
           <div>
             <label className="mb-1 block text-sm text-slate-700">Minimum Amount</label>
-            <input type="number" value={minAmount} onChange={e=>setMinAmount(parseFloat(e.target.value || '0'))} className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900" />
+            <input type="number" value={minAmount} onChange={e => setMinAmount(parseFloat(e.target.value || '0'))} className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900" />
           </div>
           <div>
             <label className="mb-1 block text-sm text-slate-700">User</label>
-            <input value={user} onChange={e=>setUser(e.target.value)} className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900" placeholder="Username" />
+            <input value={user} onChange={e => setUser(e.target.value)} className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900" placeholder="Username" />
           </div>
           <div className="flex items-end gap-2">
-            <button type="button" onClick={()=>{ setPage(1); refresh() }} className="btn">Apply</button>
-            <select value={limit} onChange={e=>{ setLimit(parseInt(e.target.value)); setPage(1) }} className="rounded-md border border-slate-300 bg-white px-2 py-1 text-sm text-slate-700">
+            <button type="button" onClick={() => { setPage(1); refresh() }} className="btn">Apply</button>
+            <select value={limit} onChange={e => { setLimit(parseInt(e.target.value)); setPage(1) }} className="rounded-md border border-slate-300 bg-white px-2 py-1 text-sm text-slate-700">
               <option value={10}>10</option>
               <option value={20}>20</option>
               <option value={50}>50</option>
@@ -218,7 +218,7 @@ export default function Pharmacy_Expenses() {
         <div className="mb-3 flex items-center justify-between">
           <div className="font-medium text-slate-800">Expenses</div>
           <div className="flex items-center gap-2">
-            <input value={search} onChange={e=>setSearch(e.target.value)} className="w-64 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900" placeholder="Search expenses..." />
+            <input value={search} onChange={e => setSearch(e.target.value)} className="w-64 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900" placeholder="Search expenses..." />
             <button type="button" onClick={exportCSV} className="rounded-md border border-slate-200 px-3 py-1.5 text-sm hover:bg-slate-50">Download CSV</button>
             <button type="button" onClick={exportPDF} className="rounded-md border border-slate-200 px-3 py-1.5 text-sm hover:bg-slate-50">Download PDF</button>
           </div>
@@ -248,9 +248,9 @@ export default function Pharmacy_Expenses() {
                   <td className="px-4 py-2 text-right">
                     <div className="flex items-center justify-end gap-2">
                       {e.type === 'Salaries' && (
-                        <button type="button" onClick={()=>{ setSlipExp(e); setSlipOpen(true) }} className="rounded-md border border-slate-300 px-2 py-1 text-xs hover:bg-slate-50">Slip</button>
+                        <button type="button" onClick={() => { setSlipExp(e); setSlipOpen(true) }} className="rounded-md border border-slate-300 px-2 py-1 text-xs hover:bg-slate-50">Slip</button>
                       )}
-                      <button type="button" onClick={()=>remove(e.id)} className="rounded-md bg-rose-600 px-2 py-1 text-xs text-white hover:bg-rose-700">Delete</button>
+                      <button type="button" onClick={() => remove(e.id)} className="rounded-md bg-rose-600 px-2 py-1 text-xs text-white hover:bg-rose-700">Delete</button>
                     </div>
                   </td>
                 </tr>
@@ -266,13 +266,13 @@ export default function Pharmacy_Expenses() {
         <div className="flex items-center justify-between border-t border-slate-200 px-4 py-3 text-sm text-slate-600">
           <div>
             {total > 0 ? (
-              <>Showing {Math.min((page-1)*limit + 1, total)}-{Math.min((page-1)*limit + items.length, total)} of {total}</>
+              <>Showing {Math.min((page - 1) * limit + 1, total)}-{Math.min((page - 1) * limit + items.length, total)} of {total}</>
             ) : 'No results'}
           </div>
           <div className="flex items-center gap-2">
-            <button type="button" disabled={page<=1} onClick={()=>setPage(p=>Math.max(1,p-1))} className="rounded-md border border-slate-200 px-2 py-1 hover:bg-slate-50 disabled:opacity-50">Prev</button>
+            <button type="button" disabled={page <= 1} onClick={() => setPage(p => Math.max(1, p - 1))} className="rounded-md border border-slate-200 px-2 py-1 hover:bg-slate-50 disabled:opacity-50">Prev</button>
             <div>Page {page} of {totalPages}</div>
-            <button type="button" disabled={page>=totalPages} onClick={()=>setPage(p=>Math.min(totalPages,p+1))} className="rounded-md border border-slate-200 px-2 py-1 hover:bg-slate-50 disabled:opacity-50">Next</button>
+            <button type="button" disabled={page >= totalPages} onClick={() => setPage(p => Math.min(totalPages, p + 1))} className="rounded-md border border-slate-200 px-2 py-1 hover:bg-slate-50 disabled:opacity-50">Next</button>
           </div>
         </div>
       </div>
@@ -287,7 +287,7 @@ export default function Pharmacy_Expenses() {
           refresh()
         }}
       />
-      <Pharmacy_SalarySlipDialog open={slipOpen} onClose={()=>{ setSlipOpen(false); setSlipExp(null) }} expense={slipExp || undefined as any} />
+      <Pharmacy_SalarySlipDialog open={slipOpen} onClose={() => { setSlipOpen(false); setSlipExp(null) }} expense={slipExp || undefined as any} />
     </div>
   )
 }

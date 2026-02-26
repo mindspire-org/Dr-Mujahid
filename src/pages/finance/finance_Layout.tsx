@@ -11,6 +11,7 @@ export default function Finance_Layout() {
     if (typeof window === 'undefined') return false
     return localStorage.getItem('finance.sidebar_collapsed') === '1'
   })
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false)
   const [collapseSignal, setCollapseSignal] = useState(0)
   const [theme, setTheme] = useState<'light' | 'dark'>(() => {
     try { return (localStorage.getItem('finance.theme') as 'light' | 'dark') || 'light' } catch { return 'light' }
@@ -98,7 +99,39 @@ export default function Finance_Layout() {
     try { localStorage.setItem('finance.sidebar_collapsed', collapsed ? '1' : '0') } catch { }
   }, [collapsed])
 
+  useEffect(() => {
+    if (!mobileSidebarOpen) return
+    try { document.body.style.overflow = 'hidden' } catch { }
+
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setMobileSidebarOpen(false)
+    }
+    const onResize = () => {
+      try {
+        if (window.innerWidth >= 768) setMobileSidebarOpen(false)
+      } catch { }
+    }
+
+    try { window.addEventListener('keydown', onKeyDown) } catch { }
+    try { window.addEventListener('resize', onResize) } catch { }
+    return () => {
+      try { document.body.style.overflow = '' } catch { }
+      try { window.removeEventListener('keydown', onKeyDown) } catch { }
+      try { window.removeEventListener('resize', onResize) } catch { }
+    }
+  }, [mobileSidebarOpen])
+
+  useEffect(() => {
+    setMobileSidebarOpen(false)
+  }, [pathname])
+
   const handleToggleSidebar = () => {
+    try {
+      if (window.innerWidth < 768) {
+        setMobileSidebarOpen(v => !v)
+        return
+      }
+    } catch { }
     if (collapsed) { setCollapsed(false); return }
     setCollapseSignal(s => s + 1)
     window.setTimeout(() => { setCollapsed(true) }, 200)
@@ -121,9 +154,15 @@ export default function Finance_Layout() {
         <div className="flex h-full flex-col">
           <Finance_Header onToggleSidebar={handleToggleSidebar} collapsed={collapsed} onToggleTheme={() => setTheme(t => t === 'dark' ? 'light' : 'dark')} theme={theme} />
           <div className="flex flex-1 min-h-0">
-            <Finance_Sidebar collapsed={collapsed} onExpand={() => setCollapsed(false)} collapseSignal={collapseSignal} />
+            <Finance_Sidebar
+              collapsed={collapsed}
+              onExpand={() => setCollapsed(false)}
+              collapseSignal={collapseSignal}
+              mobileOpen={mobileSidebarOpen}
+              onCloseMobile={() => setMobileSidebarOpen(false)}
+            />
             <div className="flex-1 min-h-0 overflow-y-auto">
-              <main className="w-full px-2 py-4">
+              <main className="w-full px-2 sm:px-4 py-4">
                 <Outlet />
               </main>
             </div>

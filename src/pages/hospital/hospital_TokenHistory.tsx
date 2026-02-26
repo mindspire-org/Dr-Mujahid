@@ -20,7 +20,7 @@ interface TokenRow {
   department?: string
   fee: number
   discount?: number
-  paymentStatus?: 'paid'|'unpaid'
+  paymentStatus?: 'paid' | 'unpaid'
   receptionistName?: string
   paymentMethod?: string
   accountNumberIban?: string
@@ -35,17 +35,17 @@ interface TokenRow {
   advanceAdded?: number
   duesAfter?: number
   advanceAfter?: number
-  status: 'queued'|'in-progress'|'completed'|'returned'|'cancelled'
+  status: 'queued' | 'in-progress' | 'completed' | 'returned' | 'cancelled'
   raw?: any
 }
 
 export default function Hospital_TokenHistory() {
-  const payToStorageKey = 'hospital.receivedToAccountCode'
+
   const [query, setQuery] = useState('')
   const [rowsPerPage, setRowsPerPage] = useState(10)
   const [page, setPage] = useState(1)
 
-  const today = new Date().toISOString().slice(0,10)
+  const today = new Date().toISOString().slice(0, 10)
   const [from, setFrom] = useState(today)
   const [to, setTo] = useState(today)
   const [department, setDepartment] = useState<string>('')
@@ -65,62 +65,62 @@ export default function Hospital_TokenHistory() {
   useEffect(() => { loadFilters() }, [])
   useEffect(() => { load() }, [from, to, department, doctor])
 
-  useEffect(()=>{
+  useEffect(() => {
     if (payToLoadedRef.current) return
     payToLoadedRef.current = true
     let mounted = true
-    ;(async()=>{
-      try {
-        const [mineRes, bankRes, pettyRes] = await Promise.all([
-          hospitalApi.myPettyCash(),
-          hospitalApi.listBankAccounts(),
-          hospitalApi.listPettyCashAccounts(),
-        ]) as any
+      ; (async () => {
+        try {
+          const [mineRes, bankRes, pettyRes] = await Promise.all([
+            hospitalApi.myPettyCash(),
+            hospitalApi.listBankAccounts(),
+            hospitalApi.listPettyCashAccounts(),
+          ]) as any
 
-        const opts: Array<{ code: string; label: string }> = []
-        const seen = new Set<string>()
-        const add = (code?: string, label?: string) => {
-          const c = String(code || '').trim().toUpperCase()
-          if (!c) return
-          if (seen.has(c)) return
-          seen.add(c)
-          opts.push({ code: c, label: String(label || c) })
+          const opts: Array<{ code: string; label: string }> = []
+          const seen = new Set<string>()
+          const add = (code?: string, label?: string) => {
+            const c = String(code || '').trim().toUpperCase()
+            if (!c) return
+            if (seen.has(c)) return
+            seen.add(c)
+            opts.push({ code: c, label: String(label || c) })
+          }
+
+          const myCode = String(mineRes?.account?.code || '').trim().toUpperCase()
+          if (myCode) {
+            add(myCode, `${mineRes?.account?.name || 'My Petty Cash'} (${myCode})`)
+          }
+
+          const petty: any[] = pettyRes?.accounts || []
+          for (const p of petty) {
+            const code = String(p?.code || '').trim().toUpperCase()
+            if (!code) continue
+            const rs = String(p?.responsibleStaff || '').trim()
+            if (rs) continue
+            if (String(p?.status || 'Active') !== 'Active') continue
+            add(code, `${String(p?.name || code).trim()} (${code})`)
+          }
+
+          const banks: any[] = bankRes?.accounts || []
+          for (const b of banks) {
+            const an = String(b?.accountNumber || '')
+            const last4 = an ? an.slice(-4) : ''
+            const code = String(b?.financeAccountCode || (last4 ? `BANK_${last4}` : '')).trim().toUpperCase()
+            if (!code) continue
+            const bankLabel = `${String(b?.bankName || '').trim()} - ${String(b?.accountTitle || '').trim()}${last4 ? ` (${last4})` : ''}`.trim()
+            add(code, bankLabel ? `${bankLabel} (${code})` : code)
+          }
+
+          if (mounted) setPayToAccounts(opts)
+        } catch {
+          if (mounted) setPayToAccounts([])
         }
-
-        const myCode = String(mineRes?.account?.code || '').trim().toUpperCase()
-        if (myCode) {
-          add(myCode, `${mineRes?.account?.name || 'My Petty Cash'} (${myCode})`)
-        }
-
-        const petty: any[] = pettyRes?.accounts || []
-        for (const p of petty){
-          const code = String(p?.code || '').trim().toUpperCase()
-          if (!code) continue
-          const rs = String(p?.responsibleStaff || '').trim()
-          if (rs) continue
-          if (String(p?.status || 'Active') !== 'Active') continue
-          add(code, `${String(p?.name || code).trim()} (${code})`)
-        }
-
-        const banks: any[] = bankRes?.accounts || []
-        for (const b of banks){
-          const an = String(b?.accountNumber || '')
-          const last4 = an ? an.slice(-4) : ''
-          const code = String(b?.financeAccountCode || (last4 ? `BANK_${last4}` : '')).trim().toUpperCase()
-          if (!code) continue
-          const bankLabel = `${String(b?.bankName || '').trim()} - ${String(b?.accountTitle || '').trim()}${last4 ? ` (${last4})` : ''}`.trim()
-          add(code, bankLabel ? `${bankLabel} (${code})` : code)
-        }
-
-        if (mounted) setPayToAccounts(opts)
-      } catch {
-        if (mounted) setPayToAccounts([])
-      }
-    })()
-    return ()=>{ mounted = false }
+      })()
+    return () => { mounted = false }
   }, [])
 
-  async function loadFilters(){
+  async function loadFilters() {
     try {
       const [deps, docs] = await Promise.all([
         hospitalApi.listDepartments() as any,
@@ -128,10 +128,10 @@ export default function Hospital_TokenHistory() {
       ])
       setDepartments(deps.departments || [])
       setDoctors(docs.doctors || [])
-    } catch {}
+    } catch { }
   }
 
-  async function load(){
+  async function load() {
     const params: any = { from, to }
     if (department !== 'All') params.departmentId = department
     if (doctor !== 'All') params.doctorId = doctor
@@ -176,16 +176,16 @@ export default function Hospital_TokenHistory() {
   }
 
   const scoped = useMemo(() => {
-    const q = query.trim().toLowerCase()
+
     const start = new Date(from)
     const end = new Date(to)
-    end.setHours(23,59,59,999)
+    end.setHours(23, 59, 59, 999)
 
     return rows.filter(r => {
       const d = new Date(r.date)
       if (d < start || d > end) return false
-      if (department !== 'All' && r.department !== (departments.find(x=>x._id===department)?.name || r.department)) return false
-      if (doctor !== 'All' && r.doctor !== (doctors.find(x=>x._id===doctor)?.name || r.doctor)) return false
+      if (department !== 'All' && r.department !== (departments.find(x => x._id === department)?.name || r.department)) return false
+      if (doctor !== 'All' && r.doctor !== (doctors.find(x => x._id === doctor)?.name || r.doctor)) return false
       return true
     })
   }, [from, to, department, doctor, rows, departments, doctors, query])
@@ -225,11 +225,11 @@ export default function Hospital_TokenHistory() {
 
   const totalTokens = scoped.length
   const totalRevenue = scoped.reduce((s, r) => s + (r.status === 'returned' ? 0 : r.fee), 0)
-  const returnedPatients = scoped.filter(r=>r.status==='returned').length
+  const returnedPatients = scoped.filter(r => r.status === 'returned').length
 
-  function printSlip(r: TokenRow){
+  function printSlip(r: TokenRow) {
     const t = r.raw || {}
-    const amount = Number(t.amount ?? (Number(t.fee||0) + Number(t.discount||0)) ?? 0)
+    const amount = Number(t.amount ?? (Number(t.fee || 0) + Number(t.discount || 0)))
     const discount = Number(t.discount ?? r.discount ?? 0)
     const payable = Number(t.fee ?? Math.max(amount - discount, 0))
     const slip: TokenSlipData = {
@@ -269,7 +269,7 @@ export default function Hospital_TokenHistory() {
     setShowSlip(true)
   }
 
-  function openDetails(r: TokenRow){
+  function openDetails(r: TokenRow) {
     setDetailsRow(r)
     setShowDetails(true)
   }
@@ -283,16 +283,16 @@ export default function Hospital_TokenHistory() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h2 className="text-xl font-semibold text-slate-800">Token History <span className="ml-1 rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600">{filtered.length}</span></h2>
         <div className="flex flex-wrap items-center gap-2 text-sm">
-          <input type="date" value={from} onChange={e=>{setFrom(e.target.value); setPage(1)}} className="rounded-md border border-slate-300 px-2 py-1" />
+          <input type="date" value={from} onChange={e => { setFrom(e.target.value); setPage(1) }} className="rounded-md border border-slate-300 px-2 py-1" />
           <span>to</span>
-          <input type="date" value={to} onChange={e=>{setTo(e.target.value); setPage(1)}} className="rounded-md border border-slate-300 px-2 py-1" />
-          <select value={department} onChange={e=>{setDepartment(e.target.value); setPage(1)}} className="rounded-md border border-slate-300 px-2 py-1">
+          <input type="date" value={to} onChange={e => { setTo(e.target.value); setPage(1) }} className="rounded-md border border-slate-300 px-2 py-1" />
+          <select value={department} onChange={e => { setDepartment(e.target.value); setPage(1) }} className="rounded-md border border-slate-300 px-2 py-1">
             <option value="All">All Departments</option>
-            {departments.map((d:any)=> <option key={d._id} value={d._id}>{d.name}</option>)}
+            {departments.map((d: any) => <option key={d._id} value={d._id}>{d.name}</option>)}
           </select>
-          <select value={doctor} onChange={e=>{setDoctor(e.target.value); setPage(1)}} className="rounded-md border border-slate-300 px-2 py-1">
+          <select value={doctor} onChange={e => { setDoctor(e.target.value); setPage(1) }} className="rounded-md border border-slate-300 px-2 py-1">
             <option value="All">All Doctors</option>
-            {doctors.map((d:any)=> <option key={d._id} value={d._id}>{d.name}</option>)}
+            {doctors.map((d: any) => <option key={d._id} value={d._id}>{d.name}</option>)}
           </select>
           <button className="rounded-md border border-slate-300 px-3 py-1.5 hover:bg-slate-50">Export CSV</button>
         </div>
@@ -301,7 +301,7 @@ export default function Hospital_TokenHistory() {
       <div className="mt-4">
         <input
           value={query}
-          onChange={(e)=>{setQuery(e.target.value); setPage(1)}}
+          onChange={(e) => { setQuery(e.target.value); setPage(1) }}
           placeholder="Search by name, token#, MR#, phone, doctor, department, age, gender, address, or time..."
           className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-200"
         />
@@ -314,8 +314,8 @@ export default function Hospital_TokenHistory() {
         <StatCard title="Returned" value={returnedPatients} tone="amber" />
       </div>
 
-      <div className="mt-6 overflow-hidden rounded-xl border border-slate-200 bg-white">
-        <table className="min-w-full divide-y divide-slate-200 text-sm">
+      <div className="mt-6 w-full overflow-x-auto rounded-xl border border-slate-200 bg-white">
+        <table className="min-w-max w-full divide-y divide-slate-200 text-sm">
           <thead className="bg-slate-50">
             <tr className="text-left text-slate-600">
               <Th>DateTime</Th>
@@ -349,7 +349,7 @@ export default function Hospital_TokenHistory() {
                 <Td className="font-semibold text-emerald-600">Rs. {r.fee.toLocaleString()}</Td>
                 <Td>
                   <div className="flex items-center gap-2">
-                    <span className={`rounded px-2 py-0.5 text-xs ${String(r.paymentStatus||'paid').toLowerCase()==='paid' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-800'}`}>
+                    <span className={`rounded px-2 py-0.5 text-xs ${String(r.paymentStatus || 'paid').toLowerCase() === 'paid' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-800'}`}>
                       {String(r.paymentStatus || 'paid').toUpperCase()}
                     </span>
                   </div>
@@ -360,13 +360,13 @@ export default function Hospital_TokenHistory() {
                 <Td>
                   <div className="flex items-center gap-3">
                     <button
-                      onClick={()=>openDetails(r)}
+                      onClick={() => openDetails(r)}
                       title="View Details"
                       className="text-slate-600 hover:text-slate-900"
                     >
                       <Eye size={18} />
                     </button>
-                    <button onClick={()=>printSlip(r)} className="text-sky-600 hover:underline">Print Slip</button>
+                    <button onClick={() => printSlip(r)} className="text-sky-600 hover:underline">Print Slip</button>
                   </div>
                 </Td>
               </tr>
@@ -377,29 +377,29 @@ export default function Hospital_TokenHistory() {
         <div className="flex items-center justify-between border-t border-slate-200 p-3 text-sm text-slate-700">
           <div className="flex items-center gap-2">
             <span>Rows per page</span>
-            <select value={rowsPerPage} onChange={e=>{setRowsPerPage(parseInt(e.target.value)); setPage(1)}} className="rounded-md border border-slate-300 px-2 py-1">
-              {[10,20,50].map(n => <option key={n} value={n}>{n}</option>)}
+            <select value={rowsPerPage} onChange={e => { setRowsPerPage(parseInt(e.target.value)); setPage(1) }} className="rounded-md border border-slate-300 px-2 py-1">
+              {[10, 20, 50].map(n => <option key={n} value={n}>{n}</option>)}
             </select>
           </div>
           <div>Page {page} of {totalPages}</div>
           <div className="flex items-center gap-2">
-            <button disabled={page<=1} onClick={()=>setPage(p=>Math.max(1,p-1))} className="rounded-md border border-slate-300 px-2 py-1 disabled:opacity-50">Prev</button>
-            <button disabled={page>=totalPages} onClick={()=>setPage(p=>Math.min(totalPages,p+1))} className="rounded-md border border-slate-300 px-2 py-1 disabled:opacity-50">Next</button>
+            <button disabled={page <= 1} onClick={() => setPage(p => Math.max(1, p - 1))} className="rounded-md border border-slate-300 px-2 py-1 disabled:opacity-50">Prev</button>
+            <button disabled={page >= totalPages} onClick={() => setPage(p => Math.min(totalPages, p + 1))} className="rounded-md border border-slate-300 px-2 py-1 disabled:opacity-50">Next</button>
           </div>
         </div>
       </div>
       {showSlip && slipData && (
-        <Hospital_TokenSlip open={showSlip} onClose={()=>setShowSlip(false)} data={slipData as TokenSlipData} autoPrint={false} />
+        <Hospital_TokenSlip open={showSlip} onClose={() => setShowSlip(false)} data={slipData as TokenSlipData} autoPrint={false} />
       )}
 
       {showDetails && detailsRow && (
-        <TokenDetailsDialog open={showDetails} onClose={()=>setShowDetails(false)} row={detailsRow} payToAccounts={payToAccounts} />
+        <TokenDetailsDialog open={showDetails} onClose={() => setShowDetails(false)} row={detailsRow} payToAccounts={payToAccounts} />
       )}
     </div>
   )
 }
 
-function TokenDetailsDialog({ open, onClose, row, payToAccounts }: { open: boolean; onClose: ()=>void; row: TokenRow; payToAccounts: Array<{ code: string; label: string }> }){
+function TokenDetailsDialog({ open, onClose, row, payToAccounts }: { open: boolean; onClose: () => void; row: TokenRow; payToAccounts: Array<{ code: string; label: string }> }) {
   if (!open) return null
   const t = row.raw || {}
   const patient = t.patientId || {}
@@ -460,7 +460,7 @@ function TokenDetailsDialog({ open, onClose, row, payToAccounts }: { open: boole
 
   const receptionistName = String(t.receptionistName || row.receptionistName || '')
   const receivedToAccountCode = String(t.receivedToAccountCode || '')
-  const payedToName = (()=>{
+  const payedToName = (() => {
     const code = String(receivedToAccountCode || '').trim().toUpperCase()
     if (!code) return receptionistName || '-'
     const label = payToAccounts.find(x => x.code === code)?.label || ''
@@ -560,7 +560,7 @@ function TokenDetailsDialog({ open, onClose, row, payToAccounts }: { open: boole
   )
 }
 
-function Info({ label, value, full }: { label: string; value: string; full?: boolean }){
+function Info({ label, value, full }: { label: string; value: string; full?: boolean }) {
   return (
     <div className={`${full ? 'sm:col-span-2' : ''} rounded-lg border border-slate-200 bg-slate-50 px-3 py-2`}>
       <div className="text-xs font-medium text-slate-500">{label}</div>
@@ -576,7 +576,7 @@ function Td({ children, className = '' }: { children: React.ReactNode; className
   return <td className={`px-4 py-2 ${className}`}>{children}</td>
 }
 
-function StatCard({ title, value, tone }: { title: string; value: React.ReactNode; tone: 'blue'|'green'|'violet'|'amber' }) {
+function StatCard({ title, value, tone }: { title: string; value: React.ReactNode; tone: 'blue' | 'green' | 'violet' | 'amber' }) {
   const tones: Record<string, string> = {
     blue: 'bg-blue-50 text-blue-700 border-blue-100',
     green: 'bg-emerald-50 text-emerald-700 border-emerald-100',

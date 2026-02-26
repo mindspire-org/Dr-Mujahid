@@ -311,41 +311,47 @@ export default function Diagnostic_ReportGenerator() {
     <div className="space-y-4">
       <h2 className="text-xl font-semibold text-slate-800">Report Generator</h2>
 
-      <div className="rounded-xl border border-slate-200 bg-white p-4">
-        <div className="mt-1 flex flex-wrap items-center gap-2">
-          <div className="min-w-[260px] flex-1">
-            <input value={q} onChange={e => { setQ(e.target.value); setPage(1) }} placeholder="Search by token, patient, or test..." className="w-full rounded-md border border-slate-300 px-3 py-2 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-200" />
+      <div className="rounded-xl border border-slate-200 bg-white p-3 sm:p-4">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-center">
+          <div className="w-full lg:max-w-md">
+            <input value={q} onChange={e => { setQ(e.target.value); setPage(1) }} placeholder="Search by token, patient, or test..." className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-200" />
           </div>
-          <div className="flex items-center gap-2 text-sm">
-            <input type="date" value={from} onChange={e => { setFrom(e.target.value); setPage(1) }} className="rounded-md border border-slate-300 px-2 py-1" />
-            <input type="date" value={to} onChange={e => { setTo(e.target.value); setPage(1) }} className="rounded-md border border-slate-300 px-2 py-1" />
-          </div>
-          <div className="flex items-center gap-1 text-sm">
-            <button onClick={() => setStatus('all')} className={`rounded-md px-3 py-1.5 border ${status === 'all' ? 'bg-slate-900 text-white border-slate-900' : 'border-slate-300 text-slate-700'}`}>All</button>
-            <button onClick={() => setStatus('draft')} className={`rounded-md px-3 py-1.5 border ${status === 'draft' ? 'bg-slate-900 text-white border-slate-900' : 'border-slate-300 text-slate-700'}`}>Draft</button>
-            <button onClick={() => setStatus('final')} className={`rounded-md px-3 py-1.5 border ${status === 'final' ? 'bg-slate-900 text-white border-slate-900' : 'border-slate-300 text-slate-700'}`}>Final</button>
-          </div>
-          <div className="ml-auto flex items-center gap-2 text-sm">
-            <span>Rows</span>
-            <select value={rows} onChange={e => { setRows(Number(e.target.value)); setPage(1) }} className="rounded-md border border-slate-300 px-2 py-1">
-              <option value={10}>10</option>
-              <option value={20}>20</option>
-              <option value={50}>50</option>
-            </select>
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="flex items-center gap-2 text-sm">
+              <span className="text-slate-500 whitespace-nowrap">From</span>
+              <input type="date" value={from} onChange={e => { setFrom(e.target.value); setPage(1) }} className="rounded-md border border-slate-300 px-2 py-1.5 focus:border-violet-500" />
+            </div>
+            <div className="flex items-center gap-2 text-sm">
+              <span className="text-slate-500 whitespace-nowrap">To</span>
+              <input type="date" value={to} onChange={e => { setTo(e.target.value); setPage(1) }} className="rounded-md border border-slate-300 px-2 py-1.5 focus:border-violet-500" />
+            </div>
+            <div className="flex items-center gap-1 p-1 bg-slate-50 rounded-lg border border-slate-200">
+              <button onClick={() => setStatus('all')} className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${status === 'all' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}>All</button>
+              <button onClick={() => setStatus('draft')} className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${status === 'draft' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}>Draft</button>
+              <button onClick={() => setStatus('final')} className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${status === 'final' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}>Final</button>
+            </div>
+            <div className="flex items-center gap-2 text-sm ml-auto sm:ml-0">
+              <span className="text-slate-500">Rows</span>
+              <select value={rows} onChange={e => { setRows(Number(e.target.value)); setPage(1) }} className="rounded-md border border-slate-300 px-2 py-1.5 focus:border-violet-500">
+                <option value={10}>10</option>
+                <option value={20}>20</option>
+                <option value={50}>50</option>
+              </select>
+            </div>
           </div>
         </div>
       </div>
 
-      <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
+      <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
         <table className="w-full text-sm">
-          <thead className="border-b border-slate-200 bg-slate-50 text-left text-slate-600">
+          <thead className="border-b border-slate-200 bg-slate-50/50 text-left text-slate-600">
             <tr>
-              <th className="px-4 py-2">Date</th>
-              <th className="px-4 py-2">Patient</th>
-              <th className="px-4 py-2">Token</th>
-              <th className="px-4 py-2">Test</th>
-              <th className="px-4 py-2">Status</th>
-              <th className="px-4 py-2">Actions</th>
+              <th className="px-4 py-3 font-semibold">Date</th>
+              <th className="px-4 py-3 font-semibold">Patient</th>
+              <th className="px-4 py-3 font-semibold">Token</th>
+              <th className="px-4 py-3 font-semibold">Test</th>
+              <th className="px-4 py-3 font-semibold">Status</th>
+              <th className="px-4 py-3 font-semibold">Actions</th>
             </tr>
           </thead>
           <tbody>

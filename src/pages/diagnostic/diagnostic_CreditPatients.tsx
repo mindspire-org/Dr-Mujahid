@@ -11,7 +11,7 @@ type LastOrder = {
   subtotal?: number
   discount?: number
   net?: number
-  paymentStatus?: 'paid'|'unpaid'
+  paymentStatus?: 'paid' | 'unpaid'
   receptionistName?: string
   paymentMethod?: string
   accountNumberIban?: string
@@ -42,12 +42,12 @@ type CreditPatientRow = {
   lastOrder?: LastOrder | null
 }
 
-function clamp0(n: any){
+function clamp0(n: any) {
   const x = Number(n || 0)
   return Number.isFinite(x) ? Math.max(0, x) : 0
 }
 
-function Info({ label, value }: { label: string; value: string }){
+function Info({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-lg border border-slate-200 bg-white p-3">
       <div className="text-xs font-medium text-slate-500">{label}</div>
@@ -56,17 +56,17 @@ function Info({ label, value }: { label: string; value: string }){
   )
 }
 
-function PayDialog({ open, onClose, row, payToAccounts, onPaid }: { open: boolean; onClose: ()=>void; row: CreditPatientRow | null; payToAccounts: Array<{ code: string; label: string }>; onPaid: (slip: DiagnosticCreditPaymentSlipData)=>void }){
+function PayDialog({ open, onClose, row, payToAccounts, onPaid }: { open: boolean; onClose: () => void; row: CreditPatientRow | null; payToAccounts: Array<{ code: string; label: string }>; onPaid: (slip: DiagnosticCreditPaymentSlipData) => void }) {
   const [currentDues, setCurrentDues] = useState('')
   const [amount, setAmount] = useState('')
-  const [paymentMethod, setPaymentMethod] = useState<'Cash'|'Card'>('Cash')
+  const [paymentMethod, setPaymentMethod] = useState<'Cash' | 'Card'>('Cash')
   const [accountNumberIban, setAccountNumberIban] = useState('')
   const [receivedToAccountCode, setReceivedToAccountCode] = useState('')
   const [receptionistName, setReceptionistName] = useState('')
   const [note, setNote] = useState('')
   const [busy, setBusy] = useState(false)
 
-  useEffect(()=>{
+  useEffect(() => {
     if (!open || !row) return
     setCurrentDues(String(clamp0(row.dues)))
     setAmount(String(clamp0(row.dues)))
@@ -77,7 +77,7 @@ function PayDialog({ open, onClose, row, payToAccounts, onPaid }: { open: boolea
     setNote('')
   }, [open, row?.patientId])
 
-  const preview = useMemo(()=>{
+  const preview = useMemo(() => {
     const duesBefore = clamp0(currentDues)
     const advBefore = clamp0(row?.advance)
     const amt = clamp0(amount)
@@ -88,7 +88,7 @@ function PayDialog({ open, onClose, row, payToAccounts, onPaid }: { open: boolea
     return { duesBefore, advBefore, amt, duesPaid, duesAfter, advAdded, advAfter }
   }, [currentDues, amount, row?.advance])
 
-  async function submit(){
+  async function submit() {
     if (!row) return
     const amt = clamp0(amount)
     if (!amt) return
@@ -134,11 +134,11 @@ function PayDialog({ open, onClose, row, payToAccounts, onPaid }: { open: boolea
   const selected = String(receivedToAccountCode || '').toUpperCase()
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
-      <div className="w-full max-w-xl overflow-hidden rounded-xl bg-white shadow-2xl ring-1 ring-black/5" onClick={(e)=>e.stopPropagation()}>
-        <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-3 sm:p-4" onClick={onClose}>
+      <div className="w-full max-w-xl max-h-[90vh] overflow-y-auto rounded-xl bg-white shadow-2xl ring-1 ring-black/5" onClick={(e) => e.stopPropagation()}>
+        <div className="sticky top-0 z-10 flex items-center justify-between border-b border-slate-200 bg-white px-5 py-4">
           <div>
-            <div className="text-base font-semibold text-slate-900">Pay Dues</div>
+            <div className="text-lg font-semibold text-slate-900">Pay Dues</div>
             <div className="mt-0.5 text-sm text-slate-600">{row.fullName || '-'}{row.mrn ? ` • ${row.mrn}` : ''}</div>
           </div>
           <button onClick={onClose} className="rounded-md p-2 text-slate-500 hover:bg-slate-100" aria-label="Close">
@@ -150,25 +150,25 @@ function PayDialog({ open, onClose, row, payToAccounts, onPaid }: { open: boolea
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div>
               <label className="mb-1 block text-sm text-slate-700">Current Dues</label>
-              <input value={currentDues} onChange={(e)=>setCurrentDues(e.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
+              <input value={currentDues} onChange={(e) => setCurrentDues(e.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
             </div>
             <div>
               <label className="mb-1 block text-sm text-slate-700">Amount</label>
-              <input value={amount} onChange={(e)=>setAmount(e.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
+              <input value={amount} onChange={(e) => setAmount(e.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
             </div>
           </div>
 
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div>
               <label className="mb-1 block text-sm text-slate-700">Pay. Method</label>
-              <select value={paymentMethod} onChange={(e)=>setPaymentMethod(e.target.value === 'Card' ? 'Card' : 'Cash')} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm">
+              <select value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value === 'Card' ? 'Card' : 'Cash')} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm">
                 <option value="Cash">Cash</option>
                 <option value="Card">Card</option>
               </select>
             </div>
             <div>
               <label className="mb-1 block text-sm text-slate-700">Payed to</label>
-              <select value={selected} onChange={(e)=>setReceivedToAccountCode(e.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm">
+              <select value={selected} onChange={(e) => setReceivedToAccountCode(e.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm">
                 <option value="">Select account</option>
                 {payToAccounts.map(a => (
                   <option key={a.code} value={a.code}>{a.label}</option>
@@ -180,18 +180,18 @@ function PayDialog({ open, onClose, row, payToAccounts, onPaid }: { open: boolea
           {paymentMethod === 'Card' && (
             <div>
               <label className="mb-1 block text-sm text-slate-700">Account#/IBAN</label>
-              <input value={accountNumberIban} onChange={(e)=>setAccountNumberIban(e.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
+              <input value={accountNumberIban} onChange={(e) => setAccountNumberIban(e.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
             </div>
           )}
 
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div>
               <label className="mb-1 block text-sm text-slate-700">Receptionist</label>
-              <input value={receptionistName} onChange={(e)=>setReceptionistName(e.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
+              <input value={receptionistName} onChange={(e) => setReceptionistName(e.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
             </div>
             <div>
               <label className="mb-1 block text-sm text-slate-700">Note</label>
-              <input value={note} onChange={(e)=>setNote(e.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
+              <input value={note} onChange={(e) => setNote(e.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
             </div>
           </div>
 
@@ -217,7 +217,7 @@ function PayDialog({ open, onClose, row, payToAccounts, onPaid }: { open: boolea
   )
 }
 
-function PaymentDetailsDialog({ open, onClose, row }: { open: boolean; onClose: ()=>void; row: CreditPatientRow | null }){
+function PaymentDetailsDialog({ open, onClose, row }: { open: boolean; onClose: () => void; row: CreditPatientRow | null }) {
   const o = row?.lastOrder || null
   const payable = clamp0(o?.net)
   const paidForToday = clamp0(o?.paidForToday)
@@ -230,7 +230,7 @@ function PaymentDetailsDialog({ open, onClose, row }: { open: boolean; onClose: 
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
-      <div className="w-full max-w-3xl overflow-hidden rounded-xl bg-slate-50 shadow-2xl ring-1 ring-black/5" onClick={(e)=>e.stopPropagation()}>
+      <div className="w-full max-w-3xl overflow-hidden rounded-xl bg-slate-50 shadow-2xl ring-1 ring-black/5" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between border-b border-slate-200 bg-white px-5 py-4">
           <div>
             <div className="text-base font-semibold text-slate-900">Payment Details</div>
@@ -304,7 +304,7 @@ function PaymentDetailsDialog({ open, onClose, row }: { open: boolean; onClose: 
   )
 }
 
-export default function Diagnostic_CreditPatients(){
+export default function Diagnostic_CreditPatients() {
   const [q, setQ] = useState('')
   const [rows, setRows] = useState(20)
   const [page, setPage] = useState(1)
@@ -324,94 +324,94 @@ export default function Diagnostic_CreditPatients(){
   const [slipOpen, setSlipOpen] = useState(false)
   const [slipData, setSlipData] = useState<DiagnosticCreditPaymentSlipData | null>(null)
 
-  useEffect(()=>{
+  useEffect(() => {
     let mounted = true
-    ;(async()=>{
-      try {
-        const [bankRes, pettyRes] = await Promise.all([
-          hospitalApi.listBankAccounts(),
-          hospitalApi.listPettyCashAccounts(),
-        ]) as any
-        let mineRes: any = null
-        try { mineRes = await hospitalApi.myPettyCash() as any } catch { mineRes = null }
+      ; (async () => {
+        try {
+          const [bankRes, pettyRes] = await Promise.all([
+            hospitalApi.listBankAccounts(),
+            hospitalApi.listPettyCashAccounts(),
+          ]) as any
+          let mineRes: any = null
+          try { mineRes = await hospitalApi.myPettyCash() as any } catch { mineRes = null }
 
-        const opts: Array<{ code: string; label: string }> = []
-        const seen = new Set<string>()
-        const add = (code?: string, label?: string) => {
-          const c = String(code || '').trim().toUpperCase()
-          if (!c) return
-          if (seen.has(c)) return
-          seen.add(c)
-          opts.push({ code: c, label: String(label || c) })
+          const opts: Array<{ code: string; label: string }> = []
+          const seen = new Set<string>()
+          const add = (code?: string, label?: string) => {
+            const c = String(code || '').trim().toUpperCase()
+            if (!c) return
+            if (seen.has(c)) return
+            seen.add(c)
+            opts.push({ code: c, label: String(label || c) })
+          }
+
+          const myCode = String(mineRes?.account?.code || '').trim().toUpperCase()
+          if (myCode) {
+            add(myCode, `${mineRes?.account?.name || 'My Petty Cash'} (${myCode})`)
+          }
+
+          const petty: any[] = pettyRes?.accounts || []
+          for (const p of petty) {
+            const code = String(p?.code || '').trim().toUpperCase()
+            if (!code) continue
+            const rs = String(p?.responsibleStaff || '').trim()
+            if (rs) continue
+            if (String(p?.status || 'Active') !== 'Active') continue
+            add(code, `${String(p?.name || code).trim()} (${code})`)
+          }
+
+          const banks: any[] = bankRes?.accounts || []
+          for (const b of banks) {
+            const an = String(b?.accountNumber || '')
+            const last4 = an ? an.slice(-4) : ''
+            const code = String(b?.financeAccountCode || (last4 ? `BANK_${last4}` : '')).trim().toUpperCase()
+            if (!code) continue
+            const bankLabel = `${String(b?.bankName || '').trim()} - ${String(b?.accountTitle || '').trim()}${last4 ? ` (${last4})` : ''}`.trim()
+            add(code, bankLabel ? `${bankLabel} (${code})` : code)
+          }
+
+          if (mounted) setPayToAccounts(opts)
+        } catch {
+          if (mounted) setPayToAccounts([])
         }
-
-        const myCode = String(mineRes?.account?.code || '').trim().toUpperCase()
-        if (myCode){
-          add(myCode, `${mineRes?.account?.name || 'My Petty Cash'} (${myCode})`)
-        }
-
-        const petty: any[] = pettyRes?.accounts || []
-        for (const p of petty){
-          const code = String(p?.code || '').trim().toUpperCase()
-          if (!code) continue
-          const rs = String(p?.responsibleStaff || '').trim()
-          if (rs) continue
-          if (String(p?.status || 'Active') !== 'Active') continue
-          add(code, `${String(p?.name || code).trim()} (${code})`)
-        }
-
-        const banks: any[] = bankRes?.accounts || []
-        for (const b of banks){
-          const an = String(b?.accountNumber || '')
-          const last4 = an ? an.slice(-4) : ''
-          const code = String(b?.financeAccountCode || (last4 ? `BANK_${last4}` : '')).trim().toUpperCase()
-          if (!code) continue
-          const bankLabel = `${String(b?.bankName || '').trim()} - ${String(b?.accountTitle || '').trim()}${last4 ? ` (${last4})` : ''}`.trim()
-          add(code, bankLabel ? `${bankLabel} (${code})` : code)
-        }
-
-        if (mounted) setPayToAccounts(opts)
-      } catch {
-        if (mounted) setPayToAccounts([])
-      }
-    })()
-    return ()=>{ mounted = false }
+      })()
+    return () => { mounted = false }
   }, [])
 
-  useEffect(()=>{
+  useEffect(() => {
     let mounted = true
-    ;(async()=>{
-      setLoading(true)
-      try {
-        const res: any = await diagnosticApi.listCreditPatients({ q: q || undefined, page, limit: rows })
-        const arr: CreditPatientRow[] = (res?.items || []).map((x: any) => ({
-          patientId: String(x.patientId || ''),
-          mrn: x.mrn,
-          fullName: x.fullName,
-          phone: x.phone,
-          dues: clamp0(x.dues),
-          advance: clamp0(x.advance),
-          hasUnpaid: !!x.hasUnpaid,
-          updatedAtIso: x.updatedAtIso,
-          lastOrder: x.lastOrder || null,
-        }))
-        if (!mounted) return
-        setItems(arr)
-        setTotal(Number(res?.total || arr.length || 0))
-        setTotalPages(Number(res?.totalPages || 1))
-      } catch {
-        if (!mounted) return
-        setItems([])
-        setTotal(0)
-        setTotalPages(1)
-      } finally {
-        if (mounted) setLoading(false)
-      }
-    })()
-    return ()=>{ mounted = false }
+      ; (async () => {
+        setLoading(true)
+        try {
+          const res: any = await diagnosticApi.listCreditPatients({ q: q || undefined, page, limit: rows })
+          const arr: CreditPatientRow[] = (res?.items || []).map((x: any) => ({
+            patientId: String(x.patientId || ''),
+            mrn: x.mrn,
+            fullName: x.fullName,
+            phone: x.phone,
+            dues: clamp0(x.dues),
+            advance: clamp0(x.advance),
+            hasUnpaid: !!x.hasUnpaid,
+            updatedAtIso: x.updatedAtIso,
+            lastOrder: x.lastOrder || null,
+          }))
+          if (!mounted) return
+          setItems(arr)
+          setTotal(Number(res?.total || arr.length || 0))
+          setTotalPages(Number(res?.totalPages || 1))
+        } catch {
+          if (!mounted) return
+          setItems([])
+          setTotal(0)
+          setTotalPages(1)
+        } finally {
+          if (mounted) setLoading(false)
+        }
+      })()
+    return () => { mounted = false }
   }, [q, page, rows])
 
-  const pageCount = useMemo(()=> Math.max(1, totalPages), [totalPages])
+  const pageCount = useMemo(() => Math.max(1, totalPages), [totalPages])
   const curPage = Math.min(page, pageCount)
 
   const start = Math.min((curPage - 1) * rows + 1, total)
@@ -461,101 +461,105 @@ export default function Diagnostic_CreditPatients(){
         <div className="text-sm text-slate-600">{loading ? 'Loading...' : `${total ? `${start}-${end} of ${total}` : '0 results'}`}</div>
       </div>
 
-      <div className="rounded-xl border border-slate-200 bg-white p-4">
-        <div className="flex flex-wrap items-center gap-2">
-          <input
-            value={q}
-            onChange={(e)=>{ setQ(e.target.value); setPage(1) }}
-            placeholder="Search by name, MRN, phone"
-            className="w-full sm:w-80 rounded-md border border-slate-300 px-3 py-2 text-sm"
-          />
-          <div className="ml-auto flex items-center gap-2">
-            <label className="text-sm text-slate-600">Rows</label>
-            <select value={rows} onChange={(e)=>{ setRows(Number(e.target.value)||20); setPage(1) }} className="rounded-md border border-slate-300 px-2 py-2 text-sm">
-              <option value={10}>10</option>
-              <option value={20}>20</option>
-              <option value={50}>50</option>
-              <option value={100}>100</option>
-            </select>
+      <div className="rounded-xl border border-slate-200 bg-white p-3 sm:p-4">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
+          <div className="flex-1">
+            <input
+              value={q}
+              onChange={(e) => { setQ(e.target.value); setPage(1) }}
+              placeholder="Search by name, MRN, phone..."
+              className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
+            />
+          </div>
+          <div className="flex items-center gap-3 self-end sm:self-auto">
+            <div className="flex items-center gap-2">
+              <label className="text-sm text-slate-500">Rows</label>
+              <select value={rows} onChange={(e) => { setRows(Number(e.target.value) || 20); setPage(1) }} className="rounded-md border border-slate-300 px-3 py-1.5 text-sm focus:border-emerald-500">
+                <option value={10}>10</option>
+                <option value={20}>20</option>
+                <option value={50}>50</option>
+                <option value={100}>100</option>
+              </select>
+            </div>
           </div>
         </div>
+      </div>
 
-        <div className="mt-4 overflow-x-auto">
-          <table className="min-w-full text-left text-sm">
-            <thead className="bg-slate-50 text-slate-700">
-              <tr>
-                <th className="px-3 py-2 font-medium">MRN</th>
-                <th className="px-3 py-2 font-medium">Patient</th>
-                <th className="px-3 py-2 font-medium">Phone</th>
-                <th className="px-3 py-2 font-medium">Dues</th>
-                <th className="px-3 py-2 font-medium">Adv.</th>
-                <th className="px-3 py-2 font-medium">Unpaid</th>
-                <th className="px-3 py-2 font-medium text-right">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-200">
-              {items.map((r) => (
-                <tr key={r.patientId}>
-                  <td className="px-3 py-2">{r.mrn || '-'}</td>
-                  <td className="px-3 py-2">{r.fullName || '-'}</td>
-                  <td className="px-3 py-2">{r.phone || '-'}</td>
-                  <td className="px-3 py-2">PKR {clamp0(r.dues).toLocaleString()}</td>
-                  <td className="px-3 py-2">PKR {clamp0(r.advance).toLocaleString()}</td>
-                  <td className="px-3 py-2">
-                    <span className={r.hasUnpaid ? 'rounded-full bg-rose-100 px-2 py-0.5 text-xs font-medium text-rose-700' : 'rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-700'}>
-                      {r.hasUnpaid ? 'YES' : 'NO'}
-                    </span>
-                  </td>
-                  <td className="px-3 py-2 text-right">
-                    <div className="inline-flex items-center gap-2">
-                      {clamp0(r.dues) > 0 && (
-                        <button
-                          onClick={() => openPay(r)}
-                          className="rounded-md border border-emerald-600 px-2 py-1.5 text-xs font-medium text-emerald-700 hover:bg-emerald-50"
-                          title="Pay Dues"
-                        >
-                          Pay
-                        </button>
-                      )}
+      <div className="mt-4 overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
+        <table className="min-w-full text-left text-sm">
+          <thead className="bg-slate-50/50 text-slate-700 border-b border-slate-200">
+            <tr>
+              <th className="px-4 py-3 font-semibold">MRN</th>
+              <th className="px-4 py-3 font-semibold">Patient</th>
+              <th className="px-4 py-3 font-semibold">Phone</th>
+              <th className="px-4 py-3 font-semibold">Dues</th>
+              <th className="px-4 py-3 font-semibold">Adv.</th>
+              <th className="px-4 py-3 font-semibold">Unpaid</th>
+              <th className="px-4 py-3 font-semibold text-right">Actions</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-200">
+            {items.map((r) => (
+              <tr key={r.patientId}>
+                <td className="px-3 py-2">{r.mrn || '-'}</td>
+                <td className="px-3 py-2">{r.fullName || '-'}</td>
+                <td className="px-3 py-2">{r.phone || '-'}</td>
+                <td className="px-3 py-2">PKR {clamp0(r.dues).toLocaleString()}</td>
+                <td className="px-3 py-2">PKR {clamp0(r.advance).toLocaleString()}</td>
+                <td className="px-3 py-2">
+                  <span className={r.hasUnpaid ? 'rounded-full bg-rose-100 px-2 py-0.5 text-xs font-medium text-rose-700' : 'rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-700'}>
+                    {r.hasUnpaid ? 'YES' : 'NO'}
+                  </span>
+                </td>
+                <td className="px-3 py-2 text-right">
+                  <div className="inline-flex items-center gap-2">
+                    {clamp0(r.dues) > 0 && (
                       <button
-                        onClick={() => openDetails(r)}
-                        className="inline-flex items-center justify-center rounded-md border border-slate-300 px-2 py-1.5 text-slate-700 hover:bg-slate-50"
-                        title="View Payment Details"
+                        onClick={() => openPay(r)}
+                        className="rounded-md border border-emerald-600 px-2 py-1.5 text-xs font-medium text-emerald-700 hover:bg-emerald-50"
+                        title="Pay Dues"
                       >
-                        <Eye className="h-4 w-4" />
+                        Pay
                       </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-              {items.length === 0 && (
-                <tr>
-                  <td colSpan={7} className="px-3 py-6 text-center text-slate-500">
-                    {loading ? 'Loading...' : 'No credit patients'}
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
+                    )}
+                    <button
+                      onClick={() => openDetails(r)}
+                      className="inline-flex items-center justify-center rounded-md border border-slate-300 px-2 py-1.5 text-slate-700 hover:bg-slate-50"
+                      title="View Payment Details"
+                    >
+                      <Eye className="h-4 w-4" />
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            ))}
+            {items.length === 0 && (
+              <tr>
+                <td colSpan={7} className="px-3 py-6 text-center text-slate-500">
+                  {loading ? 'Loading...' : 'No credit patients'}
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
 
-        <div className="mt-4 flex items-center justify-between gap-2">
-          <button
-            disabled={curPage <= 1}
-            onClick={() => setPage((p) => Math.max(1, p - 1))}
-            className="rounded-md border border-slate-300 px-3 py-2 text-sm disabled:opacity-50"
-          >
-            Prev
-          </button>
-          <div className="text-sm text-slate-600">Page {curPage} / {pageCount}</div>
-          <button
-            disabled={curPage >= pageCount}
-            onClick={() => setPage((p) => p + 1)}
-            className="rounded-md border border-slate-300 px-3 py-2 text-sm disabled:opacity-50"
-          >
-            Next
-          </button>
-        </div>
+      <div className="mt-4 flex items-center justify-between gap-2">
+        <button
+          disabled={curPage <= 1}
+          onClick={() => setPage((p) => Math.max(1, p - 1))}
+          className="rounded-md border border-slate-300 px-3 py-2 text-sm disabled:opacity-50"
+        >
+          Prev
+        </button>
+        <div className="text-sm text-slate-600">Page {curPage} / {pageCount}</div>
+        <button
+          disabled={curPage >= pageCount}
+          onClick={() => setPage((p) => p + 1)}
+          className="rounded-md border border-slate-300 px-3 py-2 text-sm disabled:opacity-50"
+        >
+          Next
+        </button>
       </div>
 
       <PaymentDetailsDialog

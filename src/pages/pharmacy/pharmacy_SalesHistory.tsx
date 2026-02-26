@@ -4,7 +4,7 @@ import { pharmacyApi } from '../../utils/api'
 import Pharmacy_POSReceiptDialog from '../../components/pharmacy/pharmacy_POSReceiptDialog'
 import SuggestField from '../../components/SuggestField'
 
- type Row = {
+type Row = {
   id: string
   datetime: string // ISO string
   billNo: string
@@ -63,7 +63,7 @@ export default function Pharmacy_SalesHistory() {
     let mounted = true
     const load = async () => {
       try {
-        const res: any = await pharmacyApi.listSales({ bill: bill || undefined, medicine: medicine || undefined, user: user || undefined, from: from || undefined, to: to || undefined, payment: payment || undefined, page, limit })
+        const res: any = await pharmacyApi.listSales({ bill: bill || undefined, medicine: medicine || undefined, user: user || undefined, from: from || undefined, to: to || undefined, payment: payment || undefined, page, limit } as any)
         if (!mounted) return
         const items = res.items || []
         setRawSales(items)
@@ -91,23 +91,23 @@ export default function Pharmacy_SalesHistory() {
     }
     load()
     const handler = () => load()
-    try { window.addEventListener('pharmacy:sale', handler as any) } catch {}
-    return ()=>{ mounted = false; try { window.removeEventListener('pharmacy:sale', handler as any) } catch {} }
+    try { window.addEventListener('pharmacy:sale', handler as any) } catch { }
+    return () => { mounted = false; try { window.removeEventListener('pharmacy:sale', handler as any) } catch { } }
   }, [bill, medicine, user, from, to, page, limit])
 
   // Load pharmacy users for the User autocomplete filter
   useEffect(() => {
     let mounted = true
-    ;(async () => {
-      try {
-        const res: any = await pharmacyApi.listUsers()
-        if (!mounted) return
-        const list = (res?.items || []).map((u: any) => String(u?.username || '')).filter(Boolean)
-        setUserSuggestions(list)
-      } catch {
-        setUserSuggestions([])
-      }
-    })()
+      ; (async () => {
+        try {
+          const res: any = await pharmacyApi.listUsers()
+          if (!mounted) return
+          const list = (res?.items || []).map((u: any) => String(u?.username || '')).filter(Boolean)
+          setUserSuggestions(list)
+        } catch {
+          setUserSuggestions([])
+        }
+      })()
     return () => { mounted = false }
   }, [])
 
@@ -116,7 +116,7 @@ export default function Pharmacy_SalesHistory() {
       const s = String(v ?? '')
       return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s
     }
-    const header = ['Date/Time','Bill No','Customer','Medicines','Qty (each)','Qty','Amount','User','Payment']
+    const header = ['Date/Time', 'Bill No', 'Customer', 'Medicines', 'Qty (each)', 'Qty', 'Amount', 'User', 'Payment']
       .map(escape).join(',')
     const lines = rows.map(r => [
       formatDateTime(r.datetime), r.billNo, r.customer, r.medicines, r.qtyEach, r.qty, r.amount.toFixed(2), r.user || '', r.payment
@@ -126,7 +126,7 @@ export default function Pharmacy_SalesHistory() {
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
-    a.download = `sales-${new Date().toISOString().slice(0,10)}.csv`
+    a.download = `sales-${new Date().toISOString().slice(0, 10)}.csv`
     a.click()
     URL.revokeObjectURL(url)
   }
@@ -165,7 +165,7 @@ export default function Pharmacy_SalesHistory() {
       y += 6
       doc.setFontSize(9)
       let x = margin
-      cols.forEach(c => { doc.text(c.title, x + 1, y) ; x += c.width })
+      cols.forEach(c => { doc.text(c.title, x + 1, y); x += c.width })
       y += 2
       doc.setLineWidth(0.2)
       doc.line(margin, y, pageW - margin, y)
@@ -195,7 +195,7 @@ export default function Pharmacy_SalesHistory() {
       y += maxLines * 4 + 2
       doc.line(margin, y, pageW - margin, y)
     }
-    doc.save(`sales-${new Date().toISOString().slice(0,10)}.pdf`)
+    doc.save(`sales-${new Date().toISOString().slice(0, 10)}.pdf`)
   }
 
   return (
@@ -204,22 +204,22 @@ export default function Pharmacy_SalesHistory() {
         <div className="text-xl font-bold text-slate-800">Sales History</div>
 
         <div className="rounded-xl border border-slate-200 bg-white p-4">
-          <div className="grid gap-3 md:grid-cols-5">
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
             <div>
               <label className="mb-1 block text-sm text-slate-700">Medicine name</label>
-              <input value={medicine} onChange={e=>setMedicine(e.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" placeholder="e.g., Paracetamol" />
+              <input value={medicine} onChange={e => setMedicine(e.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" placeholder="e.g., Paracetamol" />
             </div>
             <div>
               <label className="mb-1 block text-sm text-slate-700">Bill/Invoice #</label>
-              <input value={bill} onChange={e=>setBill(e.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" placeholder="B-YYYYMM-###" />
+              <input value={bill} onChange={e => setBill(e.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" placeholder="B-YYYYMM-###" />
             </div>
             <div>
               <label className="mb-1 block text-sm text-slate-700">From</label>
-              <input type="date" value={from} onChange={e=>setFrom(e.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
+              <input type="date" value={from} onChange={e => setFrom(e.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
             </div>
             <div>
               <label className="mb-1 block text-sm text-slate-700">To</label>
-              <input type="date" value={to} onChange={e=>setTo(e.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
+              <input type="date" value={to} onChange={e => setTo(e.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
             </div>
             <div>
               <label className="mb-1 block text-sm text-slate-700">User</label>
@@ -233,9 +233,9 @@ export default function Pharmacy_SalesHistory() {
               />
             </div>
           </div>
-          <div className="mt-3 flex items-center gap-3">
-            <button onClick={()=>{ setPage(1); }} className="btn">Apply</button>
-            <select value={limit} onChange={e=>{ setLimit(parseInt(e.target.value)); setPage(1) }} className="rounded-md border border-slate-300 px-2 py-1 text-sm text-slate-700">
+          <div className="mt-3 grid grid-cols-1 gap-3 sm:flex sm:items-center sm:gap-3">
+            <button onClick={() => { setPage(1); }} className="btn w-full sm:w-auto">Apply</button>
+            <select value={limit} onChange={e => { setLimit(parseInt(e.target.value)); setPage(1) }} className="w-full rounded-md border border-slate-300 px-2 py-2 text-sm text-slate-700 sm:w-auto sm:py-1">
               <option value={10}>10</option>
               <option value={20}>20</option>
               <option value={50}>50</option>
@@ -245,15 +245,15 @@ export default function Pharmacy_SalesHistory() {
         </div>
 
         <div className="rounded-xl border border-slate-200 bg-white">
-          <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
+          <div className="flex flex-col gap-2 border-b border-slate-200 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="font-medium text-slate-800">Results</div>
-            <div className="flex items-center gap-2">
-              <button onClick={exportCSV} className="rounded-md border border-slate-200 px-3 py-1.5 text-sm hover:bg-slate-50">Download CSV</button>
-              <button onClick={exportPDF} className="rounded-md border border-slate-200 px-3 py-1.5 text-sm hover:bg-slate-50">Download PDF</button>
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-2">
+              <button onClick={exportCSV} className="w-full rounded-md border border-slate-200 px-3 py-1.5 text-sm hover:bg-slate-50 sm:w-auto">Download CSV</button>
+              <button onClick={exportPDF} className="w-full rounded-md border border-slate-200 px-3 py-1.5 text-sm hover:bg-slate-50 sm:w-auto">Download PDF</button>
             </div>
           </div>
           <div className="overflow-x-auto">
-            <table className="min-w-full text-left text-sm">
+            <table className="min-w-max w-full text-left text-sm">
               <thead className="bg-slate-50 text-slate-700">
                 <tr>
                   <th className="whitespace-nowrap px-4 py-2 font-medium">Date/Time</th>
@@ -270,47 +270,47 @@ export default function Pharmacy_SalesHistory() {
               </thead>
               <tbody className="divide-y divide-slate-200 text-slate-700">
                 {rows.map(r => (
-                <tr key={r.id} className="hover:bg-slate-50/50">
-                  <td className="px-4 py-2">{formatDateTime(r.datetime)}</td>
-                  <td className="px-4 py-2">{r.billNo}</td>
-                  <td className="px-4 py-2">{r.customer}</td>
-                  <td className="px-4 py-2">{r.medicines}</td>
-                  <td className="px-4 py-2">{r.qtyEach}</td>
-                  <td className="px-4 py-2">{r.qty}</td>
-                  <td className="px-4 py-2">Rs {r.amount.toFixed(2)}</td>
-                  <td className="px-4 py-2">{r.user || '-'}</td>
-                  <td className="px-4 py-2">{r.payment}</td>
-                  <td className="px-4 py-2"><button onClick={()=>{ const s = rawSales.find(x=>x._id===r.id); if (s){ setReceiptSale(s); setReceiptOpen(true) }}} className="rounded-md border border-slate-200 px-2 py-1 text-xs hover:bg-slate-50">Reprint</button></td>
-                </tr>
-              ))}
-              {rows.length === 0 && (
-                <tr>
-                  <td colSpan={10} className="px-4 py-12 text-center text-slate-500">No results</td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-        <div className="flex items-center justify-between border-t border-slate-200 px-4 py-3 text-sm text-slate-600">
-          <div>
-            {total > 0 ? (
-              <>Showing {Math.min((page-1)*limit + 1, total)}-{Math.min((page-1)*limit + rows.length, total)} of {total}</>
-            ) : 'No results'}
+                  <tr key={r.id} className="hover:bg-slate-50/50">
+                    <td className="px-4 py-2">{formatDateTime(r.datetime)}</td>
+                    <td className="px-4 py-2">{r.billNo}</td>
+                    <td className="px-4 py-2">{r.customer}</td>
+                    <td className="px-4 py-2">{r.medicines}</td>
+                    <td className="px-4 py-2">{r.qtyEach}</td>
+                    <td className="px-4 py-2">{r.qty}</td>
+                    <td className="px-4 py-2">Rs {r.amount.toFixed(2)}</td>
+                    <td className="px-4 py-2">{r.user || '-'}</td>
+                    <td className="px-4 py-2">{r.payment}</td>
+                    <td className="px-4 py-2"><button onClick={() => { const s = rawSales.find(x => x._id === r.id); if (s) { setReceiptSale(s); setReceiptOpen(true) } }} className="rounded-md border border-slate-200 px-2 py-1 text-xs hover:bg-slate-50">Reprint</button></td>
+                  </tr>
+                ))}
+                {rows.length === 0 && (
+                  <tr>
+                    <td colSpan={10} className="px-4 py-12 text-center text-slate-500">No results</td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
           </div>
-          <div className="flex items-center gap-2">
-            <button disabled={page<=1} onClick={()=>setPage(p=>Math.max(1,p-1))} className="rounded-md border border-slate-200 px-2 py-1 hover:bg-slate-50 disabled:opacity-50">Prev</button>
-            <div>Page {page} of {totalPages}</div>
-            <button disabled={page>=totalPages} onClick={()=>setPage(p=>Math.min(totalPages,p+1))} className="rounded-md border border-slate-200 px-2 py-1 hover:bg-slate-50 disabled:opacity-50">Next</button>
+          <div className="flex items-center justify-between border-t border-slate-200 px-4 py-3 text-sm text-slate-600">
+            <div>
+              {total > 0 ? (
+                <>Showing {Math.min((page - 1) * limit + 1, total)}-{Math.min((page - 1) * limit + rows.length, total)} of {total}</>
+              ) : 'No results'}
+            </div>
+            <div className="flex items-center gap-2">
+              <button disabled={page <= 1} onClick={() => setPage(p => Math.max(1, p - 1))} className="rounded-md border border-slate-200 px-2 py-1 hover:bg-slate-50 disabled:opacity-50">Prev</button>
+              <div>Page {page} of {totalPages}</div>
+              <button disabled={page >= totalPages} onClick={() => setPage(p => Math.min(totalPages, p + 1))} className="rounded-md border border-slate-200 px-2 py-1 hover:bg-slate-50 disabled:opacity-50">Next</button>
+            </div>
           </div>
         </div>
-      </div>
       </div>
       <Pharmacy_POSReceiptDialog
         open={receiptOpen}
-        onClose={()=>{ setReceiptOpen(false); setReceiptSale(null) }}
+        onClose={() => { setReceiptOpen(false); setReceiptSale(null) }}
         receiptNo={receiptSale?.billNo || ''}
         method={(receiptSale?.payment === 'Credit') ? 'credit' : 'cash'}
-        lines={(receiptSale?.lines || []).map((l:any)=> ({ name: l.name, qty: l.qty, price: l.unitPrice }))}
+        lines={(receiptSale?.lines || []).map((l: any) => ({ name: l.name, qty: l.qty, price: l.unitPrice }))}
         discountPct={receiptSale?.discountPct || 0}
         lineDiscountRs={Number(receiptSale?.lineDiscountTotal || 0)}
         taxPct={Number(receiptSale?.taxPct || 0)}

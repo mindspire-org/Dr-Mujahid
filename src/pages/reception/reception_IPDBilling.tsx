@@ -228,13 +228,13 @@ export default function Reception_IPDBilling(){
     <div className="space-y-4">
       <div className="rounded-xl border border-slate-200 bg-white p-4">
         <div className="text-lg font-semibold">IPD Billing</div>
-        <div className="mt-3 flex flex-wrap items-center gap-2">
-          <input value={q} onChange={e=>setQ(e.target.value)} placeholder="Search by MRN, Name or Admission No" className="min-w-[280px] flex-1 rounded-md border border-slate-300 px-3 py-2" />
-          <button onClick={search} className="btn" disabled={loading}>{loading? 'Searching...' : 'Search'}</button>
+        <div className="mt-3 grid grid-cols-1 gap-2 sm:flex sm:flex-wrap sm:items-center sm:gap-2">
+          <input value={q} onChange={e=>setQ(e.target.value)} placeholder="Search by MRN, Name or Admission No" className="w-full flex-1 rounded-md border border-slate-300 px-3 py-2 sm:min-w-[280px]" />
+          <button onClick={search} className="btn w-full sm:w-auto" disabled={loading}>{loading? 'Searching...' : 'Search'}</button>
         </div>
         {list.length>0 && (
           <div className="mt-3 overflow-x-auto text-sm">
-            <table className="min-w-full">
+            <table className="min-w-max w-full">
               <thead className="bg-slate-50 text-slate-700"><tr><th className="px-3 py-2 text-left">Patient</th><th className="px-3 py-2 text-left">Admission No</th><th className="px-3 py-2 text-left">Bed</th><th className="px-3 py-2 text-left">Actions</th></tr></thead>
               <tbody>
                 {list.map(r=> (
@@ -253,12 +253,12 @@ export default function Reception_IPDBilling(){
 
       {enc && showPanel && (
         <div ref={panelRef} className={`rounded-xl border border-slate-200 bg-white p-4 ${flash? 'ring-2 ring-violet-400':''}`}>
-          <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:gap-2">
             <div>
               <div className="font-medium">{enc?.patientId?.fullName || '-'}</div>
               <div className="text-xs text-slate-600">MRN: {enc?.patientId?.mrn || '-'} · Admission: {enc?.admissionNo || '-'}</div>
             </div>
-            <div className="text-right">
+            <div className="sm:text-right">
               <div className="text-xs text-rose-700">Pending</div>
               <div className="text-2xl font-semibold text-rose-700">{currency(pending)}</div>
               {discountNum>0 && <div className="text-xs text-slate-600">After discount: <span className="font-semibold">{currency(pendingAfterDiscount)}</span></div>}
@@ -287,9 +287,9 @@ export default function Reception_IPDBilling(){
               <div className="grid gap-2 text-sm">
                 <div className="flex items-center justify-between"><div>Pending</div><div className="font-semibold">{currency(pending)}</div></div>
                 <label className="text-xs text-slate-600">Discount</label>
-                <input value={discount} onChange={(e)=>{ const v = e.target.value; setDiscount(v); const n = Math.max(0, parseFloat(v||'0')||0); const after = Math.max(0, pending - n); setCollectAmount(after.toFixed(2)) }} placeholder="0" className="rounded-md border border-slate-300 px-2 py-1 w-40" />
+                <input value={discount} onChange={(e)=>{ const v = e.target.value; setDiscount(v); const n = Math.max(0, parseFloat(v||'0')||0); const after = Math.max(0, pending - n); setCollectAmount(after.toFixed(2)) }} placeholder="0" className="w-full rounded-md border border-slate-300 px-2 py-1 sm:w-40" />
                 <label className="text-xs text-slate-600">Method</label>
-                <select value={method} onChange={e=>setMethod(e.target.value)} className="rounded-md border border-slate-300 px-2 py-1 w-40">
+                <select value={method} onChange={e=>setMethod(e.target.value)} className="w-full rounded-md border border-slate-300 px-2 py-1 sm:w-40">
                   <option>Cash</option>
                   <option>Card</option>
                   <option>Online</option>
@@ -297,14 +297,14 @@ export default function Reception_IPDBilling(){
                 <label className="text-xs text-slate-600">Reference / Notes</label>
                 <input value={refNo} onChange={e=>setRefNo(e.target.value)} placeholder="Txn # / Notes" className="rounded-md border border-slate-300 px-2 py-1" />
                 <label className="text-xs text-slate-600">Collect Amount</label>
-                <input value={collectAmount} onChange={e=>setCollectAmount(e.target.value)} placeholder={pendingAfterDiscount.toFixed(2)} className="rounded-md border border-slate-300 px-2 py-1 w-40" />
-                <button className="btn mt-2" disabled={(pending<=0) || collecting || ((parseFloat(collectAmount||'0')||0) <= 0 && (parseFloat(discount||'0')||0) <= 0)} onClick={collect}>{collecting? 'Saving...' : `Collect ${currency(Math.max(0, parseFloat(String(collectAmount||'0'))||0))}`}</button>
+                <input value={collectAmount} onChange={e=>setCollectAmount(e.target.value)} placeholder={pendingAfterDiscount.toFixed(2)} className="w-full rounded-md border border-slate-300 px-2 py-1 sm:w-40" />
+                <button className="btn mt-2 w-full sm:w-auto" disabled={(pending<=0) || collecting || ((parseFloat(collectAmount||'0')||0) <= 0 && (parseFloat(discount||'0')||0) <= 0)} onClick={collect}>{collecting? 'Saving...' : `Collect ${currency(Math.max(0, parseFloat(String(collectAmount||'0'))||0))}`}</button>
               </div>
               <div className="mt-4">
                 <div className="font-medium mb-1">Previous Payments</div>
                 {payments.length===0 ? (<div className="text-sm text-slate-500">None</div>) : (
                   <div className="overflow-x-auto">
-                    <table className="min-w-full text-sm">
+                    <table className="min-w-max w-full text-sm">
                       <thead className="bg-slate-50 text-slate-700"><tr><th className="px-2 py-1 text-left">Date/Time</th><th className="px-2 py-1 text-left">Method</th><th className="px-2 py-1 text-left">Ref</th><th className="px-2 py-1 text-right">Amount</th></tr></thead>
                       <tbody className="divide-y">
                         {payments.map((p:any)=> (

@@ -11,6 +11,7 @@ export default function Hospital_Layout() {
     if (typeof window === 'undefined') return false
     return localStorage.getItem('hospital.sidebar_collapsed') === '1'
   })
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false)
   const [collapseSignal, setCollapseSignal] = useState(0)
   const [theme, setTheme] = useState<'light' | 'dark'>(() => {
     try { return (localStorage.getItem('hospital.theme') as 'light' | 'dark') || 'light' } catch { return 'light' }
@@ -74,9 +75,41 @@ export default function Hospital_Layout() {
     } catch (_) { }
   }, [sidebarCollapsed])
 
+  useEffect(() => {
+    if (!mobileSidebarOpen) return
+    try { document.body.style.overflow = 'hidden' } catch { }
+
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setMobileSidebarOpen(false)
+    }
+    const onResize = () => {
+      try {
+        if (window.innerWidth >= 768) setMobileSidebarOpen(false)
+      } catch { }
+    }
+
+    try { window.addEventListener('keydown', onKeyDown) } catch { }
+    try { window.addEventListener('resize', onResize) } catch { }
+    return () => {
+      try { document.body.style.overflow = '' } catch { }
+      try { window.removeEventListener('keydown', onKeyDown) } catch { }
+      try { window.removeEventListener('resize', onResize) } catch { }
+    }
+  }, [mobileSidebarOpen])
+
+  useEffect(() => {
+    setMobileSidebarOpen(false)
+  }, [pathname])
+
   const shell = theme === 'dark' ? 'h-dvh overflow-hidden bg-slate-900 text-slate-100' : 'h-dvh overflow-hidden bg-slate-50 text-slate-900'
 
   const handleToggleSidebar = () => {
+    try {
+      if (window.innerWidth < 768) {
+        setMobileSidebarOpen(v => !v)
+        return
+      }
+    } catch { }
     // If currently collapsed, expand immediately
     if (sidebarCollapsed) { setSidebarCollapsed(false); return }
     // If expanding -> collapsing, close submenu first then collapse
@@ -100,7 +133,13 @@ export default function Hospital_Layout() {
         <div className="flex h-full flex-col">
           <Hospital_Header onToggleSidebar={handleToggleSidebar} collapsed={sidebarCollapsed} onToggleTheme={() => setTheme(t => t === 'dark' ? 'light' : 'dark')} theme={theme} />
           <div className="flex flex-1 min-h-0">
-            <Hospital_Sidebar collapsed={sidebarCollapsed} onExpand={() => setSidebarCollapsed(false)} collapseSignal={collapseSignal} />
+            <Hospital_Sidebar
+              collapsed={sidebarCollapsed}
+              onExpand={() => setSidebarCollapsed(false)}
+              collapseSignal={collapseSignal}
+              mobileOpen={mobileSidebarOpen}
+              onCloseMobile={() => setMobileSidebarOpen(false)}
+            />
             <div className="flex-1 min-h-0 overflow-y-auto">
               <main className="w-full px-4 py-6 sm:px-6">
                 <Outlet />

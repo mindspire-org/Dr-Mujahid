@@ -93,8 +93,8 @@ export default function Pharmacy_Header({ onToggleSidebar, collapsed, onToggleTh
         >
           <Menu className="h-5 w-5" />
         </button>
-        <Link to="/pharmacy" className="flex items-center gap-2">
-          <div className="flex h-8 w-8 items-center justify-center overflow-hidden rounded-full bg-white/10 ring-1 ring-white/15">
+        <Link to="/pharmacy" className="flex min-w-0 items-center gap-2">
+          <div className="flex h-7 w-7 sm:h-8 sm:w-8 items-center justify-center overflow-hidden rounded-full bg-white/10 ring-1 ring-white/15">
             {brand.logoDataUrl ? (
               <img src={brand.logoDataUrl} alt="Logo" className="h-full w-full object-cover" />
             ) : (
@@ -103,8 +103,8 @@ export default function Pharmacy_Header({ onToggleSidebar, collapsed, onToggleTh
               </div>
             )}
           </div>
-          <div className="font-semibold text-white">{String(brand.name || '').trim() || DEFAULT_PHARMACY_NAME}</div>
-          <span className="ml-2 rounded-full bg-sky-100 px-2 py-0.5 text-xs font-medium text-sky-700">Online</span>
+          <div className="min-w-0 font-semibold text-white text-sm sm:text-base truncate">{String(brand.name || '').trim() || DEFAULT_PHARMACY_NAME}</div>
+          <span className="ml-2 hidden sm:inline-flex rounded-full bg-sky-100 px-2 py-0.5 text-xs font-medium text-sky-700">Online</span>
         </Link>
 
         <div className="ml-auto flex items-center gap-2 text-sm">

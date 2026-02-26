@@ -195,10 +195,12 @@ export default function Hospital_HistoryTaking() {
         status: '' as '' | 'Atrophic' | 'Normal',
       },
       epidCst: {
-        side: '' as '' | 'Right' | 'Left',
+        right: false,
+        left: false,
       },
       varicocele: {
-        side: '' as '' | 'Right' | 'Left',
+        right: false,
+        left: false,
         rightGrades: { g1: false, g2: false, g3: false, g4: false },
         leftGrades: { g1: false, g2: false, g3: false, g4: false },
       },
@@ -410,8 +412,8 @@ export default function Hospital_HistoryTaking() {
         varicocele: {
           right: false,
           left: false,
-          rightGrades: { g1: false, g2: false, g3: false },
-          leftGrades: { g1: false, g2: false, g3: false },
+          rightGrades: { g1: false, g2: false, g3: false, g4: false },
+          leftGrades: { g1: false, g2: false, g3: false, g4: false },
         },
       },
       uss: {
@@ -675,38 +677,43 @@ export default function Hospital_HistoryTaking() {
     }
     return Array.from(map.values())
   }, [tokens, from, to, today, historySavedTokenIds])
-
   return (
     <div className="w-full px-2 sm:px-4">
       <div className="text-xl font-semibold text-slate-800">History Taking</div>
 
-      <div className="mt-3 flex items-center gap-2 text-sm">
-        <input type="date" value={from} onChange={e => setFrom(e.target.value)} className="rounded-md border border-slate-300 px-3 py-2" />
-        <span className="text-slate-500">to</span>
-        <input type="date" value={to} onChange={e => setTo(e.target.value)} className="rounded-md border border-slate-300 px-3 py-2" />
-        <button
-          type="button"
-          onClick={() => {
-            const t = new Date().toISOString().slice(0, 10)
-            setFrom(t)
-            setTo(t)
-          }}
-          className="rounded-md border border-slate-300 px-2 py-1 text-xs hover:bg-slate-50"
-        >
-          Today
-        </button>
-        <button
-          type="button"
-          onClick={() => {
-            setFrom('')
-            setTo('')
-          }}
-          className="rounded-md border border-slate-300 px-2 py-1 text-xs hover:bg-slate-50"
-        >
-          Reset
-        </button>
+      <div className="mt-3 grid grid-cols-1 gap-2 text-sm sm:flex sm:items-center sm:gap-2">
+        <div className="grid grid-cols-1 gap-2 sm:flex sm:items-center sm:gap-2">
+          <div className="grid grid-cols-1 gap-2 sm:flex sm:items-center sm:gap-2">
+            <input type="date" value={from} onChange={e => setFrom(e.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-2 sm:w-auto" />
+            <span className="hidden text-slate-500 sm:inline">to</span>
+            <input type="date" value={to} onChange={e => setTo(e.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-2 sm:w-auto" />
+          </div>
+          <div className="grid grid-cols-2 gap-2 sm:flex sm:items-center sm:gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                const t = new Date().toISOString().slice(0, 10)
+                setFrom(t)
+                setTo(t)
+              }}
+              className="w-full rounded-md border border-slate-300 px-2 py-2 text-xs hover:bg-slate-50 sm:w-auto sm:py-1"
+            >
+              Today
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setFrom('')
+                setTo('')
+              }}
+              className="w-full rounded-md border border-slate-300 px-2 py-2 text-xs hover:bg-slate-50 sm:w-auto sm:py-1"
+            >
+              Reset
+            </button>
+          </div>
+        </div>
 
-        <div className="flex-1" />
+        <div className="hidden flex-1 sm:block" />
 
         <select
           value={prevHistoryId}
@@ -741,15 +748,13 @@ export default function Hospital_HistoryTaking() {
             if (data.arrivalReference) setArrivalReference((s) => ({ ...s, ...data.arrivalReference }))
             setActiveTab('Personal Information')
           }}
-          className="rounded-md border border-slate-300 px-3 py-2 text-xs"
+          className="w-full rounded-md border border-slate-300 px-3 py-2 text-xs sm:w-auto"
           disabled={!selectedToken?.encounterId || prevHistories.length === 0}
         >
-          <option value="">Previous Histories</option>
+          <option value="">Previous History</option>
           {prevHistories.map(r => {
             const when = r.submittedAt || r.createdAt || ''
-            const dt = when ? new Date(when).toLocaleString() : r._id
-            const mr = String(selectedToken?.mrNo || '').trim()
-            const label = mr ? `${mr} • ${dt}` : dt
+            const label = when ? new Date(when).toLocaleString() : r._id
             return (
               <option key={r._id} value={r._id}>{label}</option>
             )
@@ -766,7 +771,7 @@ export default function Hospital_HistoryTaking() {
             const base = pathname.startsWith('/reception') ? '/reception' : '/hospital'
             navigate(`${base}/lab-reports-entry?tokenId=${encodeURIComponent(patientKey)}`)
           }}
-          className="rounded-md bg-blue-800 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-900"
+          className="w-full rounded-md bg-blue-800 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-900 sm:w-auto"
         >
           Enter Lab Reports
         </button>

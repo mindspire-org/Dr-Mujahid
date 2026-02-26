@@ -10,6 +10,7 @@ export default function Reception_Layout() {
     return localStorage.getItem('reception.sidebar_collapsed') === '1'
   })
   const [collapseSignal, setCollapseSignal] = useState(0)
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false)
   const [theme, setTheme] = useState<'light' | 'dark'>(() => {
     try { return (localStorage.getItem('reception.theme') as 'light' | 'dark') || 'light' } catch { return 'light' }
   })
@@ -78,10 +79,38 @@ export default function Reception_Layout() {
   }, [theme])
 
   useEffect(() => {
+    if (!mobileSidebarOpen) return
+    const prev = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => {
+      document.body.style.overflow = prev
+    }
+  }, [mobileSidebarOpen])
+
+  useEffect(() => {
+    if (!mobileSidebarOpen) return
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setMobileSidebarOpen(false)
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [mobileSidebarOpen])
+
+  useEffect(() => {
+    setMobileSidebarOpen(false)
+  }, [pathname])
+
+  useEffect(() => {
     try { localStorage.setItem('reception.sidebar_collapsed', collapsed ? '1' : '0') } catch { }
   }, [collapsed])
 
   const handleToggleSidebar = () => {
+    try {
+      if (window.innerWidth < 768) {
+        setMobileSidebarOpen(v => !v)
+        return
+      }
+    } catch {}
     if (collapsed) { setCollapsed(false); return }
     setCollapseSignal(s => s + 1)
     window.setTimeout(() => { setCollapsed(true) }, 200)
@@ -104,9 +133,15 @@ export default function Reception_Layout() {
         <div className="flex h-full flex-col">
           <Reception_Header onToggleSidebar={handleToggleSidebar} collapsed={collapsed} onToggleTheme={() => setTheme(t => t === 'dark' ? 'light' : 'dark')} theme={theme} />
           <div className="flex flex-1 min-h-0">
-            <Reception_Sidebar collapsed={collapsed} onExpand={() => setCollapsed(false)} collapseSignal={collapseSignal} />
+            <Reception_Sidebar
+              collapsed={collapsed}
+              onExpand={() => setCollapsed(false)}
+              collapseSignal={collapseSignal}
+              mobileOpen={mobileSidebarOpen}
+              onCloseMobile={() => setMobileSidebarOpen(false)}
+            />
             <div className="flex-1 min-h-0 overflow-y-auto">
-              <main className="w-full px-6 py-6">
+              <main className="w-full px-4 py-6 sm:px-6">
                 <Outlet />
               </main>
             </div>

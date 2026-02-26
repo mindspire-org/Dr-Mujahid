@@ -379,33 +379,39 @@ export default function Hospital_LabReportsEntry() {
     <div className="w-full px-2 sm:px-4">
       <div className="text-xl font-semibold text-slate-800">Lab Reports Entry</div>
 
-      <div className="mt-3 flex items-center gap-2 text-sm">
-        <input type="date" value={from} onChange={e => setFrom(e.target.value)} className="rounded-md border border-slate-300 px-3 py-2" />
-        <span className="text-slate-500">to</span>
-        <input type="date" value={to} onChange={e => setTo(e.target.value)} className="rounded-md border border-slate-300 px-3 py-2" />
-        <button
-          type="button"
-          onClick={() => {
-            const t = new Date().toISOString().slice(0, 10)
-            setFrom(t)
-            setTo(t)
-          }}
-          className="rounded-md border border-slate-300 px-2 py-1 text-xs hover:bg-slate-50"
-        >
-          Today
-        </button>
-        <button
-          type="button"
-          onClick={() => {
-            setFrom('')
-            setTo('')
-          }}
-          className="rounded-md border border-slate-300 px-2 py-1 text-xs hover:bg-slate-50"
-        >
-          Reset
-        </button>
+      <div className="mt-3 grid grid-cols-1 gap-2 text-sm sm:flex sm:items-center sm:gap-2">
+        <div className="grid grid-cols-1 gap-2 sm:flex sm:items-center sm:gap-2">
+          <div className="grid grid-cols-1 gap-2 sm:flex sm:items-center sm:gap-2">
+            <input type="date" value={from} onChange={e => setFrom(e.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-2 sm:w-auto" />
+            <span className="hidden text-slate-500 sm:inline">to</span>
+            <input type="date" value={to} onChange={e => setTo(e.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-2 sm:w-auto" />
+          </div>
+          <div className="grid grid-cols-2 gap-2 sm:flex sm:items-center sm:gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                const t = new Date().toISOString().slice(0, 10)
+                setFrom(t)
+                setTo(t)
+              }}
+              className="w-full rounded-md border border-slate-300 px-2 py-2 text-xs hover:bg-slate-50 sm:w-auto sm:py-1"
+            >
+              Today
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setFrom('')
+                setTo('')
+              }}
+              className="w-full rounded-md border border-slate-300 px-2 py-2 text-xs hover:bg-slate-50 sm:w-auto sm:py-1"
+            >
+              Reset
+            </button>
+          </div>
+        </div>
 
-        <div className="flex-1" />
+        <div className="hidden flex-1 sm:block" />
 
         <select
           value={prevEntryId}
@@ -421,7 +427,7 @@ export default function Hospital_LabReportsEntry() {
             const list = Array.isArray(r.tests) ? r.tests : []
             setTests(list.length ? (list as any) : [{ testName: '', normalValue: '', result: '', status: '' }])
           }}
-          className="rounded-md border border-slate-300 px-3 py-2 text-xs"
+          className="w-full rounded-md border border-slate-300 px-3 py-2 text-xs sm:w-auto"
           disabled={!selectedToken?.patientId || prevEntries.length === 0}
         >
           <option value="">Previous Entries</option>

@@ -191,16 +191,16 @@ export default function Hospital_DoctorFinance() {
   }
 
   return (
-    <div className="w-full px-6 py-8 space-y-4">
-      <div className="flex items-center justify-between">
+    <div className="w-full px-4 py-6 sm:px-6 sm:py-8 space-y-4">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <div className="text-2xl font-bold text-slate-800">Doctors Finance</div>
           <div className="text-sm text-slate-500">OPD visits and payouts</div>
         </div>
-        <div className="flex items-center gap-2">
-          <button onClick={()=>{ setTick(t=>t+1); syncBackendEarnings() }} className="btn-outline-navy">Refresh</button>
-          <button onClick={exportCsv} className="btn-outline-navy">Export CSV</button>
-          <button onClick={()=>setAddOpen(true)} className="btn">+ Add Entry</button>
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-2">
+          <button onClick={()=>{ setTick(t=>t+1); syncBackendEarnings() }} className="btn-outline-navy w-full sm:w-auto">Refresh</button>
+          <button onClick={exportCsv} className="btn-outline-navy w-full sm:w-auto">Export CSV</button>
+          <button onClick={()=>setAddOpen(true)} className="btn w-full sm:w-auto">+ Add Entry</button>
         </div>
       </div>
 

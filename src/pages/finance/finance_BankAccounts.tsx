@@ -79,7 +79,7 @@ export default function Finance_BankAccounts(){
   }
 
   return (
-    <div className="w-full px-6 py-6 space-y-4">
+    <div className="w-full px-3 sm:px-6 py-5 sm:py-6 space-y-4">
       <div>
         <div className="text-2xl font-bold text-slate-800">Bank Accounts</div>
         <div className="text-sm text-slate-500">Add bank accounts</div>
@@ -336,10 +336,10 @@ export default function Finance_BankAccounts(){
               {txnBank ? `${txnBank.bankName || ''} — ${txnBank.accountTitle || ''} (${txnBank.accountNumber || ''})` : ''}
             </div>
 
-            <div className="mt-3 flex flex-wrap items-center gap-2">
-              <input type="date" value={txnFrom} onChange={e=> setTxnFrom(e.target.value)} className="rounded-md border border-slate-300 px-2 py-1 text-xs" />
-              <input type="date" value={txnTo} onChange={e=> setTxnTo(e.target.value)} className="rounded-md border border-slate-300 px-2 py-1 text-xs" />
-              <button className="btn" disabled={txnLoading || !txnBank} onClick={()=> { if (txnBank) void openTransactions(txnBank) }}>Reload</button>
+            <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-3 sm:items-end">
+              <input type="date" value={txnFrom} onChange={e=> setTxnFrom(e.target.value)} className="w-full rounded-md border border-slate-300 px-2 py-1 text-xs" />
+              <input type="date" value={txnTo} onChange={e=> setTxnTo(e.target.value)} className="w-full rounded-md border border-slate-300 px-2 py-1 text-xs" />
+              <button className="btn w-full sm:w-auto" disabled={txnLoading || !txnBank} onClick={()=> { if (txnBank) void openTransactions(txnBank) }}>Reload</button>
             </div>
 
             <div className="mt-3 overflow-x-auto">

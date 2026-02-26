@@ -10,6 +10,7 @@ import {
   Users,
   Building2,
   LogOut,
+  X,
   Calendar,
   UserCog,
   Settings,
@@ -85,7 +86,19 @@ export const hospitalSidebarGroups: { label: string; icon: LucideIcon; items: Na
   },
 ]
 
-export default function Hospital_Sidebar({ collapsed = false, onExpand, collapseSignal }: { collapsed?: boolean; onExpand?: () => void; collapseSignal?: number }) {
+export default function Hospital_Sidebar({
+  collapsed = false,
+  onExpand,
+  collapseSignal,
+  mobileOpen,
+  onCloseMobile,
+}: {
+  collapsed?: boolean
+  onExpand?: () => void
+  collapseSignal?: number
+  mobileOpen?: boolean
+  onCloseMobile?: () => void
+}) {
   const navigate = useNavigate()
   const { pathname } = useLocation()
   const [open, setOpen] = useState<Record<string, boolean>>({})
@@ -145,11 +158,8 @@ export default function Hospital_Sidebar({ collapsed = false, onExpand, collapse
     navigate('/hospital/login')
   }
 
-  return (
-    <aside
-      className={`hidden md:flex ${width} md:flex-col md:border-r md:text-white min-h-0 overflow-hidden transition-[width] duration-200 ease-in-out`}
-      style={{ background: 'linear-gradient(180deg, var(--navy) 0%, var(--navy-700) 100%)', borderColor: 'rgba(255,255,255,0.12)' }}
-    >
+  const renderNav = ({ isCollapsed }: { isCollapsed: boolean }) => {
+    return (
       <nav className="hospital-sidebar-scroll flex-1 min-h-0 overflow-y-auto p-3 space-y-1">
         {[...hospitalSidebarNavTop].filter(i => isAllowed(i.to)).map(item => {
           const Icon = item.icon
@@ -158,19 +168,21 @@ export default function Hospital_Sidebar({ collapsed = false, onExpand, collapse
               key={item.to}
               to={item.to}
               title={item.label}
-              className={({ isActive }) => `flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium ${isActive ? 'bg-white/10 text-white' : 'text-white/80 hover:bg-white/5'}`}
+              className={({ isActive }) =>
+                `flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium ${isActive ? 'bg-white/10 text-white' : 'text-white/80 hover:bg-white/5'}`
+              }
               end={item.end}
               onClick={() => {
-                if (collapsed) onExpand?.()
+                if (isCollapsed) onExpand?.()
+                onCloseMobile?.()
               }}
             >
               <Icon className="h-4 w-4 shrink-0" />
-              {!collapsed && <span className="truncate">{item.label}</span>}
+              {!isCollapsed && <span className="truncate">{item.label}</span>}
             </NavLink>
           )
         })}
 
-        {/* Management groups */}
         {hospitalSidebarGroups
           .map(group => ({ ...group, items: group.items.filter(i => isAllowed(i.to)) }))
           .filter(group => group.items.length > 0)
@@ -182,7 +194,7 @@ export default function Hospital_Sidebar({ collapsed = false, onExpand, collapse
                 <button
                   type="button"
                   onClick={() => {
-                    if (collapsed) {
+                    if (isCollapsed) {
                       onExpand?.()
                       setOpen(prev => ({ ...prev, [group.label]: true }))
                       return
@@ -194,12 +206,12 @@ export default function Hospital_Sidebar({ collapsed = false, onExpand, collapse
                 >
                   <div className="flex items-center gap-3">
                     <GIcon className="h-4 w-4 shrink-0" />
-                    {!collapsed && <span className="truncate">{group.label}</span>}
+                    {!isCollapsed && <span className="truncate">{group.label}</span>}
                   </div>
-                  {!collapsed && (isOpen ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />)}
+                  {!isCollapsed && (isOpen ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />)}
                 </button>
                 <div
-                  className={`ml-2 overflow-hidden transition-all duration-200 ease-in-out ${!collapsed && isOpen ? 'max-h-96 opacity-100' : 'max-h-0 opacity-0'} ${!collapsed && isOpen ? 'mt-1' : 'mt-0'}`}
+                  className={`ml-2 overflow-hidden transition-all duration-200 ease-in-out ${!isCollapsed && isOpen ? 'max-h-96 opacity-100' : 'max-h-0 opacity-0'} ${!isCollapsed && isOpen ? 'mt-1' : 'mt-0'}`}
                 >
                   <div className="space-y-1">
                     {group.items.map(item => {
@@ -209,14 +221,17 @@ export default function Hospital_Sidebar({ collapsed = false, onExpand, collapse
                           key={item.to}
                           to={item.to}
                           title={item.label}
-                          className={({ isActive }) => `ml-4 flex items-center gap-3 rounded-md px-3 py-2 text-sm ${isActive ? 'bg-white/10 text-white' : 'text-white/80 hover:bg-white/5'}`}
+                          className={({ isActive }) =>
+                            `ml-4 flex items-center gap-3 rounded-md px-3 py-2 text-sm ${isActive ? 'bg-white/10 text-white' : 'text-white/80 hover:bg-white/5'}`
+                          }
                           end={item.end}
                           onClick={() => {
-                            if (collapsed) onExpand?.()
+                            if (isCollapsed) onExpand?.()
+                            onCloseMobile?.()
                           }}
                         >
                           <Icon className="h-4 w-4 shrink-0" />
-                          {!collapsed && <span className="truncate">{item.label}</span>}
+                          {!isCollapsed && <span className="truncate">{item.label}</span>}
                         </NavLink>
                       )
                     })}
@@ -233,20 +248,28 @@ export default function Hospital_Sidebar({ collapsed = false, onExpand, collapse
               key={item.to}
               to={item.to}
               title={item.label}
-              className={({ isActive }) => `flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium ${isActive ? 'bg-white/10 text-white' : 'text-white/80 hover:bg-white/5'}`}
+              className={({ isActive }) =>
+                `flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium ${isActive ? 'bg-white/10 text-white' : 'text-white/80 hover:bg-white/5'}`
+              }
               end={item.end}
               onClick={() => {
-                if (collapsed) onExpand?.()
+                if (isCollapsed) onExpand?.()
+                onCloseMobile?.()
               }}
             >
               <Icon className="h-4 w-4 shrink-0" />
-              {!collapsed && <span className="truncate">{item.label}</span>}
+              {!isCollapsed && <span className="truncate">{item.label}</span>}
             </NavLink>
           )
         })}
 
         <div className="pt-2">
-          <PortalSwitcher collapsed={collapsed} onExpand={onExpand} />
+          <PortalSwitcher
+            collapsed={isCollapsed}
+            onExpand={() => {
+              onExpand?.()
+            }}
+          />
           <div className="mx-2 border-t" style={{ borderColor: 'rgba(255,255,255,0.12)' }} />
           <button
             onClick={() => setLogoutConfirmOpen(true)}
@@ -256,11 +279,51 @@ export default function Hospital_Sidebar({ collapsed = false, onExpand, collapse
             title="Logout"
           >
             <LogOut className="h-4 w-4" />
-            {!collapsed && <span>Logout</span>}
+            {!isCollapsed && <span>Logout</span>}
           </button>
         </div>
-
       </nav>
+    )
+  }
+
+  return (
+    <>
+      {mobileOpen && (
+        <div
+          className="fixed inset-0 z-40 bg-black/40 md:hidden"
+          onClick={() => onCloseMobile?.()}
+          aria-hidden="true"
+        />
+      )}
+
+      {mobileOpen && (
+        <aside
+          className="fixed inset-y-0 left-0 z-50 w-64 transform md:hidden transition-transform duration-200 ease-in-out translate-x-0"
+          style={{ background: 'linear-gradient(180deg, var(--navy) 0%, var(--navy-700) 100%)', borderColor: 'rgba(255,255,255,0.12)' }}
+        >
+          <div className="flex h-full flex-col text-white">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-white/10">
+              <div className="text-sm font-semibold text-white">Menu</div>
+              <button
+                type="button"
+                onClick={() => onCloseMobile?.()}
+                className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-white/15 text-white hover:bg-white/10"
+                aria-label="Close sidebar"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            {renderNav({ isCollapsed: false })}
+          </div>
+        </aside>
+      )}
+
+      <aside
+        className={`hidden md:flex ${width} md:flex-col md:border-r md:text-white min-h-0 overflow-hidden transition-[width] duration-200 ease-in-out`}
+        style={{ background: 'linear-gradient(180deg, var(--navy) 0%, var(--navy-700) 100%)', borderColor: 'rgba(255,255,255,0.12)' }}
+      >
+        {renderNav({ isCollapsed: collapsed })}
+      </aside>
 
       {logoutConfirmOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setLogoutConfirmOpen(false)}>
@@ -291,6 +354,6 @@ export default function Hospital_Sidebar({ collapsed = false, onExpand, collapse
           </div>
         </div>
       )}
-    </aside>
+    </>
   )
 }

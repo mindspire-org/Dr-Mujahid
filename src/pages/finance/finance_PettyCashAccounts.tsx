@@ -49,7 +49,7 @@ export default function Finance_PettyCashAccounts(){
   }
 
   return (
-    <div className="w-full px-6 py-6 space-y-4">
+    <div className="w-full px-3 sm:px-6 py-5 sm:py-6 space-y-4">
       <div>
         <div className="text-2xl font-bold text-slate-800">Petty Cash Accounts</div>
         <div className="text-sm text-slate-500">Create petty cash accounts for departments and responsible staff</div>

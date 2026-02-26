@@ -159,28 +159,28 @@ export default function Diagnostic_TokenGenerator() {
 
   useEffect(() => {
     let cancelled = false
-    ;(async () => {
-      try {
-        if (!selectedPatient?._id) {
+      ; (async () => {
+        try {
+          if (!selectedPatient?._id) {
+            if (!cancelled) setAccount({ dues: 0, advance: 0 })
+            return
+          }
+          if (!cancelled) setAccountLoading(true)
+          const res: any = await diagnosticApi.getAccount(String(selectedPatient._id))
+          const a: any = res?.account || null
+          const dues = Math.max(0, Number(a?.dues || 0))
+          const advance = Math.max(0, Number(a?.advance || 0))
+          if (!cancelled) {
+            setAccount({ dues, advance })
+            if (dues <= 0) setPayPreviousDues(false)
+            if (advance <= 0) setUseAdvance(false)
+          }
+        } catch {
           if (!cancelled) setAccount({ dues: 0, advance: 0 })
-          return
+        } finally {
+          if (!cancelled) setAccountLoading(false)
         }
-        if (!cancelled) setAccountLoading(true)
-        const res: any = await diagnosticApi.getAccount(String(selectedPatient._id))
-        const a: any = res?.account || null
-        const dues = Math.max(0, Number(a?.dues || 0))
-        const advance = Math.max(0, Number(a?.advance || 0))
-        if (!cancelled) {
-          setAccount({ dues, advance })
-          if (dues <= 0) setPayPreviousDues(false)
-          if (advance <= 0) setUseAdvance(false)
-        }
-      } catch {
-        if (!cancelled) setAccount({ dues: 0, advance: 0 })
-      } finally {
-        if (!cancelled) setAccountLoading(false)
-      }
-    })()
+      })()
     return () => {
       cancelled = true
     }
@@ -550,33 +550,33 @@ export default function Diagnostic_TokenGenerator() {
       <div className="rounded-xl border border-slate-200 bg-white p-4">
         <div className="text-base font-semibold text-slate-800">Patient Details</div>
         <div className="text-xs text-slate-500">Fill all required details to generate a token</div>
-        <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2">
+        <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
           <div>
             <label className="mb-1 block text-xs font-medium text-slate-600">Phone *</label>
-            <input value={phone} onChange={e => { setPhone(e.target.value); skipLookupKeyRef.current = null; lastPromptKeyRef.current = null; lastPhonePromptRef.current = null }} ref={phoneRef} onBlur={onPhoneBlur} className="w-full rounded-md border border-slate-300 px-3 py-2" placeholder="03XXXXXXXXX" />
+            <input value={phone} onChange={e => { setPhone(e.target.value); skipLookupKeyRef.current = null; lastPromptKeyRef.current = null; lastPhonePromptRef.current = null }} ref={phoneRef} onBlur={onPhoneBlur} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" placeholder="03XXXXXXXXX" />
           </div>
           <div>
             <label className="mb-1 block text-xs font-medium text-slate-600">Patient Name *</label>
-            <input value={fullName} onChange={e => { setFullName(e.target.value); skipLookupKeyRef.current = null; lastPromptKeyRef.current = null }} ref={nameRef} onBlur={() => lookupExistingByPhoneAndName('name')} className="w-full rounded-md border border-slate-300 px-3 py-2" placeholder="e.g. Muhammad Zain" />
+            <input value={fullName} onChange={e => { setFullName(e.target.value); skipLookupKeyRef.current = null; lastPromptKeyRef.current = null }} ref={nameRef} onBlur={() => lookupExistingByPhoneAndName('name')} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" placeholder="e.g. Muhammad Zain" />
           </div>
         </div>
-        <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-3">
+        <div className="mt-3 grid grid-cols-2 gap-3 md:grid-cols-3">
           <div>
             <label className="mb-1 block text-xs font-medium text-slate-600">Age</label>
-            <input value={age} onChange={e => setAge(e.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-2" placeholder="e.g. 22" />
+            <input value={age} onChange={e => setAge(e.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" placeholder="e.g. 22" />
           </div>
           <div>
             <label className="mb-1 block text-xs font-medium text-slate-600">Gender</label>
-            <select value={gender} onChange={e => setGender(e.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-2">
+            <select value={gender} onChange={e => setGender(e.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm">
               <option value="">Select gender</option>
               <option>Male</option>
               <option>Female</option>
               <option>Other</option>
             </select>
           </div>
-          <div>
+          <div className="col-span-2 md:col-span-1">
             <label className="mb-1 block text-xs font-medium text-slate-600">Guardian S/O or D/O</label>
-            <select value={guardianRel} onChange={e => setGuardianRel(e.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-2">
+            <select value={guardianRel} onChange={e => setGuardianRel(e.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm">
               <option value="">Select</option>
               <option value="S/O">S/O</option>
               <option value="D/O">D/O</option>
@@ -584,18 +584,18 @@ export default function Diagnostic_TokenGenerator() {
             </select>
           </div>
         </div>
-        <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-3">
+        <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3">
           <div>
             <label className="mb-1 block text-xs font-medium text-slate-600">Guardian Name</label>
-            <input value={guardianName} onChange={e => setGuardianName(e.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-2" placeholder="e.g. Arif" />
+            <input value={guardianName} onChange={e => setGuardianName(e.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" placeholder="e.g. Arif" />
           </div>
           <div>
             <label className="mb-1 block text-xs font-medium text-slate-600">CNIC</label>
-            <input value={cnic} onChange={e => setCnic(e.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-2" placeholder="#####-#######-#" />
+            <input value={cnic} onChange={e => setCnic(e.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" placeholder="#####-#######-#" />
           </div>
-          <div>
+          <div className="sm:col-span-2 md:col-span-1">
             <label className="mb-1 block text-xs font-medium text-slate-600">Address</label>
-            <input value={address} onChange={e => setAddress(e.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-2" placeholder="Street, City" />
+            <input value={address} onChange={e => setAddress(e.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" placeholder="Street, City" />
           </div>
         </div>
       </div>
@@ -618,7 +618,7 @@ export default function Diagnostic_TokenGenerator() {
             onClick={() => setShowTestDropdown(true)}
             onChange={e => { setQuery(e.target.value); setShowTestDropdown(true) }}
             placeholder="Search test by name/code..."
-            className="w-full rounded-md border border-slate-300 px-3 py-2"
+            className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
           />
           {showTestDropdown && filtered.length > 0 && (
             <div className="max-h-64 overflow-y-auto rounded-md border border-slate-200 bg-white shadow-sm">
@@ -703,20 +703,20 @@ export default function Diagnostic_TokenGenerator() {
         <div className="text-base font-semibold text-slate-800">Billing Summary</div>
         <div className="mt-3 divide-y divide-slate-200 text-sm">
           {selectedTests.map(t => (
-            <div key={t.id} className="flex items-center justify-between py-2">
-              <div>{t.name}</div>
-              <div>PKR {getEffectivePrice(t.id).toLocaleString()}</div>
+            <div key={t.id} className="flex flex-wrap items-center justify-between py-2 gap-2">
+              <div className="font-medium">{t.name}</div>
+              <div className="text-slate-700">PKR {getEffectivePrice(t.id).toLocaleString()}</div>
             </div>
           ))}
           <div className="flex items-center justify-between py-2">
             <div className="text-slate-600">Subtotal</div>
-            <div>PKR {subtotal.toLocaleString()}</div>
+            <div className="font-medium">PKR {subtotal.toLocaleString()}</div>
           </div>
-          <div className="flex items-center justify-between py-2">
+          <div className="flex flex-wrap items-center justify-between py-2 gap-2">
             <div className="text-slate-600">Discount</div>
-            <input value={discount} onChange={e => setDiscount(e.target.value)} className="w-40 rounded-md border border-slate-300 px-3 py-1.5 text-right" placeholder="0" />
+            <input value={discount} onChange={e => setDiscount(e.target.value)} className="w-full sm:w-40 rounded-md border border-slate-300 px-3 py-1.5 text-right" placeholder="0" />
           </div>
-          <div className="flex items-center justify-between py-2 font-semibold">
+          <div className="flex items-center justify-between py-2 font-bold text-lg text-slate-900 border-t border-slate-300 mt-1 pt-3">
             <div>Net Amount</div>
             <div>PKR {net.toLocaleString()}</div>
           </div>

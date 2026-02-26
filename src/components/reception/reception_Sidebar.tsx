@@ -36,7 +36,19 @@ export const receptionSidebarGroups: Group[] = [
   },
 ]
 
-export default function Reception_Sidebar({ collapsed = false, onExpand, collapseSignal: _collapseSignal }: { collapsed?: boolean; onExpand?: () => void; collapseSignal?: number }) {
+export default function Reception_Sidebar({
+  collapsed = false,
+  onExpand,
+  collapseSignal: _collapseSignal,
+  mobileOpen = false,
+  onCloseMobile,
+}: {
+  collapsed?: boolean
+  onExpand?: () => void
+  collapseSignal?: number
+  mobileOpen?: boolean
+  onCloseMobile?: () => void
+}) {
   const navigate = useNavigate()
   const { pathname } = useLocation()
   const [logoutConfirmOpen, setLogoutConfirmOpen] = useState(false)
@@ -90,61 +102,104 @@ export default function Reception_Sidebar({ collapsed = false, onExpand, collaps
       setAllowed([])
     }
   }, [pathname])
+
+  const renderNav = ({ isCollapsed }: { isCollapsed: boolean }) => (
+    <nav className="hospital-sidebar-scroll flex-1 min-h-0 overflow-y-auto p-3 space-y-1">
+      {groups
+        .map(g => ({ ...g, items: g.items.filter(it => isAllowed(it.to)) }))
+        .filter(g => g.items.length > 0)
+        .map((g) => (
+          <div key={g.label} className="space-y-1">
+            {!isCollapsed && (
+              <div className="px-3 pt-2 pb-1 text-[11px] font-semibold uppercase tracking-wide text-white/60">
+                {g.label}
+              </div>
+            )}
+            {g.items.map((it) => {
+              const Icon = it.icon
+              return (
+                <NavLink
+                  key={it.to}
+                  to={it.to}
+                  end={it.end}
+                  className={({ isActive }) =>
+                    `rounded-md px-3 py-2 text-sm font-medium flex items-center ${isCollapsed ? 'justify-center gap-0' : 'gap-2'} ${isActive ? 'bg-white/10 text-white' : 'text-white/80 hover:bg-white/5'}`
+                  }
+                  title={isCollapsed ? it.label : undefined}
+                  onClick={() => {
+                    if (isCollapsed) onExpand?.()
+                    onCloseMobile?.()
+                  }}
+                >
+                  <Icon className="h-4 w-4" />
+                  {!isCollapsed && <span>{it.label}</span>}
+                </NavLink>
+              )
+            })}
+          </div>
+        ))}
+
+      <div className="pt-2">
+        <PortalSwitcher collapsed={isCollapsed} onExpand={onExpand} />
+        <div className="mx-2 border-t" style={{ borderColor: 'rgba(255,255,255,0.12)' }} />
+        <button
+          onClick={() => {
+            onCloseMobile?.()
+            setLogoutConfirmOpen(true)
+          }}
+          className="mt-2 w-full inline-flex items-center justify-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors duration-150 hover:bg-rose-600/80 hover:text-white"
+          style={{ backgroundColor: 'rgba(255,255,255,0.08)', color: '#ffffff', border: '1px solid rgba(255,255,255,0.14)' }}
+          aria-label="Logout"
+          title="Logout"
+        >
+          <LogOut className="h-4 w-4" />
+          {!isCollapsed && <span>Logout</span>}
+        </button>
+      </div>
+    </nav>
+  )
+
   return (
-    <aside
-      className={`hidden md:flex ${width} md:flex-col md:border-r md:text-white min-h-0 overflow-hidden transition-[width] duration-200 ease-in-out`}
-      style={{ background: 'linear-gradient(180deg, var(--navy) 0%, var(--navy-700) 100%)', borderColor: 'rgba(255,255,255,0.12)' }}
-    >
-      <nav className="hospital-sidebar-scroll flex-1 min-h-0 overflow-y-auto p-3 space-y-1">
-        {groups
-          .map(g => ({ ...g, items: g.items.filter(it => isAllowed(it.to)) }))
-          .filter(g => g.items.length > 0)
-          .map((g) => (
-            <div key={g.label} className="space-y-1">
-              {!collapsed && (
-                <div className="px-3 pt-2 pb-1 text-[11px] font-semibold uppercase tracking-wide text-white/60">
-                  {g.label}
-                </div>
-              )}
-              {g.items.map((it) => {
-                const Icon = it.icon
-                return (
-                  <NavLink
-                    key={it.to}
-                    to={it.to}
-                    end={it.end}
-                    className={({ isActive }) =>
-                      `rounded-md px-3 py-2 text-sm font-medium flex items-center ${collapsed ? 'justify-center gap-0' : 'gap-2'} ${isActive ? 'bg-white/10 text-white' : 'text-white/80 hover:bg-white/5'}`
-                    }
-                    title={collapsed ? it.label : undefined}
-                    onClick={() => {
-                      if (collapsed) onExpand?.()
-                    }}
-                  >
-                    <Icon className="h-4 w-4" />
-                    {!collapsed && <span>{it.label}</span>}
-                  </NavLink>
-                )
-              })}
+    <>
+      {mobileOpen && (
+        <div
+          className="fixed inset-0 z-40 bg-black/40 md:hidden"
+          onClick={() => onCloseMobile?.()}
+          aria-hidden="true"
+        />
+      )}
+
+      {mobileOpen && (
+        <aside
+          className="fixed inset-y-0 left-0 z-50 w-64 transform md:hidden transition-transform duration-200 ease-in-out translate-x-0"
+          style={{ background: 'linear-gradient(180deg, var(--navy) 0%, var(--navy-700) 100%)' }}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Reception navigation"
+        >
+          <div className="flex h-full flex-col text-white">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-white/10">
+              <div className="text-sm font-semibold text-white">Menu</div>
+              <button
+                type="button"
+                onClick={() => onCloseMobile?.()}
+                className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-white/15 text-white hover:bg-white/10"
+                aria-label="Close sidebar"
+              >
+                <span aria-hidden="true">×</span>
+              </button>
             </div>
-          ))}
+            {renderNav({ isCollapsed: false })}
+          </div>
+        </aside>
+      )}
 
-        <div className="pt-2">
-          <PortalSwitcher collapsed={collapsed} onExpand={onExpand} />
-          <div className="mx-2 border-t" style={{ borderColor: 'rgba(255,255,255,0.12)' }} />
-          <button
-            onClick={() => setLogoutConfirmOpen(true)}
-            className="mt-2 w-full inline-flex items-center justify-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors duration-150 hover:bg-rose-600/80 hover:text-white"
-            style={{ backgroundColor: 'rgba(255,255,255,0.08)', color: '#ffffff', border: '1px solid rgba(255,255,255,0.14)' }}
-            aria-label="Logout"
-            title="Logout"
-          >
-            <LogOut className="h-4 w-4" />
-            {!collapsed && <span>Logout</span>}
-          </button>
-        </div>
-
-      </nav>
+      <aside
+        className={`hidden md:flex ${width} md:flex-col md:border-r md:text-white min-h-0 overflow-hidden transition-[width] duration-200 ease-in-out`}
+        style={{ background: 'linear-gradient(180deg, var(--navy) 0%, var(--navy-700) 100%)', borderColor: 'rgba(255,255,255,0.12)' }}
+      >
+        {renderNav({ isCollapsed: collapsed })}
+      </aside>
 
       {logoutConfirmOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setLogoutConfirmOpen(false)}>
@@ -175,6 +230,6 @@ export default function Reception_Sidebar({ collapsed = false, onExpand, collaps
           </div>
         </div>
       )}
-    </aside>
+    </>
   )
 }

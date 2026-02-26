@@ -131,7 +131,7 @@ export default function Finance_ManagePettyCash() {
   }
 
   return (
-    <div className="w-full px-6 py-6 space-y-4">
+    <div className="w-full px-3 sm:px-6 py-5 sm:py-6 space-y-4">
       <div>
         <div className="text-2xl font-bold text-slate-800">Manage Petty Cash</div>
         <div className="text-sm text-slate-500">Transfer funds from bank to petty cash and view balances</div>
@@ -366,7 +366,7 @@ export default function Finance_ManagePettyCash() {
             }
             return (
               <div className="mt-3 overflow-x-auto">
-                <table className="min-w-full text-sm">
+                <table className="min-w-max w-full text-sm">
                   <thead>
                     <tr className="text-left text-slate-600 border-b">
                       <th className="py-2 pr-4">Transaction ID</th>
@@ -492,7 +492,7 @@ export default function Finance_ManagePettyCash() {
 
           return (
             <div className="mt-3 overflow-x-auto">
-              <table className="min-w-full text-sm">
+              <table className="min-w-max w-full text-sm">
                 <thead>
                   <tr className="text-left text-slate-600 border-b">
                     <th className="py-2 pr-4">Transaction ID</th>

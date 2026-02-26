@@ -11,8 +11,8 @@ type Order = {
   patient: { mrn?: string; fullName: string; phone?: string; cnic?: string; guardianName?: string }
   tests: string[]
   // per-test tracking items
-  items?: Array<{ testId: string; status: 'received'|'completed'; sampleTime?: string; reportingTime?: string }>
-  status: 'received'|'completed'
+  items?: Array<{ testId: string; status: 'received' | 'completed'; sampleTime?: string; reportingTime?: string }>
+  status: 'received' | 'completed'
   tokenNo?: string
   sampleTime?: string
   subtotal?: number
@@ -29,7 +29,7 @@ type Order = {
   advanceAdded?: number
   duesAfter?: number
   advanceAfter?: number
-  paymentStatus?: 'paid'|'unpaid'
+  paymentStatus?: 'paid' | 'unpaid'
   receptionistName?: string
   paymentMethod?: string
   accountNumberIban?: string
@@ -53,7 +53,7 @@ function abbreviateTestName(name: string) {
   if (!raw || raw === '—' || raw === '-') return raw || '—'
   // If already looks like an abbreviation/code (no spaces and short), keep it.
   if (!raw.includes(' ') && raw.length <= 6) return raw.toUpperCase()
-  const stop = new Set(['and','of','the','for','with','in','to','a','an'])
+  const stop = new Set(['and', 'of', 'the', 'for', 'with', 'in', 'to', 'a', 'an'])
   const parts = raw
     .split(/[^A-Za-z0-9]+/g)
     .map(s => s.trim())
@@ -63,20 +63,22 @@ function abbreviateTestName(name: string) {
   return abbr ? abbr.slice(0, 3) : raw.toUpperCase().slice(0, 3)
 }
 
-export default function Diagnostic_SampleTracking(){
+export default function Diagnostic_SampleTracking() {
   // tests map
   const [tests, setTests] = useState<Test[]>([])
-  useEffect(()=>{ (async()=>{
-    try { const res = await diagnosticApi.listTests({ limit: 1000 }) as any; setTests((res?.items||res||[]).map((t:any)=>({ id: String(t._id||t.id), name: t.name, price: Number(t.price||0) })))} catch { setTests([]) }
-  })() }, [])
-  const testsMap = useMemo(()=> Object.fromEntries(tests.map(t=>[t.id, t.name])), [tests])
-  const testsPrice = useMemo(()=> Object.fromEntries(tests.map(t=>[t.id, Number(t.price||0)])), [tests])
+  useEffect(() => {
+    (async () => {
+      try { const res = await diagnosticApi.listTests({ limit: 1000 }) as any; setTests((res?.items || res || []).map((t: any) => ({ id: String(t._id || t.id), name: t.name, price: Number(t.price || 0) }))) } catch { setTests([]) }
+    })()
+  }, [])
+  const testsMap = useMemo(() => Object.fromEntries(tests.map(t => [t.id, t.name])), [tests])
+  const testsPrice = useMemo(() => Object.fromEntries(tests.map(t => [t.id, Number(t.price || 0)])), [tests])
 
   // filters
   const [q, setQ] = useState('')
   const [from, setFrom] = useState('')
   const [to, setTo] = useState('')
-  const [status, setStatus] = useState<'all'|'received'|'completed'>('all')
+  const [status, setStatus] = useState<'all' | 'received' | 'completed'>('all')
   const [rows, setRows] = useState(20)
   const [page, setPage] = useState(1)
 
@@ -84,50 +86,52 @@ export default function Diagnostic_SampleTracking(){
   const [orders, setOrders] = useState<Order[]>([])
   const [total, setTotal] = useState(0)
   const [totalPages, setTotalPages] = useState(1)
-  const [notice, setNotice] = useState<{ text: string; kind: 'success'|'error' } | null>(null)
+  const [notice, setNotice] = useState<{ text: string; kind: 'success' | 'error' } | null>(null)
 
-  useEffect(()=>{ let mounted = true; (async()=>{
-    try {
-      // Don't filter by order.status at the API level because completion is tracked per-test (items[].status)
-      // and order.status becomes 'completed' only when all items are completed.
-      const res = await diagnosticApi.listOrders({ q: q || undefined, from: from || undefined, to: to || undefined, status: undefined as any, page, limit: rows }) as any
-      const items: Order[] = (res.items||[]).map((x:any)=>({
-        id: String(x._id),
-        createdAt: x.createdAt || new Date().toISOString(),
-        patient: x.patient || { fullName: '-', phone: '' },
-        tests: x.tests || [],
-        items: (x.items || []).map((it: any) => ({
-          testId: String(it?.testId || ''),
-          status: (String(it?.status || 'received').toLowerCase() === 'completed' ? 'completed' : 'received') as any,
-          sampleTime: it?.sampleTime,
-          reportingTime: it?.reportingTime,
-        })),
-        status: (String(x.status || 'received').toLowerCase() === 'completed' ? 'completed' : 'received') as any,
-        tokenNo: x.tokenNo,
-        sampleTime: x.sampleTime,
-        subtotal: Number(x.subtotal||0),
-        discount: Number(x.discount||0),
-        net: Number(x.net||0),
-        duesBefore: (x.duesBefore != null) ? Number(x.duesBefore || 0) : undefined,
-        advanceBefore: (x.advanceBefore != null) ? Number(x.advanceBefore || 0) : undefined,
-        payPreviousDues: (x.payPreviousDues != null) ? !!x.payPreviousDues : undefined,
-        useAdvance: (x.useAdvance != null) ? !!x.useAdvance : undefined,
-        advanceApplied: (x.advanceApplied != null) ? Number(x.advanceApplied || 0) : undefined,
-        amountReceived: (x.amountReceived != null) ? Number(x.amountReceived || 0) : undefined,
-        duesPaid: (x.duesPaid != null) ? Number(x.duesPaid || 0) : undefined,
-        paidForToday: (x.paidForToday != null) ? Number(x.paidForToday || 0) : undefined,
-        advanceAdded: (x.advanceAdded != null) ? Number(x.advanceAdded || 0) : undefined,
-        duesAfter: (x.duesAfter != null) ? Number(x.duesAfter || 0) : undefined,
-        advanceAfter: (x.advanceAfter != null) ? Number(x.advanceAfter || 0) : undefined,
-        paymentStatus: (x.paymentStatus || 'paid') as any,
-        receptionistName: x.receptionistName || '',
-        paymentMethod: x.paymentMethod || '',
-        accountNumberIban: x.accountNumberIban || '',
-        receivedToAccountCode: x.receivedToAccountCode || '',
-      }))
-      if (mounted){ setOrders(items); setTotal(Number(res.total||items.length||0)); setTotalPages(Number(res.totalPages||1)) }
-    } catch (e){ if (mounted){ setOrders([]); setTotal(0); setTotalPages(1) } }
-  })(); return ()=>{ mounted = false } }, [q, from, to, status, page, rows])
+  useEffect(() => {
+    let mounted = true; (async () => {
+      try {
+        // Don't filter by order.status at the API level because completion is tracked per-test (items[].status)
+        // and order.status becomes 'completed' only when all items are completed.
+        const res = await diagnosticApi.listOrders({ q: q || undefined, from: from || undefined, to: to || undefined, status: undefined as any, page, limit: rows }) as any
+        const items: Order[] = (res.items || []).map((x: any) => ({
+          id: String(x._id),
+          createdAt: x.createdAt || new Date().toISOString(),
+          patient: x.patient || { fullName: '-', phone: '' },
+          tests: x.tests || [],
+          items: (x.items || []).map((it: any) => ({
+            testId: String(it?.testId || ''),
+            status: (String(it?.status || 'received').toLowerCase() === 'completed' ? 'completed' : 'received') as any,
+            sampleTime: it?.sampleTime,
+            reportingTime: it?.reportingTime,
+          })),
+          status: (String(x.status || 'received').toLowerCase() === 'completed' ? 'completed' : 'received') as any,
+          tokenNo: x.tokenNo,
+          sampleTime: x.sampleTime,
+          subtotal: Number(x.subtotal || 0),
+          discount: Number(x.discount || 0),
+          net: Number(x.net || 0),
+          duesBefore: (x.duesBefore != null) ? Number(x.duesBefore || 0) : undefined,
+          advanceBefore: (x.advanceBefore != null) ? Number(x.advanceBefore || 0) : undefined,
+          payPreviousDues: (x.payPreviousDues != null) ? !!x.payPreviousDues : undefined,
+          useAdvance: (x.useAdvance != null) ? !!x.useAdvance : undefined,
+          advanceApplied: (x.advanceApplied != null) ? Number(x.advanceApplied || 0) : undefined,
+          amountReceived: (x.amountReceived != null) ? Number(x.amountReceived || 0) : undefined,
+          duesPaid: (x.duesPaid != null) ? Number(x.duesPaid || 0) : undefined,
+          paidForToday: (x.paidForToday != null) ? Number(x.paidForToday || 0) : undefined,
+          advanceAdded: (x.advanceAdded != null) ? Number(x.advanceAdded || 0) : undefined,
+          duesAfter: (x.duesAfter != null) ? Number(x.duesAfter || 0) : undefined,
+          advanceAfter: (x.advanceAfter != null) ? Number(x.advanceAfter || 0) : undefined,
+          paymentStatus: (x.paymentStatus || 'paid') as any,
+          receptionistName: x.receptionistName || '',
+          paymentMethod: x.paymentMethod || '',
+          accountNumberIban: x.accountNumberIban || '',
+          receivedToAccountCode: x.receivedToAccountCode || '',
+        }))
+        if (mounted) { setOrders(items); setTotal(Number(res.total || items.length || 0)); setTotalPages(Number(res.totalPages || 1)) }
+      } catch (e) { if (mounted) { setOrders([]); setTotal(0); setTotalPages(1) } }
+    })(); return () => { mounted = false }
+  }, [q, from, to, status, page, rows])
 
   const pageCount = Math.max(1, totalPages)
   const curPage = Math.min(page, pageCount)
@@ -136,45 +140,45 @@ export default function Diagnostic_SampleTracking(){
 
   // Per-test update handlers
   const setSampleTimeForItem = async (orderId: string, testId: string, t: string) => {
-    try { await diagnosticApi.updateOrderItemTrack(orderId, testId, { sampleTime: t }) } catch {}
+    try { await diagnosticApi.updateOrderItemTrack(orderId, testId, { sampleTime: t }) } catch { }
     setOrders(prev => prev.map(o => {
       if (o.id !== orderId) return o
-      const items = (o.items||[])
-      const idx = items.findIndex(i => i.testId===testId)
-      if (idx>=0){ const copy = items.slice(); copy[idx] = { ...copy[idx], sampleTime: t }; return { ...o, items: copy } }
-      return { ...o, items: [ ...(o.items||[]), { testId, status: 'received', sampleTime: t } ] }
+      const items = (o.items || [])
+      const idx = items.findIndex(i => i.testId === testId)
+      if (idx >= 0) { const copy = items.slice(); copy[idx] = { ...copy[idx], sampleTime: t }; return { ...o, items: copy } }
+      return { ...o, items: [...(o.items || []), { testId, status: 'received', sampleTime: t }] }
     }))
   }
-  const setStatusForItem = async (orderId: string, testId: string, s: 'received'|'completed') => {
-    try { await diagnosticApi.updateOrderItemTrack(orderId, testId, { status: s }) } catch {}
+  const setStatusForItem = async (orderId: string, testId: string, s: 'received' | 'completed') => {
+    try { await diagnosticApi.updateOrderItemTrack(orderId, testId, { status: s }) } catch { }
     setOrders(prev => prev.map(o => {
       if (o.id !== orderId) return o
-      const items = (o.items||[])
-      const idx = items.findIndex(i => i.testId===testId)
-      if (idx>=0){ const copy = items.slice(); copy[idx] = { ...copy[idx], status: s }; return { ...o, items: copy } }
-      return { ...o, items: [ ...(o.items||[]), { testId, status: s } ] }
+      const items = (o.items || [])
+      const idx = items.findIndex(i => i.testId === testId)
+      if (idx >= 0) { const copy = items.slice(); copy[idx] = { ...copy[idx], status: s }; return { ...o, items: copy } }
+      return { ...o, items: [...(o.items || []), { testId, status: s }] }
     }))
   }
   const requestDeleteItem = async (orderId: string, testId: string) => {
     if (!confirm('Delete this test from the order?')) return
     try {
       const res = await diagnosticApi.deleteOrderItem(orderId, testId) as any
-      if (res?.deletedOrder){
-        setOrders(prev => prev.filter(o=>o.id!==orderId))
-      } else if (res?.order){
-        setOrders(prev => prev.map(o => o.id===orderId ? {
+      if (res?.deletedOrder) {
+        setOrders(prev => prev.filter(o => o.id !== orderId))
+      } else if (res?.order) {
+        setOrders(prev => prev.map(o => o.id === orderId ? {
           ...o,
-          tests: (res.order.tests||[]),
-          items: (res.order.items||[]),
+          tests: (res.order.tests || []),
+          items: (res.order.items || []),
           status: res.order.status || o.status,
         } : o))
       } else {
-        setOrders(prev => prev.map(o => o.id===orderId ? { ...o, tests: o.tests.filter(t=>t!==testId), items: (o.items||[]).filter(i=>i.testId!==testId) } : o))
+        setOrders(prev => prev.map(o => o.id === orderId ? { ...o, tests: o.tests.filter(t => t !== testId), items: (o.items || []).filter(i => i.testId !== testId) } : o))
       }
       setNotice({ text: 'Test deleted', kind: 'success' })
     }
     catch { setNotice({ text: 'Failed to delete', kind: 'error' }) }
-    finally { try { setTimeout(()=> setNotice(null), 2500) } catch {} }
+    finally { try { setTimeout(() => setNotice(null), 2500) } catch { } }
   }
 
   // Print Slip
@@ -187,75 +191,75 @@ export default function Diagnostic_SampleTracking(){
   const [detailsOrder, setDetailsOrder] = useState<Order | null>(null)
 
   const [payToAccounts, setPayToAccounts] = useState<Array<{ code: string; label: string }>>([])
-  useEffect(()=>{
+  useEffect(() => {
     let mounted = true
-    ;(async()=>{
-      try {
-        const [bankRes, pettyRes] = await Promise.all([
-          hospitalApi.listBankAccounts(),
-          hospitalApi.listPettyCashAccounts(),
-        ]) as any
-        let mineRes: any = null
-        try { mineRes = await hospitalApi.myPettyCash() as any } catch { mineRes = null }
+      ; (async () => {
+        try {
+          const [bankRes, pettyRes] = await Promise.all([
+            hospitalApi.listBankAccounts(),
+            hospitalApi.listPettyCashAccounts(),
+          ]) as any
+          let mineRes: any = null
+          try { mineRes = await hospitalApi.myPettyCash() as any } catch { mineRes = null }
 
-        const opts: Array<{ code: string; label: string }> = []
-        const seen = new Set<string>()
-        const add = (code?: string, label?: string) => {
-          const c = String(code || '').trim().toUpperCase()
-          if (!c) return
-          if (seen.has(c)) return
-          seen.add(c)
-          opts.push({ code: c, label: String(label || c) })
+          const opts: Array<{ code: string; label: string }> = []
+          const seen = new Set<string>()
+          const add = (code?: string, label?: string) => {
+            const c = String(code || '').trim().toUpperCase()
+            if (!c) return
+            if (seen.has(c)) return
+            seen.add(c)
+            opts.push({ code: c, label: String(label || c) })
+          }
+
+          const myCode = String(mineRes?.account?.code || '').trim().toUpperCase()
+          if (myCode) {
+            add(myCode, `${mineRes?.account?.name || 'My Petty Cash'} (${myCode})`)
+          }
+
+          const petty: any[] = pettyRes?.accounts || []
+          for (const p of petty) {
+            const code = String(p?.code || '').trim().toUpperCase()
+            if (!code) continue
+            const rs = String(p?.responsibleStaff || '').trim()
+            if (rs) continue
+            if (String(p?.status || 'Active') !== 'Active') continue
+            add(code, `${String(p?.name || code).trim()} (${code})`)
+          }
+
+          const banks: any[] = bankRes?.accounts || []
+          for (const b of banks) {
+            const an = String(b?.accountNumber || '')
+            const last4 = an ? an.slice(-4) : ''
+            const code = String(b?.financeAccountCode || (last4 ? `BANK_${last4}` : '')).trim().toUpperCase()
+            if (!code) continue
+            const bankLabel = `${String(b?.bankName || '').trim()} - ${String(b?.accountTitle || '').trim()}${last4 ? ` (${last4})` : ''}`.trim()
+            add(code, bankLabel ? `${bankLabel} (${code})` : code)
+          }
+
+          if (mounted) setPayToAccounts(opts)
+        } catch {
+          if (mounted) setPayToAccounts([])
         }
-
-        const myCode = String(mineRes?.account?.code || '').trim().toUpperCase()
-        if (myCode){
-          add(myCode, `${mineRes?.account?.name || 'My Petty Cash'} (${myCode})`)
-        }
-
-        const petty: any[] = pettyRes?.accounts || []
-        for (const p of petty){
-          const code = String(p?.code || '').trim().toUpperCase()
-          if (!code) continue
-          const rs = String(p?.responsibleStaff || '').trim()
-          if (rs) continue
-          if (String(p?.status || 'Active') !== 'Active') continue
-          add(code, `${String(p?.name || code).trim()} (${code})`)
-        }
-
-        const banks: any[] = bankRes?.accounts || []
-        for (const b of banks){
-          const an = String(b?.accountNumber || '')
-          const last4 = an ? an.slice(-4) : ''
-          const code = String(b?.financeAccountCode || (last4 ? `BANK_${last4}` : '')).trim().toUpperCase()
-          if (!code) continue
-          const bankLabel = `${String(b?.bankName || '').trim()} - ${String(b?.accountTitle || '').trim()}${last4 ? ` (${last4})` : ''}`.trim()
-          add(code, bankLabel ? `${bankLabel} (${code})` : code)
-        }
-
-        if (mounted) setPayToAccounts(opts)
-      } catch {
-        if (mounted) setPayToAccounts([])
-      }
-    })()
-    return ()=>{ mounted = false }
+      })()
+    return () => { mounted = false }
   }, [])
   // Edit Sample Dialog
   const [editOpen, setEditOpen] = useState(false)
   const [editOrder, setEditOrder] = useState<{ id: string; patient: any; tests: string[] } | null>(null)
-  function openEdit(o: Order){ setEditOrder({ id: o.id, patient: o.patient, tests: o.tests }); setEditOpen(true) }
-  function onEditSaved(updated: any){
+  function openEdit(o: Order) { setEditOrder({ id: o.id, patient: o.patient, tests: o.tests }); setEditOpen(true) }
+  function onEditSaved(updated: any) {
     const id = String(updated?._id || updated?.id || (editOrder && editOrder.id))
     if (!id) { setEditOpen(false); return }
-    setOrders(prev => prev.map(o => o.id===id ? { ...o, patient: updated.patient || o.patient, tests: updated.tests || o.tests, tokenNo: updated.tokenNo || o.tokenNo, createdAt: updated.createdAt || o.createdAt } : o))
+    setOrders(prev => prev.map(o => o.id === id ? { ...o, patient: updated.patient || o.patient, tests: updated.tests || o.tests, tokenNo: updated.tokenNo || o.tokenNo, createdAt: updated.createdAt || o.createdAt } : o))
     setEditOpen(false)
   }
   const buildSlipData = (o: Order) => {
-    const rows = o.tests.map(tid => ({ name: testsMap[tid] || tid, price: Number(testsPrice[tid]||0) }))
-    const computedSubtotal = rows.reduce((s,r)=> s + Number(r.price||0), 0)
-    const subtotal = (o.subtotal!=null && !Number.isNaN(o.subtotal)) ? Number(o.subtotal) : computedSubtotal
-    const discount = (o.discount!=null && !Number.isNaN(o.discount)) ? Number(o.discount) : 0
-    const payable = (o.net!=null && !Number.isNaN(o.net)) ? Number(o.net) : Math.max(0, subtotal - discount)
+    const rows = o.tests.map(tid => ({ name: testsMap[tid] || tid, price: Number(testsPrice[tid] || 0) }))
+    const computedSubtotal = rows.reduce((s, r) => s + Number(r.price || 0), 0)
+    const subtotal = (o.subtotal != null && !Number.isNaN(o.subtotal)) ? Number(o.subtotal) : computedSubtotal
+    const discount = (o.discount != null && !Number.isNaN(o.discount)) ? Number(o.discount) : 0
+    const payable = (o.net != null && !Number.isNaN(o.net)) ? Number(o.net) : Math.max(0, subtotal - discount)
     const data: DiagnosticTokenSlipData = {
       tokenNo: o.tokenNo || '-',
       patientName: o.patient.fullName,
@@ -306,49 +310,55 @@ export default function Diagnostic_SampleTracking(){
 
   return (
     <div className="space-y-4">
-      <div className="rounded-xl border border-slate-200 bg-white p-4">
-        <div className="text-2xl font-bold text-slate-900">Sample Management</div>
-        <div className="mt-3 flex flex-wrap items-center gap-2">
-          <div className="min-w-[260px] flex-1">
-            <input value={q} onChange={e=>{ setQ(e.target.value); setPage(1) }} placeholder="Search by token, patient, or test..." className="w-full rounded-md border border-slate-300 px-3 py-2 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-200" />
+      <div className="rounded-xl border border-slate-200 bg-white p-3 sm:p-4">
+        <div className="text-xl sm:text-2xl font-bold text-slate-900">Sample Management</div>
+        <div className="mt-4 flex flex-col gap-4 lg:flex-row lg:items-center">
+          <div className="w-full lg:max-w-md">
+            <input value={q} onChange={e => { setQ(e.target.value); setPage(1) }} placeholder="Search by token, patient, or test..." className="w-full rounded-md border border-slate-300 px-3 py-2 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-200 text-sm" />
           </div>
-          <div className="flex items-center gap-2 text-sm">
-            <input type="date" value={from} onChange={e=>{ setFrom(e.target.value); setPage(1) }} className="rounded-md border border-slate-300 px-2 py-1" />
-            <input type="date" value={to} onChange={e=>{ setTo(e.target.value); setPage(1) }} className="rounded-md border border-slate-300 px-2 py-1" />
-          </div>
-          <div className="flex items-center gap-1 text-sm">
-            <button onClick={()=>setStatus('all')} className={`rounded-md px-3 py-1.5 border ${status==='all'?'bg-slate-900 text-white border-slate-900':'border-slate-300 text-slate-700'}`}>All</button>
-            <button onClick={()=>setStatus('received')} className={`rounded-md px-3 py-1.5 border ${status==='received'?'bg-slate-900 text-white border-slate-900':'border-slate-300 text-slate-700'}`}>Received</button>
-            <button onClick={()=>setStatus('completed')} className={`rounded-md px-3 py-1.5 border ${status==='completed'?'bg-slate-900 text-white border-slate-900':'border-slate-300 text-slate-700'}`}>Completed</button>
-          </div>
-          <div className="ml-auto flex items-center gap-2 text-sm">
-            <span>Rows</span>
-            <select value={rows} onChange={e=>{ setRows(Number(e.target.value)); setPage(1) }} className="rounded-md border border-slate-300 px-2 py-1">
-              <option value={10}>10</option>
-              <option value={20}>20</option>
-              <option value={50}>50</option>
-            </select>
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="flex items-center gap-2 text-sm">
+              <span className="text-slate-500 whitespace-nowrap">From</span>
+              <input type="date" value={from} onChange={e => { setFrom(e.target.value); setPage(1) }} className="rounded-md border border-slate-300 px-2 py-1.5 focus:border-violet-500" />
+            </div>
+            <div className="flex items-center gap-2 text-sm">
+              <span className="text-slate-500 whitespace-nowrap">To</span>
+              <input type="date" value={to} onChange={e => { setTo(e.target.value); setPage(1) }} className="rounded-md border border-slate-300 px-2 py-1.5 focus:border-violet-500" />
+            </div>
+            <div className="flex items-center gap-1 p-1 bg-slate-50 rounded-lg border border-slate-200">
+              <button onClick={() => setStatus('all')} className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${status === 'all' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}>All</button>
+              <button onClick={() => setStatus('received')} className={`rounded-md px-4 py-1.5 text-xs font-medium transition-colors ${status === 'received' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}>Received</button>
+              <button onClick={() => setStatus('completed')} className={`rounded-md px-4 py-1.5 text-xs font-medium transition-colors ${status === 'completed' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}>Completed</button>
+            </div>
+            <div className="flex items-center gap-2 text-sm ml-auto sm:ml-0">
+              <span className="text-slate-500">Rows</span>
+              <select value={rows} onChange={e => { setRows(Number(e.target.value)); setPage(1) }} className="rounded-md border border-slate-300 px-2 py-1.5 focus:border-violet-500">
+                <option value={10}>10</option>
+                <option value={20}>20</option>
+                <option value={50}>50</option>
+              </select>
+            </div>
           </div>
         </div>
         {notice && (
-          <div className={`mt-3 rounded-md border px-3 py-2 text-sm ${notice.kind==='success'? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-rose-200 bg-rose-50 text-rose-800'}`}>{notice.text}</div>
+          <div className={`mt-4 rounded-md border px-3 py-2.5 text-sm font-medium ${notice.kind === 'success' ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-rose-200 bg-rose-50 text-rose-800'}`}>{notice.text}</div>
         )}
       </div>
 
-      <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
+      <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
         <table className="w-full text-sm">
-          <thead className="border-b border-slate-200 bg-slate-50 text-left text-slate-600">
+          <thead className="border-b border-slate-200 bg-slate-50/50 text-left text-slate-600">
             <tr>
-              <th className="px-4 py-2">DateTime</th>
-              <th className="px-4 py-2">Patient</th>
-              <th className="px-4 py-2">Token No</th>
-              <th className="px-4 py-2">Test(s)</th>
-              <th className="px-4 py-2">MR No</th>
-              <th className="px-4 py-2">Phone</th>
-              <th className="px-4 py-2">Payment Status</th>
-              <th className="px-4 py-2">Sample Time</th>
-              <th className="px-4 py-2">Status</th>
-              <th className="px-4 py-2">Actions</th>
+              <th className="px-4 py-3 font-semibold">DateTime</th>
+              <th className="px-4 py-3 font-semibold">Patient</th>
+              <th className="px-4 py-3 font-semibold">Token No</th>
+              <th className="px-4 py-3 font-semibold">Test(s)</th>
+              <th className="px-4 py-3 font-semibold">MR No</th>
+              <th className="px-4 py-3 font-semibold">Phone</th>
+              <th className="px-4 py-3 font-semibold">Payment Status</th>
+              <th className="px-4 py-3 font-semibold">Sample Time</th>
+              <th className="px-4 py-3 font-semibold">Status</th>
+              <th className="px-4 py-3 font-semibold">Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -357,7 +367,7 @@ export default function Diagnostic_SampleTracking(){
               o.tests.forEach((tid, idx) => {
                 const tname = testsMap[tid] || '—'
                 const tabbr = abbreviateTestName(tname)
-                const item = (o.items||[]).find(i=> i.testId===tid)
+                const item = (o.items || []).find(i => i.testId === tid)
                 const rowStatus = (item?.status || o.status) as any
                 const sampleTime = item?.sampleTime || o.sampleTime || ''
                 acc.push(
@@ -375,16 +385,16 @@ export default function Diagnostic_SampleTracking(){
                     <td className="px-4 py-2 whitespace-nowrap">{o.patient.phone || '-'}</td>
                     <td className="px-4 py-2 whitespace-nowrap">
                       <div className="flex items-center gap-2">
-                        <span className={`rounded px-2 py-0.5 text-xs ${String(o.paymentStatus||'paid').toLowerCase()==='paid' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-800'}`}>
+                        <span className={`rounded px-2 py-0.5 text-xs ${String(o.paymentStatus || 'paid').toLowerCase() === 'paid' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-800'}`}>
                           {String(o.paymentStatus || 'paid').toUpperCase()}
                         </span>
                       </div>
                     </td>
                     <td className="px-4 py-2 whitespace-nowrap">
-                      <input type="time" value={sampleTime} onChange={e=>setSampleTimeForItem(o.id, String(tid), e.target.value)} className="rounded-md border border-slate-300 px-2 py-1" />
-                     </td>
+                      <input type="time" value={sampleTime} onChange={e => setSampleTimeForItem(o.id, String(tid), e.target.value)} className="rounded-md border border-slate-300 px-2 py-1" />
+                    </td>
                     <td className="px-4 py-2 whitespace-nowrap">
-                      <select value={rowStatus === 'completed' ? 'completed' : 'received'} onChange={e=> setStatusForItem(o.id, String(tid), e.target.value as any)} className="rounded-md border border-slate-300 px-2 py-1 text-xs">
+                      <select value={rowStatus === 'completed' ? 'completed' : 'received'} onChange={e => setStatusForItem(o.id, String(tid), e.target.value as any)} className="rounded-md border border-slate-300 px-2 py-1 text-xs">
                         <option value="received">received</option>
                         <option value="completed">completed</option>
                       </select>
@@ -392,14 +402,14 @@ export default function Diagnostic_SampleTracking(){
                     <td className="px-4 py-2 whitespace-nowrap">
                       <div className="flex items-center gap-2">
                         <button
-                          onClick={()=>openDetails(o)}
+                          onClick={() => openDetails(o)}
                           title="View details"
                           className="inline-flex items-center justify-center rounded-md border border-slate-300 px-2 py-2 text-slate-600 hover:bg-slate-50 hover:text-slate-900"
                         >
                           <Eye className="h-4 w-4" />
                         </button>
                         <button
-                          onClick={()=>openSlip(o, true)}
+                          onClick={() => openSlip(o, true)}
                           title="Print Slip"
                           className="inline-flex items-center gap-1 rounded-md border border-slate-300 px-2 py-2 text-slate-600 hover:bg-slate-50 hover:text-slate-900"
                         >
@@ -407,14 +417,14 @@ export default function Diagnostic_SampleTracking(){
                           <span className="hidden sm:inline">Print Slip</span>
                         </button>
                         <button
-                          onClick={()=> openEdit(o)}
+                          onClick={() => openEdit(o)}
                           title="Edit sample"
                           className="inline-flex items-center justify-center rounded-md border border-slate-300 px-2 py-2 text-slate-600 hover:bg-slate-50 hover:text-blue-800"
                         >
                           <Pencil className="h-4 w-4" />
                         </button>
                         <button
-                          onClick={()=>requestDeleteItem(o.id, String(tid))}
+                          onClick={() => requestDeleteItem(o.id, String(tid))}
                           title="Delete test"
                           className="inline-flex items-center justify-center rounded-md border border-slate-300 px-2 py-2 text-slate-600 hover:bg-rose-50 hover:text-rose-700"
                         >
@@ -437,19 +447,19 @@ export default function Diagnostic_SampleTracking(){
       <div className="flex items-center justify-between text-sm text-slate-600">
         <div>{total === 0 ? '0' : `${start}-${end}`} of {total}</div>
         <div className="flex items-center gap-2">
-          <button disabled={curPage<=1} onClick={()=> setPage(p=> Math.max(1, p-1))} className="rounded-md border border-slate-300 px-2 py-1 disabled:opacity-40">Prev</button>
+          <button disabled={curPage <= 1} onClick={() => setPage(p => Math.max(1, p - 1))} className="rounded-md border border-slate-300 px-2 py-1 disabled:opacity-40">Prev</button>
           <span>{curPage} / {pageCount}</span>
-          <button disabled={curPage>=pageCount} onClick={()=> setPage(p=> p+1)} className="rounded-md border border-slate-300 px-2 py-1 disabled:opacity-40">Next</button>
+          <button disabled={curPage >= pageCount} onClick={() => setPage(p => p + 1)} className="rounded-md border border-slate-300 px-2 py-1 disabled:opacity-40">Next</button>
         </div>
       </div>
 
       {slipOpen && slipData && (
-        <Diagnostic_TokenSlip open={slipOpen} onClose={()=>setSlipOpen(false)} data={slipData} autoPrint={slipAutoPrint} />
+        <Diagnostic_TokenSlip open={slipOpen} onClose={() => setSlipOpen(false)} data={slipData} autoPrint={slipAutoPrint} />
       )}
       {detailsOpen && detailsOrder && (
         <SampleDetailsDialog
           open={detailsOpen}
-          onClose={()=>{ setDetailsOpen(false); setDetailsOrder(null) }}
+          onClose={() => { setDetailsOpen(false); setDetailsOrder(null) }}
           order={detailsOrder}
           testsMap={testsMap}
           testsPrice={testsPrice}
@@ -459,7 +469,7 @@ export default function Diagnostic_SampleTracking(){
       {editOpen && editOrder && (
         <Diagnostic_EditSampleDialog
           open={editOpen}
-          onClose={()=>{ setEditOpen(false); setEditOrder(null) }}
+          onClose={() => { setEditOpen(false); setEditOrder(null) }}
           order={editOrder}
           onSaved={onEditSaved}
         />
@@ -468,14 +478,14 @@ export default function Diagnostic_SampleTracking(){
   )
 }
 
-function SampleDetailsDialog({ open, onClose, order, testsMap, testsPrice }: {
+function SampleDetailsDialog({ open, onClose, order, testsMap, testsPrice, payToAccounts }: {
   open: boolean
-  onClose: ()=>void
+  onClose: () => void
   order: Order
   testsMap: Record<string, string>
   testsPrice: Record<string, number>
   payToAccounts: Array<{ code: string; label: string }>
-}){
+}) {
   if (!open) return null
 
   const createdAt = order.createdAt ? new Date(order.createdAt).toLocaleString() : ''
@@ -511,8 +521,8 @@ function SampleDetailsDialog({ open, onClose, order, testsMap, testsPrice }: {
   const remaining = Math.max(0, payable - paidToday)
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 px-4 py-8">
-      <div className="w-full max-w-4xl overflow-hidden rounded-xl bg-white shadow-2xl ring-1 ring-black/5">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-3 py-5 sm:px-4 sm:py-8" onClick={onClose}>
+      <div className="w-full max-w-4xl max-h-full overflow-hidden rounded-xl bg-white shadow-2xl ring-1 ring-black/5 flex flex-col" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4">
           <div>
             <h3 className="text-lg font-semibold text-slate-800">Token Details</h3>
@@ -559,9 +569,9 @@ function SampleDetailsDialog({ open, onClose, order, testsMap, testsPrice }: {
           <section>
             <h4 className="text-sm font-semibold text-slate-800">Token Details</h4>
             <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <Info label="Status" value={String(order.status || '-') } />
-              <Info label="Token No" value={String(order.tokenNo || '-') } />
-              <Info label="Sample Time" value={String(order.sampleTime || '-') } />
+              <Info label="Status" value={String(order.status || '-')} />
+              <Info label="Token No" value={String(order.tokenNo || '-')} />
+              <Info label="Sample Time" value={String(order.sampleTime || '-')} />
             </div>
           </section>
 
@@ -570,8 +580,8 @@ function SampleDetailsDialog({ open, onClose, order, testsMap, testsPrice }: {
             <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
               <Info label="Payment Status" value={paymentStatus.toUpperCase()} />
               <Info label="Payed to" value={payedToName || '-'} />
-              {isPaid && <Info label="Payment Method" value={String(order.paymentMethod || '-') } />}
-              {isPaid && String(order.paymentMethod || '') === 'Card' && <Info label="Account Number/IBAN" value={String(order.accountNumberIban || '-') } />}
+              {isPaid && <Info label="Payment Method" value={String(order.paymentMethod || '-')} />}
+              {isPaid && String(order.paymentMethod || '') === 'Card' && <Info label="Account Number/IBAN" value={String(order.accountNumberIban || '-')} />}
               <Info label="Received Now" value={`PKR ${amountReceived.toLocaleString()}`} />
               <Info label="Paid" value={`PKR ${paidToday.toLocaleString()}`} />
               <Info label="Remaining" value={`PKR ${remaining.toLocaleString()}`} />
@@ -585,7 +595,7 @@ function SampleDetailsDialog({ open, onClose, order, testsMap, testsPrice }: {
   )
 }
 
-function Info({ label, value, full }: { label: string; value: string; full?: boolean }){
+function Info({ label, value, full }: { label: string; value: string; full?: boolean }) {
   return (
     <div className={`${full ? 'sm:col-span-2' : ''} rounded-lg border border-slate-200 bg-slate-50 px-3 py-2`}>
       <div className="text-xs font-medium text-slate-500">{label}</div>

@@ -330,37 +330,41 @@ export default function Hospital_ManageBankBalance() {
       </div>
 
       <div className="rounded-xl border border-slate-200 bg-white p-4">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <div className="text-lg font-semibold">Bank Transactions</div>
           {ledgerLoading && <div className="text-xs text-slate-500 animate-pulse">Loading Ledger...</div>}
         </div>
-        <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
-          <div className="flex flex-wrap items-center gap-2">
-            <input type="date" value={bankFrom} onChange={e => setBankFrom(e.target.value)} className="rounded-md border border-slate-300 px-2 py-1 text-xs" />
-            <input type="date" value={bankTo} onChange={e => setBankTo(e.target.value)} className="rounded-md border border-slate-300 px-2 py-1 text-xs" />
-            <button
-              type="button"
-              className="text-xs text-slate-600 hover:underline"
-              onClick={() => {
-                const t = new Date().toISOString().slice(0, 10)
-                setBankFrom(t)
-                setBankTo(t)
-              }}
-            >Today</button>
-            <button
-              type="button"
-              className="text-xs text-slate-600 hover:underline"
-              onClick={() => {
-                setBankFrom('')
-                setBankTo('')
-                setBankFilterCode(bankCode)
-                setBankPageSize(20)
-                setBankPage(1)
-              }}
-            >Reset</button>
+        <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+          <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+              <input type="date" value={bankFrom} onChange={e => setBankFrom(e.target.value)} className="w-full rounded-md border border-slate-300 px-2 py-1 text-xs" />
+              <input type="date" value={bankTo} onChange={e => setBankTo(e.target.value)} className="w-full rounded-md border border-slate-300 px-2 py-1 text-xs" />
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                className="text-xs text-slate-600 hover:underline"
+                onClick={() => {
+                  const t = new Date().toISOString().slice(0, 10)
+                  setBankFrom(t)
+                  setBankTo(t)
+                }}
+              >Today</button>
+              <button
+                type="button"
+                className="text-xs text-slate-600 hover:underline"
+                onClick={() => {
+                  setBankFrom('')
+                  setBankTo('')
+                  setBankFilterCode(bankCode)
+                  setBankPageSize(20)
+                  setBankPage(1)
+                }}
+              >Reset</button>
+            </div>
           </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <select value={bankPageSize} onChange={e => setBankPageSize(Number(e.target.value || 20))} className="rounded-md border border-slate-300 px-2 py-1 text-xs">
+          <div className="flex items-center justify-end gap-2">
+            <select value={bankPageSize} onChange={e => setBankPageSize(Number(e.target.value || 20))} className="w-full sm:w-auto rounded-md border border-slate-300 px-2 py-1 text-xs">
               <option value={20}>20</option>
               <option value={50}>50</option>
               <option value={100}>100</option>
@@ -462,8 +466,8 @@ export default function Hospital_ManageBankBalance() {
           const end = start + bankPageSize
 
           return (
-            <div className="mt-3 overflow-x-auto">
-              <table className="min-w-full text-sm">
+            <div className="mt-3 w-full overflow-x-auto">
+              <table className="min-w-max w-full text-sm">
                 <thead>
                   <tr className="text-left text-slate-600 border-b">
                     <th className="py-2 pr-4">Transaction ID</th>

@@ -220,12 +220,12 @@ export default function Hospital_DoctorSchedules(){
         </form>
       </div>
 
-      <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+      <div className="w-full overflow-x-auto rounded-xl border border-slate-200 bg-white">
         <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3 text-sm">
           <div className="font-medium text-slate-800">{doctorId ? `Schedules (Doctor: ${doctors.find(d=>d.id===doctorId)?.name || doctorId})` : 'Schedules (All Doctors)'}</div>
           <div className="text-slate-600">{loading? 'Loading...' : `${rows.length} item(s)`}</div>
         </div>
-        <table className="min-w-full text-sm">
+        <table className="min-w-max w-full text-sm">
           <thead className="bg-slate-50 text-slate-600">
             <tr>
               <th className="px-3 py-2 text-left">Date</th>

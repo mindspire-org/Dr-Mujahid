@@ -11,6 +11,7 @@ export default function Pharmacy_Layout() {
     if (typeof window === 'undefined') return false
     return localStorage.getItem('pharmacy.sidebar_collapsed') === '1'
   })
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false)
   const [theme, setTheme] = useState<'light' | 'dark'>(() => {
     try { return (localStorage.getItem('pharmacy.theme') as 'light' | 'dark') || 'light' } catch { return 'light' }
   })
@@ -64,6 +65,28 @@ export default function Pharmacy_Layout() {
     try { html.classList.toggle('dark', enable) } catch { }
     return () => { try { html.classList.remove('dark') } catch { } }
   }, [theme])
+
+  useEffect(() => {
+    if (!mobileSidebarOpen) return
+    const prev = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => {
+      document.body.style.overflow = prev
+    }
+  }, [mobileSidebarOpen])
+
+  useEffect(() => {
+    if (!mobileSidebarOpen) return
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setMobileSidebarOpen(false)
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [mobileSidebarOpen])
+
+  useEffect(() => {
+    setMobileSidebarOpen(false)
+  }, [location.pathname])
 
   useEffect(() => {
     try {
@@ -132,6 +155,12 @@ export default function Pharmacy_Layout() {
   const shell = theme === 'dark' ? 'h-dvh overflow-hidden bg-slate-900 text-slate-100' : 'h-dvh overflow-hidden bg-slate-50 text-slate-900'
 
   const handleToggleSidebar = () => {
+    try {
+      if (window.innerWidth < 768) {
+        setMobileSidebarOpen(v => !v)
+        return
+      }
+    } catch {}
     if (sidebarCollapsed) { setSidebarCollapsed(false); return }
     setSidebarCollapsed(true)
   }
@@ -147,7 +176,12 @@ export default function Pharmacy_Layout() {
             theme={theme}
           />
           <div className="flex flex-1 min-h-0">
-            <Pharmacy_Sidebar collapsed={sidebarCollapsed} onExpand={() => setSidebarCollapsed(false)} />
+            <Pharmacy_Sidebar
+              collapsed={sidebarCollapsed}
+              onExpand={() => setSidebarCollapsed(false)}
+              mobileOpen={mobileSidebarOpen}
+              onCloseMobile={() => setMobileSidebarOpen(false)}
+            />
             <div className="flex-1 min-h-0 overflow-y-auto">
               <main className="w-full px-4 py-6 sm:px-6">
                 <Outlet />

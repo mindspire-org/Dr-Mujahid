@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Eye, Pencil, Trash2, ClipboardPlus } from 'lucide-react'
+import { Eye, Pencil, Trash2, ClipboardPlus, X } from 'lucide-react'
 import { useLocation, useNavigate } from 'react-router-dom'
-import { diagnosticApi, hospitalApi } from '../../utils/api'
+import { diagnosticApi } from '../../utils/api'
 
 type PaymentStatus = 'paid' | 'unpaid'
 type PaymentMethod = 'Cash' | 'Card'
@@ -231,7 +231,7 @@ function AppointmentDialog({
   }, [tests, query, form.tests])
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-2 py-4 sm:px-4" onClick={onClose}>
       <form
         onClick={e => e.stopPropagation()}
         onSubmit={e => {
@@ -242,16 +242,16 @@ function AppointmentDialog({
           if (!form.tests.length) { alert('Please select at least one test'); return }
           onSubmit?.({ ...form, discount: String(form.discount || '0') })
         }}
-        className="w-full max-w-5xl max-h-[90vh] flex flex-col rounded-xl bg-white p-0 shadow-2xl ring-1 ring-black/5"
+        className="w-full max-w-5xl max-h-[96dvh] flex flex-col rounded-xl bg-white p-0 shadow-2xl ring-1 ring-black/5"
       >
-        <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4">
-          <h3 className="text-lg font-semibold text-slate-900">{title}</h3>
+        <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3 sm:px-6 sm:py-4">
+          <h3 className="text-base sm:text-lg font-semibold text-slate-900">{title}</h3>
           <button type="button" onClick={onClose} aria-label="Close" className="rounded-md p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-700">
-            ×
+            <X className="h-5 w-5" />
           </button>
         </div>
 
-        <div className="flex-1 overflow-y-auto px-6 py-5">
+        <div className="flex-1 overflow-y-auto px-4 py-4 sm:px-6 sm:py-5">
           <div className="space-y-4">
             <div className="rounded-lg border border-slate-200 bg-white p-4">
               <div className="text-sm font-semibold text-slate-800">Appointment Details</div>
@@ -396,7 +396,7 @@ function AppointmentDialog({
   )
 }
 
-export default function Diagnostic_Appointments(){
+export default function Diagnostic_Appointments() {
   const nav = useNavigate()
   const location = useLocation()
 
@@ -430,18 +430,18 @@ export default function Diagnostic_Appointments(){
 
   useEffect(() => {
     let mounted = true
-    ;(async () => {
-      if (mounted){ setTestsLoading(true) }
-      try {
-        const res = await diagnosticApi.listTests({ limit: 1000 }) as any
-        const arr = (res?.items || res || []).map((t: any) => ({ id: String(t._id || t.id), name: String(t.name || ''), price: Number(t.price || 0) }))
-        if (mounted) setTests(arr)
-      } catch {
-        if (mounted) setTests([])
-      } finally {
-        if (mounted) setTestsLoading(false)
-      }
-    })()
+      ; (async () => {
+        if (mounted) { setTestsLoading(true) }
+        try {
+          const res = await diagnosticApi.listTests({ limit: 1000 }) as any
+          const arr = (res?.items || res || []).map((t: any) => ({ id: String(t._id || t.id), name: String(t.name || ''), price: Number(t.price || 0) }))
+          if (mounted) setTests(arr)
+        } catch {
+          if (mounted) setTests([])
+        } finally {
+          if (mounted) setTestsLoading(false)
+        }
+      })()
     return () => { mounted = false }
   }, [])
 
@@ -486,7 +486,7 @@ export default function Diagnostic_Appointments(){
 
   return (
     <div>
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <h2 className="text-xl font-semibold text-slate-800">Appointments (Diagnostics)</h2>
         <button
           onClick={() => {
@@ -494,130 +494,146 @@ export default function Diagnostic_Appointments(){
             setCreateInitial(f)
             setCreateOpen(true)
           }}
-          className="rounded-md bg-sky-600 px-3 py-2 text-sm font-medium text-white hover:bg-sky-700"
+          className="w-full sm:w-auto rounded-md bg-sky-600 px-4 py-2 text-sm font-medium text-white hover:bg-sky-700 shadow-sm"
         >
           + New Appointment
         </button>
       </div>
 
-      <div className="mt-3 rounded-xl border border-slate-200 bg-white p-4">
-        <div className="flex flex-wrap items-center gap-2">
-          <input type="date" value={from} onChange={e => setFrom(e.target.value)} className="rounded-md border border-slate-300 px-3 py-2 text-sm" />
-          <span className="text-slate-500 text-sm">to</span>
-          <input type="date" value={to} onChange={e => setTo(e.target.value)} className="rounded-md border border-slate-300 px-3 py-2 text-sm" />
-          <button
-            type="button"
-            onClick={() => {
-              const t = new Date().toISOString().slice(0, 10)
-              setFrom(t)
-              setTo(t)
-            }}
-            className="rounded-md border border-slate-300 px-2 py-1 text-xs hover:bg-slate-50"
-          >
-            Today
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              setFrom('')
-              setTo('')
-              setQ('')
-              load()
-            }}
-            className="rounded-md border border-slate-300 px-2 py-1 text-xs hover:bg-slate-50"
-          >
-            Reset
-          </button>
-          <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search patient / phone" className="w-64 rounded-md border border-slate-300 px-3 py-2 text-sm" />
-          <button onClick={load} className="rounded-md bg-slate-700 px-3 py-2 text-sm font-medium text-white hover:bg-slate-800">Search</button>
+      <div className="mt-4 rounded-xl border border-slate-200 bg-white p-3 sm:p-4 shadow-sm">
+        <div className="flex flex-col gap-4">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4 items-end">
+            <div className="sm:col-span-2 lg:col-span-1">
+              <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-slate-500">Date Range</label>
+              <div className="flex items-center gap-2">
+                <input type="date" value={from} onChange={e => setFrom(e.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:border-sky-500" />
+                <span className="text-slate-400 text-xs">to</span>
+                <input type="date" value={to} onChange={e => setTo(e.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:border-sky-500" />
+              </div>
+            </div>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  const t = new Date().toISOString().slice(0, 10)
+                  setFrom(t)
+                  setTo(t)
+                }}
+                className="flex-1 rounded-md border border-slate-300 px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50"
+              >
+                Today
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setFrom('')
+                  setTo('')
+                  setQ('')
+                  load()
+                }}
+                className="flex-1 rounded-md border border-slate-300 px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50"
+              >
+                Reset
+              </button>
+            </div>
+            <div className="sm:col-span-2 lg:col-span-2 flex items-end gap-2">
+              <div className="flex-1">
+                <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-slate-500">Quick Search</label>
+                <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search patient or phone..." className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:border-sky-500" />
+              </div>
+              <button onClick={load} className="h-9 rounded-md bg-slate-700 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800 shadow-sm">Search</button>
+            </div>
+          </div>
         </div>
       </div>
 
-      <div className="mt-4 overflow-hidden rounded-xl border border-slate-200 bg-white">
-        <table className="min-w-full divide-y divide-slate-200 text-sm">
-          <thead className="bg-slate-50 text-slate-600">
-            <tr>
-              <th className="px-4 py-2 text-left">Date</th>
-              <th className="px-4 py-2 text-left">Patient</th>
-              <th className="px-4 py-2 text-left">Phone</th>
-              <th className="px-4 py-2 text-left">Tests</th>
-              <th className="px-4 py-2 text-left">Net Fee</th>
-              <th className="px-4 py-2 text-left">Status</th>
-              <th className="px-4 py-2 text-left">Actions</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-200 text-slate-700">
-            {rows.map(r => (
-              <tr key={r._id}>
-                <td className="px-4 py-2">{r.appointmentDate || '-'}</td>
-                <td className="px-4 py-2 font-medium">{r.patientName || '-'}</td>
-                <td className="px-4 py-2">{r.patientPhone || '-'}</td>
-                <td className="px-4 py-2">{resolveTestNames(r.tests)}</td>
-                <td className="px-4 py-2">{Number(r.net || 0) ? `Rs. ${Number(r.net || 0).toLocaleString()}` : '-'}</td>
-                <td className="px-4 py-2">
-                  <span className={`inline-flex items-center rounded-full px-2 py-1 text-xs font-semibold ring-1 ${String(r.paymentStatus || 'paid') === 'paid' ? 'bg-emerald-50 text-emerald-700 ring-emerald-200' : 'bg-amber-50 text-amber-800 ring-amber-200'}`}>
-                    {String(r.paymentStatus || 'paid') === 'paid' ? 'Paid' : 'Unpaid'}
-                  </span>
-                </td>
-                <td className="px-4 py-2">
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const f = formFromRow(r)
-                        const inReception = String(location?.pathname || '').startsWith('/reception')
-                        nav(inReception ? '/reception/diagnostic/token-generator' : '/diagnostic/token-generator', {
-                          state: {
-                            from: 'appointments',
-                            appointmentId: r._id,
-                            patient: {
-                              fullName: r.patientName,
-                              phone: r.patientPhone,
-                              age: r.patientAge,
-                              gender: r.patientGender,
-                              guardianRelation: r.guardianRel,
-                              fatherName: r.guardianName,
-                              cnic: r.cnic,
-                              address: r.address,
-                            },
-                            requestedTests: (r.tests || []).map(id => testsMap[String(id)] || String(id)),
-                            referringConsultant: r.referringConsultant,
-                            corporateId: f.corporateId || undefined,
-                            corporatePreAuthNo: f.corporatePreAuthNo || undefined,
-                            corporateCoPayPercent: f.corporateCoPayPercent ? Number(f.corporateCoPayPercent) : undefined,
-                            corporateCoverageCap: f.corporateCoverageCap ? Number(f.corporateCoverageCap) : undefined,
-                          },
-                        })
-                      }}
-                      className="rounded-md border border-emerald-300 p-2 text-emerald-700 hover:bg-emerald-50"
-                      title="Create Diagnostic Order"
-                    >
-                      <ClipboardPlus className="h-4 w-4" />
-                    </button>
-                    <button type="button" onClick={() => setViewRow(r)} className="rounded-md border border-slate-300 p-2 text-slate-700 hover:bg-slate-50" title="View">
-                      <Eye className="h-4 w-4" />
-                    </button>
-                    <button type="button" onClick={() => setEditRow(r)} className="rounded-md border border-slate-300 p-2 text-slate-700 hover:bg-slate-50" title="Edit">
-                      <Pencil className="h-4 w-4" />
-                    </button>
-                    <button type="button" onClick={() => setDeleteRow(r)} className="rounded-md border border-rose-300 p-2 text-rose-700 hover:bg-rose-50" title="Delete">
-                      <Trash2 className="h-4 w-4" />
-                    </button>
-                  </div>
-                </td>
-              </tr>
-            ))}
-
-            {rows.length === 0 && (
+      <div className="mt-4 rounded-xl border border-slate-200 bg-white p-0 overflow-hidden">
+        <div className="overflow-x-auto min-w-full">
+          <table className="min-w-[600px] w-full text-left text-sm">
+            <thead className="bg-slate-50 text-slate-600">
               <tr>
-                <td className="px-4 py-8 text-center text-slate-500" colSpan={7}>
-                  {loading ? 'Loading...' : 'No appointments'}
-                </td>
+                <th className="px-4 py-2 text-left">Date</th>
+                <th className="px-4 py-2 text-left">Patient</th>
+                <th className="px-4 py-2 text-left">Phone</th>
+                <th className="px-4 py-2 text-left">Tests</th>
+                <th className="px-4 py-2 text-left">Net Fee</th>
+                <th className="px-4 py-2 text-left">Status</th>
+                <th className="px-4 py-2 text-left">Actions</th>
               </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
+            </thead>
+            <tbody className="divide-y divide-slate-200 text-slate-700">
+              {rows.map(r => (
+                <tr key={r._id}>
+                  <td className="px-4 py-2">{r.appointmentDate || '-'}</td>
+                  <td className="px-4 py-2 font-medium">{r.patientName || '-'}</td>
+                  <td className="px-4 py-2">{r.patientPhone || '-'}</td>
+                  <td className="px-4 py-2">{resolveTestNames(r.tests)}</td>
+                  <td className="px-4 py-2">{Number(r.net || 0) ? `Rs. ${Number(r.net || 0).toLocaleString()}` : '-'}</td>
+                  <td className="px-4 py-2">
+                    <span className={`inline-flex items-center rounded-full px-2 py-1 text-xs font-semibold ring-1 ${String(r.paymentStatus || 'paid') === 'paid' ? 'bg-emerald-50 text-emerald-700 ring-emerald-200' : 'bg-amber-50 text-amber-800 ring-amber-200'}`}>
+                      {String(r.paymentStatus || 'paid') === 'paid' ? 'Paid' : 'Unpaid'}
+                    </span>
+                  </td>
+                  <td className="px-4 py-2">
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const f = formFromRow(r)
+                          const inReception = String(location?.pathname || '').startsWith('/reception')
+                          nav(inReception ? '/reception/diagnostic/token-generator' : '/diagnostic/token-generator', {
+                            state: {
+                              from: 'appointments',
+                              appointmentId: r._id,
+                              patient: {
+                                fullName: r.patientName,
+                                phone: r.patientPhone,
+                                age: r.patientAge,
+                                gender: r.patientGender,
+                                guardianRelation: r.guardianRel,
+                                fatherName: r.guardianName,
+                                cnic: r.cnic,
+                                address: r.address,
+                              },
+                              requestedTests: (r.tests || []).map(id => testsMap[String(id)] || String(id)),
+                              referringConsultant: r.referringConsultant,
+                              corporateId: f.corporateId || undefined,
+                              corporatePreAuthNo: f.corporatePreAuthNo || undefined,
+                              corporateCoPayPercent: f.corporateCoPayPercent ? Number(f.corporateCoPayPercent) : undefined,
+                              corporateCoverageCap: f.corporateCoverageCap ? Number(f.corporateCoverageCap) : undefined,
+                            },
+                          })
+                        }}
+                        className="rounded-md border border-emerald-300 p-2 text-emerald-700 hover:bg-emerald-50"
+                        title="Create Diagnostic Order"
+                      >
+                        <ClipboardPlus className="h-4 w-4" />
+                      </button>
+                      <button type="button" onClick={() => setViewRow(r)} className="rounded-md border border-slate-300 p-2 text-slate-700 hover:bg-slate-50" title="View">
+                        <Eye className="h-4 w-4" />
+                      </button>
+                      <button type="button" onClick={() => setEditRow(r)} className="rounded-md border border-slate-300 p-2 text-slate-700 hover:bg-slate-50" title="Edit">
+                        <Pencil className="h-4 w-4" />
+                      </button>
+                      <button type="button" onClick={() => setDeleteRow(r)} className="rounded-md border border-rose-300 p-2 text-rose-700 hover:bg-rose-50" title="Delete">
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+
+              {rows.length === 0 && (
+                <tr>
+                  <td className="px-4 py-8 text-center text-slate-500" colSpan={7}>
+                    {loading ? 'Loading...' : 'No appointments'}
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table >
+        </div >
+      </div >
 
       {createOpen && (
         <AppointmentDialog
@@ -640,69 +656,77 @@ export default function Diagnostic_Appointments(){
         />
       )}
 
-      {viewRow != null && (
-        <AppointmentDialog
-          open={viewRow != null}
-          mode="view"
-          title="Appointment Details"
-          initial={viewRow ? formFromRow(viewRow) : emptyForm()}
-          tests={tests}
-          corpPriceMap={{}}
-          onClose={() => setViewRow(null)}
-        />
-      )}
+      {
+        viewRow != null && (
+          <AppointmentDialog
+            open={viewRow != null}
+            mode="view"
+            title="Appointment Details"
+            initial={viewRow ? formFromRow(viewRow) : emptyForm()}
+            tests={tests}
+            corpPriceMap={{}}
+            onClose={() => setViewRow(null)}
+          />
+        )
+      }
 
-      {editRow != null && (
-        <AppointmentDialog
-          open={editRow != null}
-          mode="edit"
-          title="Edit Appointment"
-          initial={editRow ? formFromRow(editRow) : emptyForm()}
-          tests={tests}
-          corpPriceMap={{}}
-          onClose={() => setEditRow(null)}
-          onSubmit={async form => {
-            if (!editRow) return
-            try {
-              await diagnosticApi.updateAppointment(editRow._id, mapToPayload(form, tests, {}))
-              setEditRow(null)
-              await load()
-            } catch {
-              alert('Failed to update appointment')
-            }
-          }}
-        />
-      )}
+      {
+        editRow != null && (
+          <AppointmentDialog
+            open={editRow != null}
+            mode="edit"
+            title="Edit Appointment"
+            initial={editRow ? formFromRow(editRow) : emptyForm()}
+            tests={tests}
+            corpPriceMap={{}}
+            onClose={() => setEditRow(null)}
+            onSubmit={async form => {
+              if (!editRow) return
+              try {
+                await diagnosticApi.updateAppointment(editRow._id, mapToPayload(form, tests, {}))
+                setEditRow(null)
+                await load()
+              } catch {
+                alert('Failed to update appointment')
+              }
+            }}
+          />
+        )
+      }
 
-      {deleteRow && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setDeleteRow(null)}>
-          <div className="w-full max-w-sm overflow-hidden rounded-xl bg-white shadow-2xl ring-1 ring-black/5" onClick={e => e.stopPropagation()}>
-            <div className="border-b border-slate-200 px-5 py-4">
-              <div className="text-base font-semibold text-slate-900">Delete Appointment</div>
-              <div className="mt-1 text-sm text-slate-600">Are you sure you want to delete this appointment?</div>
-            </div>
-            <div className="flex justify-end gap-2 px-5 py-4">
-              <button type="button" onClick={() => setDeleteRow(null)} className="btn-outline-navy">Cancel</button>
-              <button
-                type="button"
-                onClick={async () => {
-                  const id = deleteRow._id
-                  setDeleteRow(null)
-                  try { await diagnosticApi.deleteAppointment(id) } catch {}
-                  await load()
-                }}
-                className="rounded-md bg-rose-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-rose-700"
-              >
-                Delete
-              </button>
+      {
+        deleteRow && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setDeleteRow(null)}>
+            <div className="w-full max-w-sm overflow-hidden rounded-xl bg-white shadow-2xl ring-1 ring-black/5" onClick={e => e.stopPropagation()}>
+              <div className="border-b border-slate-200 px-5 py-4">
+                <div className="text-base font-semibold text-slate-900">Delete Appointment</div>
+                <div className="mt-1 text-sm text-slate-600">Are you sure you want to delete this appointment?</div>
+              </div>
+              <div className="flex justify-end gap-2 px-5 py-4">
+                <button type="button" onClick={() => setDeleteRow(null)} className="btn-outline-navy">Cancel</button>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    const id = deleteRow._id
+                    setDeleteRow(null)
+                    try { await diagnosticApi.deleteAppointment(id) } catch { }
+                    await load()
+                  }}
+                  className="rounded-md bg-rose-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-rose-700"
+                >
+                  Delete
+                </button>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        )
+      }
 
-      {testsLoading && (
-        <div className="mt-3 text-xs text-slate-500">Loading tests…</div>
-      )}
+      {
+        testsLoading && (
+          <div className="mt-3 text-xs text-slate-500">Loading tests…</div>
+        )
+      }
     </div>
   )
 }

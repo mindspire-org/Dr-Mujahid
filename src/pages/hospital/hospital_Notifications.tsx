@@ -53,12 +53,14 @@ export default function Hospital_Notifications() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center gap-2">
-        <Bell className="h-5 w-5 text-indigo-600" />
-        <h2 className="text-xl font-bold">Notifications</h2>
-        <div className="ml-auto flex items-center gap-2">
-          <button onClick={load} className="btn-outline-navy inline-flex items-center gap-1"><RefreshCcw className="h-4 w-4" /> Refresh</button>
-          <button onClick={markAll} className="btn-outline-navy inline-flex items-center gap-1"><CheckCircle className="h-4 w-4" /> Mark all read</button>
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-2">
+        <div className="flex items-center gap-2 min-w-0">
+          <Bell className="h-5 w-5 shrink-0 text-indigo-600" />
+          <h2 className="min-w-0 truncate text-xl font-bold">Notifications</h2>
+        </div>
+        <div className="flex flex-col gap-2 sm:ml-auto sm:flex-row sm:items-center sm:gap-2">
+          <button onClick={load} className="btn-outline-navy inline-flex w-full items-center justify-center gap-1 sm:w-auto"><RefreshCcw className="h-4 w-4" /> Refresh</button>
+          <button onClick={markAll} className="btn-outline-navy inline-flex w-full items-center justify-center gap-1 sm:w-auto"><CheckCircle className="h-4 w-4" /> Mark all read</button>
         </div>
       </div>
 

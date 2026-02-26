@@ -1,9 +1,16 @@
 import { useEffect, useState } from 'react'
+import { Bell } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
+import { hospitalApi } from '../../utils/api'
+import Hospital_NotificationPopup from '../../components/hospital/hospital_NotificationPopup'
 
 type Props = { title?: string }
 
 export default function TherapyLab_Header({ title = 'Therapy & Lab Reports Entry' }: Props) {
+  const navigate = useNavigate()
   const DEFAULT_HOSPITAL_NAME = "Men's Care Clinic"
+  const [notificationCount, setNotificationCount] = useState(0)
+  const [showNotificationPopup, setShowNotificationPopup] = useState(false)
   const [brand, setBrand] = useState<{ name?: string; logoDataUrl?: string }>(() => {
     try {
       const raw = localStorage.getItem('hospital.settings')
@@ -31,6 +38,24 @@ export default function TherapyLab_Header({ title = 'Therapy & Lab Reports Entry
     }
   }, [])
 
+  useEffect(() => {
+    let mounted = true
+    const fetchNotifications = async () => {
+      try {
+        const res: any = await hospitalApi.listUserNotifications()
+        const list = Array.isArray(res?.notifications) ? res.notifications : []
+        const unread = list.filter((n: any) => !n?.read).length
+        if (mounted) setNotificationCount(Number(unread || 0))
+      } catch {}
+    }
+    void fetchNotifications()
+    const interval = setInterval(fetchNotifications, 30000)
+    return () => {
+      mounted = false
+      clearInterval(interval)
+    }
+  }, [])
+
   return (
     <header
       className="sticky top-0 z-10 h-14 w-full border-b border-white/10 shadow-sm"
@@ -54,10 +79,34 @@ export default function TherapyLab_Header({ title = 'Therapy & Lab Reports Entry
             <div className="text-xs text-white/70 leading-tight">{title}</div>
           </div>
         </div>
-        <div className="ml-auto text-xs text-white/70">
-          {new Date().toLocaleDateString()} {new Date().toLocaleTimeString()}
+        <div className="ml-auto flex items-center gap-3">
+          <button
+            type="button"
+            onClick={() => setShowNotificationPopup(!showNotificationPopup)}
+            className="relative inline-flex h-9 w-9 items-center justify-center rounded-lg text-white/85 hover:bg-white/10 transition-all"
+            title="Notifications"
+          >
+            <Bell className="h-4 w-4" />
+            {notificationCount > 0 && (
+              <span className="absolute -top-0.5 -right-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-rose-500 text-[9px] font-bold text-white">
+                {notificationCount > 9 ? '9+' : notificationCount}
+              </span>
+            )}
+          </button>
+          <div className="text-xs text-white/70">
+            {new Date().toLocaleDateString()} {new Date().toLocaleTimeString()}
+          </div>
         </div>
       </div>
+
+      <Hospital_NotificationPopup
+        open={showNotificationPopup}
+        onClose={() => setShowNotificationPopup(false)}
+        onViewAll={() => {
+          setShowNotificationPopup(false)
+          navigate('/therapy-lab/notifications')
+        }}
+      />
     </header>
   )
 }

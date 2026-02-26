@@ -42,30 +42,17 @@ function sanitizeCustomTherapyMachineDefs(input: any): CustomTherapyMachineDef[]
     const kind = (d as any).kind
     if (!id || !name) continue
     if (kind === 'checkboxes') {
-      const options = Array.from(new Set(((d as any).options || []).map((s: any) => String(s || '').trim()).filter(Boolean)))
+      const options = Array.from(new Set(((d as any).options || []).map((s: any) => String(s || '').trim()).filter(Boolean))) as string[]
       out.push({ id, name, kind: 'checkboxes', options })
     } else if (kind === 'fields') {
-      const fields = Array.from(new Set(((d as any).fields || []).map((s: any) => String(s || '').trim()).filter(Boolean)))
+      const fields = Array.from(new Set(((d as any).fields || []).map((s: any) => String(s || '').trim()).filter(Boolean))) as string[]
       out.push({ id, name, kind: 'fields', fields })
     }
   }
   return out
 }
 
-function readJson<T>(key: string, fallback: T): T {
-  try {
-    const raw = localStorage.getItem(key)
-    return raw ? (JSON.parse(raw) as T) : fallback
-  } catch {
-    return fallback
-  }
-}
 
-function writeJson(key: string, value: any) {
-  try {
-    localStorage.setItem(key, JSON.stringify(value))
-  } catch {}
-}
 
 const getEmptyTherapyMachines = () => ({
   chi: { enabled: false, pr: false, bk: false },
@@ -159,22 +146,22 @@ export default function TherapyLab_TokenGenerator() {
 
   useEffect(() => {
     let cancelled = false
-    ;(async () => {
-      try {
-        setPackagesLoading(true)
-        setPackagesError('')
-        const res: any = await therapyApi.listPackages({ status: 'active', limit: 500 } as any)
-        const list: any[] = Array.isArray(res?.items) ? res.items : Array.isArray(res) ? res : []
-        if (!cancelled) setPackages(list as any)
-      } catch (e: any) {
-        if (!cancelled) {
-          setPackages([])
-          setPackagesError(e?.message || 'Failed to load packages')
+      ; (async () => {
+        try {
+          setPackagesLoading(true)
+          setPackagesError('')
+          const res: any = await therapyApi.listPackages({ status: 'active', limit: 500 } as any)
+          const list: any[] = Array.isArray(res?.items) ? res.items : Array.isArray(res) ? res : []
+          if (!cancelled) setPackages(list as any)
+        } catch (e: any) {
+          if (!cancelled) {
+            setPackages([])
+            setPackagesError(e?.message || 'Failed to load packages')
+          }
+        } finally {
+          if (!cancelled) setPackagesLoading(false)
         }
-      } finally {
-        if (!cancelled) setPackagesLoading(false)
-      }
-    })()
+      })()
     return () => {
       cancelled = true
     }
@@ -203,7 +190,7 @@ export default function TherapyLab_TokenGenerator() {
     const key = 'therapyLab.therapyMachines.hidden'
     try {
       localStorage.setItem(key, JSON.stringify(uniq))
-    } catch {}
+    } catch { }
   }
 
   const saveCustomTherapyMachines = (
@@ -219,7 +206,7 @@ export default function TherapyLab_TokenGenerator() {
     const key = 'therapyLab.therapyMachines.custom'
     try {
       localStorage.setItem(key, JSON.stringify({ defs: safeDefs, state }))
-    } catch {}
+    } catch { }
   }
 
   const selectedPackage = useMemo(
@@ -301,28 +288,28 @@ export default function TherapyLab_TokenGenerator() {
 
   useEffect(() => {
     let cancelled = false
-    ;(async () => {
-      try {
-        if (!selectedPatient?._id) {
+      ; (async () => {
+        try {
+          if (!selectedPatient?._id) {
+            if (!cancelled) setAccount({ dues: 0, advance: 0 })
+            return
+          }
+          if (!cancelled) setAccountLoading(true)
+          const res: any = await therapyApi.getAccount(String(selectedPatient._id))
+          const a: any = res?.account || null
+          const dues = Math.max(0, Number(a?.dues || 0))
+          const advance = Math.max(0, Number(a?.advance || 0))
+          if (!cancelled) {
+            setAccount({ dues, advance })
+            if (dues <= 0) setPayPreviousDues(false)
+            if (advance <= 0) setUseAdvance(false)
+          }
+        } catch {
           if (!cancelled) setAccount({ dues: 0, advance: 0 })
-          return
+        } finally {
+          if (!cancelled) setAccountLoading(false)
         }
-        if (!cancelled) setAccountLoading(true)
-        const res: any = await therapyApi.getAccount(String(selectedPatient._id))
-        const a: any = res?.account || null
-        const dues = Math.max(0, Number(a?.dues || 0))
-        const advance = Math.max(0, Number(a?.advance || 0))
-        if (!cancelled) {
-          setAccount({ dues, advance })
-          if (dues <= 0) setPayPreviousDues(false)
-          if (advance <= 0) setUseAdvance(false)
-        }
-      } catch {
-        if (!cancelled) setAccount({ dues: 0, advance: 0 })
-      } finally {
-        if (!cancelled) setAccountLoading(false)
-      }
-    })()
+      })()
     return () => {
       cancelled = true
     }
@@ -407,7 +394,7 @@ export default function TherapyLab_TokenGenerator() {
         if (p.mrn && !selectedPatient && !autoMrnAppliedRef.current) {
           const code = String(p.mrn || '').trim()
           if (code) {
-            ;(async () => {
+            ; (async () => {
               try {
                 const r: any = await therapyApi.getPatientByMrn(code)
                 const pat: any = r?.patient || null
@@ -415,14 +402,14 @@ export default function TherapyLab_TokenGenerator() {
                   applyPatientToForm(pat as any)
                   autoMrnAppliedRef.current = true
                 }
-              } catch {}
+              } catch { }
             })()
           }
         }
       }
       if (st?.fromReferralId) setFromReferralId(String(st.fromReferralId))
       if (st?.referringConsultant) setReferringConsultant(String(st.referringConsultant))
-    } catch {}
+    } catch { }
   }, [location?.key])
 
   const selectedMachines = useMemo(() => {
@@ -532,26 +519,26 @@ export default function TherapyLab_TokenGenerator() {
       // Keep backend patient record in sync with form edits
       try {
         const patch: any = {}
-        if ((fullName || '') !== (patient.fullName || '')) patch.fullName = fullName
-        if ((guardianName || '') !== (patient.fatherName || '')) patch.fatherName = guardianName
-        if ((gender || '') !== (patient.gender || '')) patch.gender = gender
-        if ((address || '') !== (patient.address || '')) patch.address = address
-        if ((phone || '') !== (patient.phoneNormalized || '')) patch.phone = phone
-        if ((cnic || '') !== (patient.cnicNormalized || '')) patch.cnic = cnic
+        if ((fullName || '') !== (patient!.fullName || '')) patch.fullName = fullName
+        if ((guardianName || '') !== (patient!.fatherName || '')) patch.fatherName = guardianName
+        if ((gender || '') !== (patient!.gender || '')) patch.gender = gender
+        if ((address || '') !== (patient!.address || '')) patch.address = address
+        if ((phone || '') !== (patient!.phoneNormalized || '')) patch.phone = phone
+        if ((cnic || '') !== (patient!.cnicNormalized || '')) patch.cnic = cnic
         if (Object.keys(patch).length) {
           const upd: any = await therapyApi.updatePatient(String(patient._id), patch)
           const p2 = upd?.patient || patient
           patient = p2
           applyPatientToForm(p2)
         }
-      } catch {}
+      } catch { }
 
       const slipRows = selectedMachines.map((m) => ({ name: m.name, price: Number(m.price || 0) }))
 
       const visitRes: any = await therapyApi.createVisit({
-        patientId: String(patient._id),
+        patientId: String(patient!._id),
         patient: {
-          mrn: patient.mrn || undefined,
+          mrn: patient!.mrn || undefined,
           fullName: fullName.trim(),
           phone: phone.trim(),
           age: age || undefined,
@@ -587,7 +574,7 @@ export default function TherapyLab_TokenGenerator() {
         phone: phone.trim(),
         age: age || undefined,
         gender: gender || undefined,
-        mrn: patient.mrn || undefined,
+        mrn: patient!.mrn || undefined,
         guardianRel: guardianRel || undefined,
         guardianName: guardianName || undefined,
         cnic: cnic || undefined,

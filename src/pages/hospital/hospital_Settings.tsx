@@ -32,13 +32,20 @@ export default function Hospital_Settings() {
       try {
         const s = await hospitalApi.getSettings() as any
         if (!cancelled && s) {
-          setSettings(prev => {
-            const next = { ...prev, ...s }
-            next.name = String(next.name || '').trim() || DEFAULT_HOSPITAL_NAME
-            try { localStorage.setItem('hospital.settings', JSON.stringify(next)) } catch {}
-            try { window.dispatchEvent(new CustomEvent('hospital:settings-updated', { detail: next })) } catch {}
-            return next
-          })
+          const next: Settings = {
+            name: DEFAULT_HOSPITAL_NAME,
+            phone: '+92-320-4090604',
+            address: 'Hospital Address, City, Country',
+            logoDataUrl: undefined,
+            code: 'SAFH',
+            mrFormat: '{HOSP}/{DEPT}/{YEAR}/{MONTH}/{SERIAL}',
+            slipFooter: 'Powered by Hospital MIS',
+            ...s,
+          }
+          next.name = String(next.name || '').trim() || DEFAULT_HOSPITAL_NAME
+          setSettings(next)
+          try { localStorage.setItem('hospital.settings', JSON.stringify(next)) } catch {}
+          try { window.dispatchEvent(new CustomEvent('hospital:settings-updated', { detail: next })) } catch {}
         }
       } catch {}
     }

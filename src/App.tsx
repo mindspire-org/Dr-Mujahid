@@ -465,6 +465,7 @@ export default function App() {
         <Route path="petty-cash" element={<Finance_PettyCashAccounts />} />
         <Route path="bank-accounts" element={<Finance_BankAccounts />} />
         <Route path="collection-report" element={<Finance_CollectionReport />} />
+        <Route path="notifications" element={<Hospital_Notifications />} />
         <Route path="add-expense" element={<Finance_AddExpense />} />
         <Route path="transactions" element={<Finance_Transactions />} />
         <Route path="expenses" element={<Finance_ExpenseHistory />} />

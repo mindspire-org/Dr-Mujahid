@@ -20,10 +20,10 @@ type Token = {
   doctorName?: string
   department?: string
   fee: number
-  status: 'queued'|'in-progress'|'completed'|'returned'|'cancelled'
+  status: 'queued' | 'in-progress' | 'completed' | 'returned' | 'cancelled'
 }
 
-function TokenDetailsDialog({ open, onClose, row }: { open: boolean; onClose: ()=>void; row: Token | null }){
+function TokenDetailsDialog({ open, onClose, row }: { open: boolean; onClose: () => void; row: Token | null }) {
   if (!open || !row) return null
   const t = row.raw || {}
   const patient = t.patientId || {}
@@ -62,19 +62,19 @@ function TokenDetailsDialog({ open, onClose, row }: { open: boolean; onClose: ()
   const guardianCombined = `${guardianRel !== '-' ? guardianRel : ''}${guardianRel !== '-' && guardianName !== '-' ? ' ' : ''}${guardianName !== '-' ? guardianName : ''}`.trim() || '-'
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 px-4 py-8">
-      <div className="w-full max-w-4xl overflow-hidden rounded-xl bg-white shadow-2xl ring-1 ring-black/5">
-        <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4">
+    <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 px-2 py-4 sm:px-4 sm:py-8">
+      <div className="w-full max-w-4xl max-h-[96dvh] flex flex-col overflow-hidden rounded-xl bg-white shadow-2xl ring-1 ring-black/5">
+        <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3 sm:px-6 sm:py-4">
           <div>
-            <h3 className="text-lg font-semibold text-slate-800">Patient Details</h3>
-            <div className="mt-0.5 text-xs text-slate-500">Token #{String(t.tokenNo || row.tokenNo || '-')} • {createdAt}</div>
+            <h3 className="text-base sm:text-lg font-semibold text-slate-800">Patient Details</h3>
+            <div className="mt-0.5 text-[10px] sm:text-xs text-slate-500">Token #{String(t.tokenNo || row.tokenNo || '-')} • {createdAt}</div>
           </div>
           <button onClick={onClose} className="rounded-md border border-slate-200 p-2 text-slate-600 hover:bg-slate-50 hover:text-slate-900" aria-label="Close">
             <X size={18} />
           </button>
         </div>
 
-        <div className="max-h-[75vh] overflow-y-auto px-6 py-5 space-y-6">
+        <div className="flex-1 overflow-y-auto px-4 py-5 sm:px-6 space-y-6">
           <section>
             <h4 className="text-sm font-semibold text-slate-800">Patient Details</h4>
             <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -118,7 +118,7 @@ function TokenDetailsDialog({ open, onClose, row }: { open: boolean; onClose: ()
   )
 }
 
-function Info({ label, value, full }: { label: string; value: string; full?: boolean }){
+function Info({ label, value, full }: { label: string; value: string; full?: boolean }) {
   return (
     <div className={`${full ? 'sm:col-span-2' : ''} rounded-lg border border-slate-200 bg-slate-50 px-3 py-2`}>
       <div className="text-xs font-medium text-slate-500">{label}</div>
@@ -145,22 +145,22 @@ export default function Doctor_Patients() {
       setDoc(sess)
       // Compat: if legacy id (not 24-hex), try to resolve to backend _id by username/name
       const hex24 = /^[a-f\d]{24}$/i
-      if (sess && !hex24.test(String(sess.id||''))) {
-        ;(async () => {
+      if (sess && !hex24.test(String(sess.id || ''))) {
+        ; (async () => {
           try {
             const res = await hospitalApi.listDoctors() as any
             const docs: any[] = res?.doctors || []
-            const match = docs.find(d => String(d.username||'').toLowerCase() === String(sess.username||'').toLowerCase()) ||
-                          docs.find(d => String(d.name||'').toLowerCase() === String(sess.name||'').toLowerCase())
+            const match = docs.find(d => String(d.username || '').toLowerCase() === String(sess.username || '').toLowerCase()) ||
+              docs.find(d => String(d.name || '').toLowerCase() === String(sess.name || '').toLowerCase())
             if (match) {
               const fixed = { ...sess, id: String(match._id || match.id) }
-              try { localStorage.setItem('doctor.session', JSON.stringify(fixed)) } catch {}
+              try { localStorage.setItem('doctor.session', JSON.stringify(fixed)) } catch { }
               setDoc(fixed)
             }
-          } catch {}
+          } catch { }
         })()
       }
-    } catch {}
+    } catch { }
   }, [])
 
   useEffect(() => { load() }, [doc?.id, from, to])
@@ -178,7 +178,7 @@ export default function Doctor_Patients() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [doc?.id])
 
-  async function load(){
+  async function load() {
     try {
       if (!doc?.id) { setList([]); setPresEncounterIds([]); return }
       const params: any = { doctorId: doc.id }
@@ -205,11 +205,11 @@ export default function Doctor_Patients() {
       }))
       const presIds: string[] = (presRes.prescriptions || []).map((p: any) => String(p.encounterId?._id || p.encounterId || ''))
       const map: Record<string, string> = {}
-      ;(presRes.prescriptions || []).forEach((p: any) => {
-        const encId = String(p.encounterId?._id || p.encounterId || '')
-        const pid = String(p._id || p.id || '')
-        if (encId && pid) map[encId] = pid
-      })
+        ; (presRes.prescriptions || []).forEach((p: any) => {
+          const encId = String(p.encounterId?._id || p.encounterId || '')
+          const pid = String(p._id || p.id || '')
+          if (encId && pid) map[encId] = pid
+        })
       setList(items)
       setPresEncounterIds(presIds)
       setPresMap(map)
@@ -218,7 +218,7 @@ export default function Doctor_Patients() {
     }
   }
 
-  async function printPrescriptionByEncounter(encounterId?: string){
+  async function printPrescriptionByEncounter(encounterId?: string) {
     try {
       const pid = encounterId ? presMap[String(encounterId)] : ''
       if (!pid) { alert('Prescription not found'); return }
@@ -234,21 +234,21 @@ export default function Doctor_Patients() {
           try {
             const resp: any = await labApi.getPatientByMrn(patient.mrn)
             p = resp?.patient || null
-          } catch {}
+          } catch { }
           // Fallback: doctor portal may not have access to /lab routes; use hospital patient search (DB-backed)
           if (!p) {
             try {
               const resp: any = await hospitalApi.searchPatients({ mrn: String(patient.mrn), limit: 1 })
               const first = Array.isArray(resp?.patients) ? resp.patients[0] : null
               p = first || null
-            } catch {}
+            } catch { }
           }
           if (p) {
             let ageTxt = ''
             try {
               if (p.age != null) ageTxt = String(p.age)
-              else if (p.dob) { const dob = new Date(p.dob); if (!isNaN(dob.getTime())) ageTxt = String(Math.max(0, Math.floor((Date.now()-dob.getTime())/31557600000))) }
-            } catch {}
+              else if (p.dob) { const dob = new Date(p.dob); if (!isNaN(dob.getTime())) ageTxt = String(Math.max(0, Math.floor((Date.now() - dob.getTime()) / 31557600000))) }
+            } catch { }
             const gender = p.gender || p.sex || p.Gender || '-'
             const fatherName = p.fatherName || p.guardianName || p.guardian || p.father || p.father_name || '-'
             const phone = p.phoneNormalized || p.phone || p.phoneNumber || p.mobile || p.mobileNo || '-'
@@ -256,7 +256,7 @@ export default function Doctor_Patients() {
             patient = { name: p.fullName || p.name || patient.name, mrn: p.mrn || p.mrNo || patient.mrn, gender, fatherName, phone, address, age: ageTxt }
           }
         }
-      } catch {}
+      } catch { }
 
       // Try to enrich doctor info
       let doctor: any = { name: pres?.encounterId?.doctorId?.name || '-', specialization: '', qualification: '', departmentName: '', phone: '' }
@@ -269,13 +269,13 @@ export default function Doctor_Patients() {
         try {
           const depRes: any = await hospitalApi.listDepartments()
           const depArray: any[] = (depRes?.departments || depRes || []) as any[]
-          const deptName = d?.primaryDepartmentId ? (depArray.find((z: any)=> String(z._id||z.id) === String(d.primaryDepartmentId))?.name || '') : ''
+          const deptName = d?.primaryDepartmentId ? (depArray.find((z: any) => String(z._id || z.id) === String(d.primaryDepartmentId))?.name || '') : ''
           if (deptName) doctor.departmentName = deptName
-        } catch {}
-      } catch {}
+        } catch { }
+      } catch { }
 
       let tpl: PrescriptionPdfTemplate = 'default'
-      try { const raw = localStorage.getItem(`doctor.rx.template.${doc?.id || 'anon'}`) as PrescriptionPdfTemplate | null; if (raw === 'default' || raw === 'rx-vitals-left') tpl = raw } catch {}
+      try { const raw = localStorage.getItem(`doctor.rx.template.${doc?.id || 'anon'}`) as PrescriptionPdfTemplate | null; if (raw === 'default' || raw === 'rx-vitals-left') tpl = raw } catch { }
 
       // Read history taking from DB (staff module) for this encounter
       let historyTaking: any = null
@@ -285,7 +285,7 @@ export default function Doctor_Patients() {
           const ht: any = await hospitalApi.getHistoryTaking(encId)
           historyTaking = ht?.historyTaking?.data || null
         }
-      } catch {}
+      } catch { }
       await previewPrescriptionPdf({
         doctor,
         settings,
@@ -320,14 +320,14 @@ export default function Doctor_Patients() {
     const presSet = new Set(presEncounterIds.filter(Boolean))
     return (list || [])
       .filter(t => t.doctorId === doc?.id && t.status === 'queued' && (!t.encounterId || !presSet.has(String(t.encounterId))))
-      .sort((a,b)=>new Date(a.createdAt).getTime()-new Date(b.createdAt).getTime())
+      .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
   }, [list, doc, presEncounterIds])
 
   const completed = useMemo(() => {
     const presSet = new Set(presEncounterIds.filter(Boolean))
     return (list || [])
       .filter(t => t.doctorId === doc?.id && t.status !== 'cancelled' && !!t.encounterId && presSet.has(String(t.encounterId)))
-      .sort((a,b)=>new Date(a.createdAt).getTime()-new Date(b.createdAt).getTime())
+      .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
   }, [list, doc, presEncounterIds])
 
   const visible = useMemo(() => {
@@ -347,11 +347,11 @@ export default function Doctor_Patients() {
   }, [completed, query])
 
   // Match Hospital portal token date logic (UTC yyyy-mm-dd)
-  const todayLabel = useMemo(() => new Date().toISOString().slice(0,10), [])
+  const todayLabel = useMemo(() => new Date().toISOString().slice(0, 10), [])
   const yesterdayLabel = useMemo(() => {
     const d = new Date()
     d.setDate(d.getDate() - 1)
-    return d.toISOString().slice(0,10)
+    return d.toISOString().slice(0, 10)
   }, [])
 
   const headingForDate = (iso: string) => {
@@ -363,7 +363,7 @@ export default function Doctor_Patients() {
     return `Patients (${key})`
   }
 
-  const getTokenDateIso = (t: Token) => String(t.dateIso || String(t.createdAt || '').slice(0,10) || '')
+  const getTokenDateIso = (t: Token) => String(t.dateIso || String(t.createdAt || '').slice(0, 10) || '')
 
   const hasDateRange = Boolean(from || to)
   const dateRangeLabel = useMemo(() => {
@@ -386,9 +386,9 @@ export default function Doctor_Patients() {
     }
     // stable order inside each day
     for (const k of Object.keys(map)) {
-      map[k].sort((a,b)=>new Date(a.createdAt).getTime()-new Date(b.createdAt).getTime())
+      map[k].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
     }
-    const keys = Object.keys(map).sort((a,b)=> (a>b?-1:a<b?1:0))
+    const keys = Object.keys(map).sort((a, b) => (a > b ? -1 : a < b ? 1 : 0))
     return { keys, map }
   }
 
@@ -401,53 +401,59 @@ export default function Doctor_Patients() {
   const completedYesterday = useMemo(() => visibleCompleted.filter(t => getTokenDateIso(t) === yesterdayLabel), [visibleCompleted, yesterdayLabel])
 
   const renderRow = (t: Token, idx: number, allowActions: boolean) => (
-    <div key={t._id} className="flex items-center justify-between px-4 py-3 text-sm">
-      <div className="flex items-center gap-3">
-        <div className="rounded-md bg-slate-100 px-2 py-1 text-xs text-slate-700">{idx+1}</div>
-        <div>
-          <div className="font-medium">{t.patientName}</div>
-          <div className="text-xs text-slate-500">MR: {t.mrNo} • {new Date(t.createdAt).toLocaleTimeString()}</div>
+    <div key={t._id} className="flex flex-col gap-3 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:py-3 text-sm">
+      <div className="flex items-start gap-3">
+        <div className="mt-0.5 rounded-md bg-slate-100 px-2 py-1 text-[10px] font-bold text-slate-600">{idx + 1}</div>
+        <div className="min-w-0 flex-1">
+          <div className="font-bold text-slate-900 truncate">{t.patientName}</div>
+          <div className="mt-0.5 flex flex-wrap items-center gap-x-2 text-[11px] text-slate-500">
+            <span className="font-medium text-slate-700">MR: {t.mrNo}</span>
+            <span className="opacity-50">•</span>
+            <span>{new Date(t.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+          </div>
         </div>
       </div>
-      <div className="flex items-center gap-2 text-xs">
+      <div className="flex flex-wrap items-center gap-2 sm:justify-end">
         {allowActions ? (
           <>
-            <span className="rounded border border-slate-200 px-2 py-1 text-slate-700">Queued</span>
-            <button
-              type="button"
-              className="rounded-md border border-slate-300 p-1 text-slate-700 hover:bg-slate-50"
-              onClick={()=>{ setDetailsRow(t); setShowDetails(true) }}
-              aria-label="View Details"
-              title="View Details"
-            >
-              <Eye size={16} />
-            </button>
-            <button
-              type="button"
-              className="rounded-md border border-blue-800 px-2 py-1 text-blue-800 hover:bg-blue-50"
-              onClick={()=>{
-                const date = String(t.dateIso || String(t.createdAt||'').slice(0,10) || '')
-                navigate('/doctor/prescription', { state: { tokenId: t._id, mrn: t.mrNo, encounterId: t.encounterId, date } })
-              }}
-            >Enter Prescription</button>
+            <span className="rounded-full bg-sky-50 px-2.5 py-0.5 text-[11px] font-semibold text-sky-700 ring-1 ring-inset ring-sky-600/20">Queued</span>
+            <div className="flex items-center gap-2 ml-auto sm:ml-0">
+              <button
+                type="button"
+                className="flex h-8 w-8 items-center justify-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-50 shadow-sm transition-colors"
+                onClick={() => { setDetailsRow(t); setShowDetails(true) }}
+                title="View Details"
+              >
+                <Eye size={16} />
+              </button>
+              <button
+                type="button"
+                className="rounded-md bg-sky-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-sky-700 transition-colors"
+                onClick={() => {
+                  const date = String(t.dateIso || String(t.createdAt || '').slice(0, 10) || '')
+                  navigate('/doctor/prescription', { state: { tokenId: t._id, mrn: t.mrNo, encounterId: t.encounterId, date } })
+                }}
+              >Prescription</button>
+            </div>
           </>
         ) : (
           <>
-            <span className="rounded border border-emerald-200 bg-emerald-50 px-2 py-1 text-emerald-700">Completed</span>
-            <button
-              type="button"
-              className="rounded-md border border-slate-300 p-1 text-slate-700 hover:bg-slate-50"
-              onClick={()=>{ setDetailsRow(t); setShowDetails(true) }}
-              aria-label="View Details"
-              title="View Details"
-            >
-              <Eye size={16} />
-            </button>
-            <button
-              type="button"
-              className="rounded-md border border-blue-800 px-2 py-1 text-blue-800 hover:bg-blue-50"
-              onClick={()=>printPrescriptionByEncounter(t.encounterId)}
-            >Prescription</button>
+            <span className="rounded-full bg-emerald-50 px-2.5 py-0.5 text-[11px] font-semibold text-emerald-700 ring-1 ring-inset ring-emerald-600/20">Completed</span>
+            <div className="flex items-center gap-2 ml-auto sm:ml-0">
+              <button
+                type="button"
+                className="flex h-8 w-8 items-center justify-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-50 shadow-sm transition-colors"
+                onClick={() => { setDetailsRow(t); setShowDetails(true) }}
+                title="View Details"
+              >
+                <Eye size={16} />
+              </button>
+              <button
+                type="button"
+                className="rounded-md border border-sky-600 px-3 py-1.5 text-xs font-semibold text-sky-700 hover:bg-sky-50 shadow-sm transition-colors"
+                onClick={() => printPrescriptionByEncounter(t.encounterId)}
+              >Print Rx</button>
+            </div>
           </>
         )}
       </div>
@@ -457,37 +463,35 @@ export default function Doctor_Patients() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between gap-2 flex-wrap">
-        <div>
-          <div className="text-xl font-semibold text-slate-800">Queued Patients</div>
-        </div>
-        <div className="flex items-center gap-2">
-          <input type="date" value={from} onChange={e=>{ setFrom(e.target.value); }} className="rounded-md border border-slate-300 px-3 py-2 text-sm" />
-          <span className="text-slate-500 text-sm">to</span>
-          <input type="date" value={to} onChange={e=>{ setTo(e.target.value); }} className="rounded-md border border-slate-300 px-3 py-2 text-sm" />
-          <button
-            type="button"
-            onClick={()=>{ setFrom(''); setTo('') }}
-            className="rounded-md border border-slate-300 px-2 py-1 text-xs hover:bg-slate-50"
-            title="Reset dates"
-          >Reset</button>
-          <button
-            type="button"
-            onClick={()=>{ const t = new Date().toISOString().slice(0,10); setFrom(t); setTo(t) }}
-            className="rounded-md border border-slate-300 px-2 py-1 text-xs hover:bg-slate-50"
-          >Today</button>
+      <div className="flex flex-col gap-4">
+        <div className="text-xl font-bold text-slate-900">Queued Patients</div>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex flex-wrap items-center gap-2 text-sm">
+            <div className="flex items-center gap-2">
+              <span className="text-slate-500 text-xs whitespace-nowrap">From</span>
+              <input type="date" value={from} onChange={e => setFrom(e.target.value)} className="rounded-md border border-slate-300 px-2 py-1.5 focus:border-sky-500" />
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-slate-500 text-xs whitespace-nowrap">To</span>
+              <input type="date" value={to} onChange={e => setTo(e.target.value)} className="rounded-md border border-slate-300 px-2 py-1.5 focus:border-sky-500" />
+            </div>
+            <div className="flex items-center gap-1">
+              <button onClick={() => { setFrom(''); setTo('') }} className="rounded-md border border-slate-300 px-3 py-1.5 text-xs hover:bg-slate-50">Reset</button>
+              <button onClick={() => { const t = new Date().toISOString().slice(0, 10); setFrom(t); setTo(t) }} className="rounded-md border border-slate-300 px-3 py-1.5 text-xs hover:bg-slate-50">Today</button>
+            </div>
+          </div>
+          <div className="w-full sm:max-w-xs">
+            <input
+              value={query}
+              onChange={e => setQuery(e.target.value)}
+              placeholder="Search name or MR#"
+              className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-100"
+            />
+          </div>
         </div>
       </div>
-      <div className="rounded-xl border border-slate-200 bg-white">
-        <div className="border-b border-slate-200 px-4 py-3 text-slate-800">First-Come First-Serve</div>
-        <div className="flex items-center justify-between gap-2 px-4 py-3">
-          <input
-            value={query}
-            onChange={e=>setQuery(e.target.value)}
-            placeholder="Search by name or MR#"
-            className="w-full max-w-xs rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-200"
-          />
-        </div>
+      <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+        <div className="border-b border-slate-200 bg-slate-50/50 px-4 py-3 font-semibold text-slate-800">First-Come First-Serve</div>
         {hasDateRange ? (
           <>
             <div className="border-t border-slate-200" />
@@ -534,7 +538,7 @@ export default function Doctor_Patients() {
       {showDetails && (
         <TokenDetailsDialog
           open={showDetails}
-          onClose={()=>{ setShowDetails(false); setDetailsRow(null) }}
+          onClose={() => { setShowDetails(false); setDetailsRow(null) }}
           row={detailsRow}
         />
       )}

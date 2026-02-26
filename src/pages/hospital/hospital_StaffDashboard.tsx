@@ -179,9 +179,9 @@ export default function Hospital_StaffDashboard(){
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <h2 className="text-2xl font-bold text-slate-900">Staff Dashboard</h2>
-        <div className="flex items-center gap-3 text-xs text-slate-600">
+        <div className="flex flex-wrap items-center gap-2 sm:gap-3 text-xs text-slate-600">
           <Clock className="h-4 w-4" />
           <span>Last updated: {updatedAt}</span>
           <button onClick={()=>{ loadMeta(); reloadAttendance() }} disabled={loading} className="inline-flex items-center gap-1 rounded-md border border-slate-200 px-2 py-1 text-slate-700 hover:bg-slate-50 disabled:opacity-50">

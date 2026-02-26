@@ -270,7 +270,7 @@ export default function Hospital_UserManagement() {
             continue
           }
           // If entries look like paths already, keep as-is
-          const allPaths = arr.every(v => String(v || '').trim().startsWith('/'))
+          const allPaths = arr.every((v: any) => String(v || '').trim().startsWith('/'))
           if (allPaths) {
             mapped[portalKey] = arr
             continue
@@ -394,15 +394,15 @@ export default function Hospital_UserManagement() {
     setEditForm({ username: u.username, role: u.role })
     setEditPassword('')
     setEditPasswordVisible(false)
-    ;(async () => {
-      try {
-        const res: any = await hospitalApi.getHospitalUser(u.id)
-        const uu = res?.user
-        if (uu) {
-          setEditForm({ username: String(uu.username || u.username), role: String(uu.role || u.role) })
-        }
-      } catch {}
-    })()
+      ; (async () => {
+        try {
+          const res: any = await hospitalApi.getHospitalUser(u.id)
+          const uu = res?.user
+          if (uu) {
+            setEditForm({ username: String(uu.username || u.username), role: String(uu.role || u.role) })
+          }
+        } catch { }
+      })()
   }
   const saveEdit = async () => {
     if (!editId) return
@@ -436,29 +436,29 @@ export default function Hospital_UserManagement() {
 
   const confirmDelete = async () => {
     if (!deleteId) return
-    try { await hospitalApi.deleteHospitalUser(deleteId) } catch {}
+    try { await hospitalApi.deleteHospitalUser(deleteId) } catch { }
     setUsers(prev => prev.filter(u => u.id !== deleteId))
     setDeleteId(null)
   }
 
-  useEffect(()=>{
+  useEffect(() => {
     let cancelled = false
-    ;(async () => {
-      try {
-        const treeRes: any = await hospitalApi.getHospitalAccessTree()
-        const t: any[] = Array.isArray(treeRes?.tree) ? treeRes.tree : []
-        if (!cancelled) setAccessTree(t as any)
+      ; (async () => {
+        try {
+          const treeRes: any = await hospitalApi.getHospitalAccessTree()
+          const t: any[] = Array.isArray(treeRes?.tree) ? treeRes.tree : []
+          if (!cancelled) setAccessTree(t as any)
 
-        const rs = await loadRoles()
-        const us = await loadUsers()
-        if (!cancelled && us.length > 0) {
-          setPermUserId(us[0].id)
-          await loadPermissionsForUser(us[0].id, rs, t as any)
+          const rs = await loadRoles()
+          const us = await loadUsers()
+          if (!cancelled && us.length > 0) {
+            setPermUserId(us[0].id)
+            await loadPermissionsForUser(us[0].id, rs, t as any)
+          }
+        } catch {
+          if (!cancelled) setAccessTree([])
         }
-      } catch {
-        if (!cancelled) setAccessTree([])
-      }
-    })()
+      })()
     return () => {
       cancelled = true
     }
@@ -471,8 +471,8 @@ export default function Hospital_UserManagement() {
       <div className="mt-6 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
         <div className="text-sm font-semibold text-slate-700">Roles</div>
 
-        <div className="mt-3 overflow-hidden rounded-lg border border-slate-200">
-          <table className="min-w-full divide-y divide-slate-200 text-sm">
+        <div className="mt-3 w-full overflow-x-auto rounded-lg border border-slate-200">
+          <table className="min-w-max w-full divide-y divide-slate-200 text-sm">
             <thead className="bg-slate-50 text-slate-600">
               <tr>
                 <th className="px-4 py-2 text-left">Role</th>
@@ -527,71 +527,71 @@ export default function Hospital_UserManagement() {
       </div>
 
       <div className="mt-6 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-          <div className="text-sm font-semibold text-slate-700">All Users</div>
+        <div className="text-sm font-semibold text-slate-700">All Users</div>
 
-          <div className="mt-3 overflow-hidden rounded-lg border border-slate-200">
-            <table className="min-w-full divide-y divide-slate-200 text-sm">
-              <thead className="bg-slate-50 text-slate-600">
-                <tr>
-                  <th className="px-4 py-2 text-left">Username</th>
-                  <th className="px-4 py-2 text-left">Role</th>
-                  <th className="px-4 py-2 text-left">Actions</th>
+        <div className="mt-3 w-full overflow-x-auto rounded-lg border border-slate-200">
+          <table className="min-w-max w-full divide-y divide-slate-200 text-sm">
+            <thead className="bg-slate-50 text-slate-600">
+              <tr>
+                <th className="px-4 py-2 text-left">Username</th>
+                <th className="px-4 py-2 text-left">Role</th>
+                <th className="px-4 py-2 text-left">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-200 text-slate-700">
+              {users.map(u => (
+                <tr key={u.id}>
+                  <td className="px-4 py-2">{u.username}</td>
+                  <td className="px-4 py-2">{u.role}</td>
+                  <td className="px-4 py-2">
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => openEdit(u)}
+                        className="inline-flex items-center justify-center rounded-md border border-slate-300 bg-white p-1.5 text-slate-700 hover:bg-slate-50"
+                        title="Edit"
+                      >
+                        <Pencil className="h-4 w-4" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setDeleteId(u.id)}
+                        className="inline-flex items-center justify-center rounded-md border border-slate-300 bg-white p-1.5 text-rose-700 hover:bg-rose-50"
+                        title="Delete"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </div>
+                  </td>
                 </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-200 text-slate-700">
-                {users.map(u => (
-                  <tr key={u.id}>
-                    <td className="px-4 py-2">{u.username}</td>
-                    <td className="px-4 py-2">{u.role}</td>
-                    <td className="px-4 py-2">
-                      <div className="flex gap-2">
-                        <button
-                          type="button"
-                          onClick={() => openEdit(u)}
-                          className="inline-flex items-center justify-center rounded-md border border-slate-300 bg-white p-1.5 text-slate-700 hover:bg-slate-50"
-                          title="Edit"
-                        >
-                          <Pencil className="h-4 w-4" />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setDeleteId(u.id)}
-                          className="inline-flex items-center justify-center rounded-md border border-slate-300 bg-white p-1.5 text-rose-700 hover:bg-rose-50"
-                          title="Delete"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+              ))}
+            </tbody>
+          </table>
+        </div>
 
-          <div className="mt-5 text-sm font-semibold text-slate-700">Add New User</div>
-          <div className="mt-2 grid grid-cols-1 gap-3 md:grid-cols-4">
-            <input
-              value={newUser.username}
-              onChange={e=>setNewUser(v=>({ ...v, username: e.target.value }))}
-              placeholder="admin"
-              className="rounded-md border border-slate-300 px-3 py-2 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-200"
-            />
-            <select
-              value={newUser.role}
-              onChange={e=>setNewUser(v=>({ ...v, role: e.target.value }))}
-              className="rounded-md border border-slate-300 px-3 py-2 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-200"
-            >
-              {roles.map(r => (<option key={r.id} value={r.name}>{r.name}</option>))}
-            </select>
-            <input
-              value={newUser.password}
-              onChange={e=>setNewUser(v=>({ ...v, password: e.target.value }))}
-              placeholder="password (optional)"
-              className="rounded-md border border-slate-300 px-3 py-2 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-200"
-            />
-            <button onClick={addUser} className="rounded-md bg-navy px-4 py-2 text-sm font-medium text-white hover:opacity-90">Add User</button>
-          </div>
+        <div className="mt-5 text-sm font-semibold text-slate-700">Add New User</div>
+        <div className="mt-2 grid grid-cols-1 gap-3 md:grid-cols-4">
+          <input
+            value={newUser.username}
+            onChange={e => setNewUser(v => ({ ...v, username: e.target.value }))}
+            placeholder="admin"
+            className="rounded-md border border-slate-300 px-3 py-2 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-200"
+          />
+          <select
+            value={newUser.role}
+            onChange={e => setNewUser(v => ({ ...v, role: e.target.value }))}
+            className="rounded-md border border-slate-300 px-3 py-2 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-200"
+          >
+            {roles.map(r => (<option key={r.id} value={r.name}>{r.name}</option>))}
+          </select>
+          <input
+            value={newUser.password}
+            onChange={e => setNewUser(v => ({ ...v, password: e.target.value }))}
+            placeholder="password (optional)"
+            className="rounded-md border border-slate-300 px-3 py-2 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-200"
+          />
+          <button onClick={addUser} className="rounded-md bg-navy px-4 py-2 text-sm font-medium text-white hover:opacity-90">Add User</button>
+        </div>
       </div>
 
       <div className="mt-6 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
@@ -627,29 +627,31 @@ export default function Hospital_UserManagement() {
         <div className="mt-4 space-y-4">
           {accessTree.map(p => (
             <div key={p.portalKey} className="rounded-lg border border-slate-200 p-3">
-              <div className="flex items-center justify-between gap-3">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
                 <div className="text-sm font-semibold text-slate-800">{p.portalKey}</div>
-                <div className="flex items-center gap-3">
-                  <button
-                    type="button"
-                    role="switch"
-                    aria-checked={isPortalEnabled(p.portalKey)}
-                    onClick={() => {
-                      const next = !isPortalEnabled(p.portalKey)
-                      togglePortal(p.portalKey, next)
-                      if (next) openPortalDialog(p.portalKey)
-                    }}
-                    className={`${isPortalEnabled(p.portalKey) ? 'bg-violet-700' : 'bg-slate-300'} relative inline-flex h-6 w-11 items-center rounded-full transition`}
-                    title={isPortalEnabled(p.portalKey) ? 'Disable' : 'Enable'}
-                  >
-                    <span className={`${isPortalEnabled(p.portalKey) ? 'translate-x-6' : 'translate-x-1'} inline-block h-4 w-4 transform rounded-full bg-white transition`} />
-                  </button>
-                  <div className="text-sm text-slate-700">{isPortalEnabled(p.portalKey) ? 'Enabled' : 'Disabled'}</div>
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
+                  <div className="flex flex-wrap items-center gap-3">
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={isPortalEnabled(p.portalKey)}
+                      onClick={() => {
+                        const next = !isPortalEnabled(p.portalKey)
+                        togglePortal(p.portalKey, next)
+                        if (next) openPortalDialog(p.portalKey)
+                      }}
+                      className={`${isPortalEnabled(p.portalKey) ? 'bg-violet-700' : 'bg-slate-300'} relative inline-flex h-6 w-11 items-center rounded-full transition`}
+                      title={isPortalEnabled(p.portalKey) ? 'Disable' : 'Enable'}
+                    >
+                      <span className={`${isPortalEnabled(p.portalKey) ? 'translate-x-6' : 'translate-x-1'} inline-block h-4 w-4 transform rounded-full bg-white transition`} />
+                    </button>
+                    <div className="text-sm text-slate-700">{isPortalEnabled(p.portalKey) ? 'Enabled' : 'Disabled'}</div>
+                  </div>
                   {isPortalEnabled(p.portalKey) && (
                     <button
                       type="button"
                       onClick={() => openPortalDialog(p.portalKey)}
-                      className="rounded-md border border-slate-300 bg-white px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50"
+                      className="w-full rounded-md border border-slate-300 bg-white px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50 sm:w-auto"
                     >
                       Configure
                     </button>
@@ -675,7 +677,7 @@ export default function Hospital_UserManagement() {
               </button>
             </div>
 
-            <div className="flex-1 overflow-y-auto px-4 py-4">
+            <div className="flex-1 overflow-y-auto px-3 py-3 sm:px-4 sm:py-4">
               <div className="rounded-lg border border-slate-200 p-3">
                 <div className="flex items-center justify-between gap-3">
                   <div className="text-sm font-semibold text-slate-800">All Pages</div>
@@ -765,12 +767,12 @@ export default function Hospital_UserManagement() {
               })()}
             </div>
 
-            <div className="flex items-center justify-end gap-2 border-t border-slate-200 px-4 py-3">
+            <div className="flex flex-col gap-2 border-t border-slate-200 px-4 py-3 sm:flex-row sm:items-center sm:justify-end sm:gap-2">
               <button
                 type="button"
                 onClick={closePortalDialog}
                 disabled={!portalHasAnyEnabledPage(portalDialog.portalKey, portalDialog)}
-                className="rounded-md bg-violet-700 px-4 py-2 text-sm font-medium text-white hover:bg-violet-800 disabled:opacity-60"
+                className="w-full rounded-md bg-violet-700 px-4 py-2 text-sm font-medium text-white hover:bg-violet-800 disabled:opacity-60 sm:w-auto"
               >
                 Done
               </button>
@@ -786,11 +788,11 @@ export default function Hospital_UserManagement() {
             <div className="mt-4 space-y-3">
               <div>
                 <label className="mb-1 block text-sm text-slate-700">Role Name</label>
-                <input value={roleEditForm.name} onChange={e=>setRoleEditForm(f=>({ ...f, name: e.target.value }))} className="w-full rounded-md border border-slate-300 px-3 py-2 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-200" />
+                <input value={roleEditForm.name} onChange={e => setRoleEditForm(f => ({ ...f, name: e.target.value }))} className="w-full rounded-md border border-slate-300 px-3 py-2 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-200" />
               </div>
             </div>
             <div className="mt-5 flex justify-end gap-2">
-              <button onClick={()=>setRoleEditId(null)} className="rounded-md border border-slate-300 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50">Cancel</button>
+              <button onClick={() => setRoleEditId(null)} className="rounded-md border border-slate-300 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50">Cancel</button>
               <button onClick={saveRoleEdit} className="rounded-md bg-violet-700 px-3 py-1.5 text-sm font-medium text-white hover:bg-violet-800">Save</button>
             </div>
           </div>
@@ -803,7 +805,7 @@ export default function Hospital_UserManagement() {
             <h3 className="text-base font-semibold text-slate-800">Delete Role</h3>
             <p className="mt-2 text-sm text-slate-600">Are you sure you want to delete role <span className="font-medium">{getRoleName(roleDeleteId)}</span>?</p>
             <div className="mt-5 flex justify-end gap-2">
-              <button onClick={()=>setRoleDeleteId(null)} className="rounded-md border border-slate-300 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50">Cancel</button>
+              <button onClick={() => setRoleDeleteId(null)} className="rounded-md border border-slate-300 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50">Cancel</button>
               <button onClick={confirmDeleteRole} className="rounded-md bg-rose-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-rose-700">Delete</button>
             </div>
           </div>
@@ -818,11 +820,11 @@ export default function Hospital_UserManagement() {
             <div className="mt-4 space-y-3">
               <div>
                 <label className="mb-1 block text-sm text-slate-700">Username</label>
-                <input value={editForm.username} onChange={e=>setEditForm(f=>({ ...f, username: e.target.value }))} className="w-full rounded-md border border-slate-300 px-3 py-2 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-200" />
+                <input value={editForm.username} onChange={e => setEditForm(f => ({ ...f, username: e.target.value }))} className="w-full rounded-md border border-slate-300 px-3 py-2 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-200" />
               </div>
               <div>
                 <label className="mb-1 block text-sm text-slate-700">Role</label>
-                <select value={editForm.role} onChange={e=>setEditForm(f=>({ ...f, role: e.target.value }))} className="w-full rounded-md border border-slate-300 px-3 py-2 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-200">
+                <select value={editForm.role} onChange={e => setEditForm(f => ({ ...f, role: e.target.value }))} className="w-full rounded-md border border-slate-300 px-3 py-2 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-200">
                   {roles.map(r => (<option key={r.id} value={r.name}>{r.name}</option>))}
                 </select>
               </div>
@@ -831,7 +833,7 @@ export default function Hospital_UserManagement() {
                 <div className="flex gap-2">
                   <input
                     value={editPassword}
-                    onChange={e=>setEditPassword(e.target.value)}
+                    onChange={e => setEditPassword(e.target.value)}
                     placeholder="Leave blank to keep current"
                     type={editPasswordVisible ? 'text' : 'password'}
                     className="w-full rounded-md border border-slate-300 px-3 py-2 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-200"
@@ -857,7 +859,7 @@ export default function Hospital_UserManagement() {
               </div>
             </div>
             <div className="mt-5 flex justify-end gap-2">
-              <button onClick={()=>setEditId(null)} className="rounded-md border border-slate-300 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50">Cancel</button>
+              <button onClick={() => setEditId(null)} className="rounded-md border border-slate-300 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50">Cancel</button>
               <button onClick={saveEdit} className="rounded-md bg-violet-700 px-3 py-1.5 text-sm font-medium text-white hover:bg-violet-800">Save</button>
             </div>
           </div>
@@ -871,7 +873,7 @@ export default function Hospital_UserManagement() {
             <h3 className="text-base font-semibold text-slate-800">Delete User</h3>
             <p className="mt-2 text-sm text-slate-600">Are you sure you want to delete this user?</p>
             <div className="mt-5 flex justify-end gap-2">
-              <button onClick={()=>setDeleteId(null)} className="rounded-md border border-slate-300 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50">Cancel</button>
+              <button onClick={() => setDeleteId(null)} className="rounded-md border border-slate-300 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50">Cancel</button>
               <button onClick={confirmDelete} className="rounded-md bg-rose-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-rose-700">Delete</button>
             </div>
           </div>

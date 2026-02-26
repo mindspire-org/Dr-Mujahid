@@ -17,7 +17,7 @@ interface TokenRow {
   department?: string
   fee: number
   discount?: number
-  paymentStatus?: 'paid'|'unpaid'
+  paymentStatus?: 'paid' | 'unpaid'
   receptionistName?: string
   paymentMethod?: string
   accountNumberIban?: string
@@ -32,7 +32,7 @@ interface TokenRow {
   advanceAdded?: number
   duesAfter?: number
   advanceAfter?: number
-  status: 'queued'|'in-progress'|'completed'|'returned'|'cancelled'
+  status: 'queued' | 'in-progress' | 'completed' | 'returned' | 'cancelled'
   raw?: any
 }
 
@@ -73,9 +73,9 @@ export default function Hospital_TodayTokens() {
     doctorId: '',
     amount: '',
     discount: '',
-    paymentStatus: 'paid' as 'paid'|'unpaid',
+    paymentStatus: 'paid' as 'paid' | 'unpaid',
     receptionistName: '',
-    paymentMethod: 'Cash' as 'Cash'|'Card'|'Insurance',
+    paymentMethod: 'Cash' as 'Cash' | 'Card' | 'Insurance',
     accountNumberIban: '',
   })
 
@@ -84,83 +84,83 @@ export default function Hospital_TodayTokens() {
 
   useEffect(() => {
     let cancelled = false
-    async function loadMasters(){
+    async function loadMasters() {
       try {
         const dRes = await hospitalApi.listDepartments() as any
-        const deps = (dRes.departments || dRes || []).map((d: any)=>({ id: String(d._id||d.id), name: String(d.name||'') }))
+        const deps = (dRes.departments || dRes || []).map((d: any) => ({ id: String(d._id || d.id), name: String(d.name || '') }))
         const docRes = await hospitalApi.listDoctors() as any
-        const docs = (docRes.doctors || docRes || []).map((r: any)=>({
-          id: String(r._id||r.id),
-          name: String(r.name||''),
+        const docs = (docRes.doctors || docRes || []).map((r: any) => ({
+          id: String(r._id || r.id),
+          name: String(r.name || ''),
           primaryDepartmentId: r.primaryDepartmentId ? String(r.primaryDepartmentId) : undefined,
-          departmentIds: Array.isArray(r.departmentIds) ? r.departmentIds.map((x: any)=> String(x)) : undefined,
+          departmentIds: Array.isArray(r.departmentIds) ? r.departmentIds.map((x: any) => String(x)) : undefined,
         }))
-        if (!cancelled){ setDepartments(deps); setDoctors(docs) }
-      } catch {}
+        if (!cancelled) { setDepartments(deps); setDoctors(docs) }
+      } catch { }
     }
     loadMasters()
-    return ()=>{ cancelled = true }
+    return () => { cancelled = true }
   }, [])
 
-  useEffect(()=>{
+  useEffect(() => {
     if (payToLoadedRef.current) return
     payToLoadedRef.current = true
     let mounted = true
-    ;(async()=>{
-      try {
-        const [mineRes, bankRes, pettyRes] = await Promise.all([
-          hospitalApi.myPettyCash(),
-          hospitalApi.listBankAccounts(),
-          hospitalApi.listPettyCashAccounts(),
-        ]) as any
+      ; (async () => {
+        try {
+          const [mineRes, bankRes, pettyRes] = await Promise.all([
+            hospitalApi.myPettyCash(),
+            hospitalApi.listBankAccounts(),
+            hospitalApi.listPettyCashAccounts(),
+          ]) as any
 
-        const opts: Array<{ code: string; label: string }> = []
-        const seen = new Set<string>()
-        const add = (code?: string, label?: string) => {
-          const c = String(code || '').trim().toUpperCase()
-          if (!c) return
-          if (seen.has(c)) return
-          seen.add(c)
-          opts.push({ code: c, label: String(label || c) })
-        }
+          const opts: Array<{ code: string; label: string }> = []
+          const seen = new Set<string>()
+          const add = (code?: string, label?: string) => {
+            const c = String(code || '').trim().toUpperCase()
+            if (!c) return
+            if (seen.has(c)) return
+            seen.add(c)
+            opts.push({ code: c, label: String(label || c) })
+          }
 
-        const myCode = String(mineRes?.account?.code || '').trim().toUpperCase()
-        if (myCode) {
-          add(myCode, `${mineRes?.account?.name || 'My Petty Cash'} (${myCode})`)
-        }
+          const myCode = String(mineRes?.account?.code || '').trim().toUpperCase()
+          if (myCode) {
+            add(myCode, `${mineRes?.account?.name || 'My Petty Cash'} (${myCode})`)
+          }
 
-        const petty: any[] = pettyRes?.accounts || []
-        for (const p of petty){
-          const code = String(p?.code || '').trim().toUpperCase()
-          if (!code) continue
-          const rs = String(p?.responsibleStaff || '').trim()
-          if (rs) continue
-          if (String(p?.status || 'Active') !== 'Active') continue
-          add(code, `${String(p?.name || code).trim()} (${code})`)
-        }
+          const petty: any[] = pettyRes?.accounts || []
+          for (const p of petty) {
+            const code = String(p?.code || '').trim().toUpperCase()
+            if (!code) continue
+            const rs = String(p?.responsibleStaff || '').trim()
+            if (rs) continue
+            if (String(p?.status || 'Active') !== 'Active') continue
+            add(code, `${String(p?.name || code).trim()} (${code})`)
+          }
 
-        const banks: any[] = bankRes?.accounts || []
-        for (const b of banks){
-          const an = String(b?.accountNumber || '')
-          const last4 = an ? an.slice(-4) : ''
-          const code = String(b?.financeAccountCode || (last4 ? `BANK_${last4}` : '')).trim().toUpperCase()
-          if (!code) continue
-          const bankLabel = `${String(b?.bankName || '').trim()} - ${String(b?.accountTitle || '').trim()}${last4 ? ` (${last4})` : ''}`.trim()
-          add(code, bankLabel ? `${bankLabel} (${code})` : code)
-        }
+          const banks: any[] = bankRes?.accounts || []
+          for (const b of banks) {
+            const an = String(b?.accountNumber || '')
+            const last4 = an ? an.slice(-4) : ''
+            const code = String(b?.financeAccountCode || (last4 ? `BANK_${last4}` : '')).trim().toUpperCase()
+            if (!code) continue
+            const bankLabel = `${String(b?.bankName || '').trim()} - ${String(b?.accountTitle || '').trim()}${last4 ? ` (${last4})` : ''}`.trim()
+            add(code, bankLabel ? `${bankLabel} (${code})` : code)
+          }
 
-        if (mounted) {
-          setPayToAccounts(opts)
+          if (mounted) {
+            setPayToAccounts(opts)
+          }
+        } catch {
+          if (mounted) setPayToAccounts([])
         }
-      } catch {
-        if (mounted) setPayToAccounts([])
-      }
-    })()
-    return ()=>{ mounted = false }
+      })()
+    return () => { mounted = false }
   }, [])
 
-  async function load(){
-    const today = new Date().toISOString().slice(0,10)
+  async function load() {
+    const today = new Date().toISOString().slice(0, 10)
     const res = await hospitalApi.listTokens({ date: today }) as any
     const items: TokenRow[] = (res.tokens || []).map((t: any) => ({
       _id: t._id,
@@ -235,13 +235,13 @@ export default function Hospital_TodayTokens() {
   const pageRows = filtered.slice(start, start + rowsPerPage)
   const totalPages = Math.max(1, Math.ceil(filtered.length / rowsPerPage))
 
-  function openReturn(r: TokenRow){
+  function openReturn(r: TokenRow) {
     setReturnRow(r)
     setReturnReason(String(r.raw?.returnReason || ''))
     setReturnOpen(true)
   }
 
-  function openEdit(r: TokenRow){
+  function openEdit(r: TokenRow) {
     const t = r.raw || {}
     const patient = t.patientId || {}
 
@@ -263,7 +263,7 @@ export default function Hospital_TodayTokens() {
     const paymentStatus = (String(t.paymentStatus || r.paymentStatus || 'paid') as any)
     const receptionistName = String(t.receptionistName || r.receptionistName || '')
     const method = String(t.paymentMethod || r.paymentMethod || 'Cash')
-    const paymentMethod = ((['Cash','Card','Insurance'].includes(method) ? method : 'Cash') as any)
+    const paymentMethod = ((['Cash', 'Card', 'Insurance'].includes(method) ? method : 'Cash') as any)
     const accountNumberIban = String(t.accountNumberIban || r.accountNumberIban || '')
 
     setEditRow(r)
@@ -288,7 +288,7 @@ export default function Hospital_TodayTokens() {
     setEditOpen(true)
   }
 
-  async function submitEdit(){
+  async function submitEdit() {
     if (!editRow) return
     try {
       setEditBusy(true)
@@ -329,7 +329,7 @@ export default function Hospital_TodayTokens() {
     }
   }
 
-  async function submitReturn(){
+  async function submitReturn() {
     if (!returnRow) return
     const reason = String(returnReason || '').trim()
     if (!reason) {
@@ -352,9 +352,9 @@ export default function Hospital_TodayTokens() {
     }
   }
 
-  function printSlip(r: TokenRow){
+  function printSlip(r: TokenRow) {
     const t = r.raw || {}
-    const amount = Number(t.amount ?? (Number(t.fee||0) + Number(t.discount||0)) ?? r.fee ?? 0)
+    const amount = Number(t.amount ?? (Number(t.fee || 0) + Number(t.discount || 0)))
     const discount = Number(t.discount ?? 0)
     const payable = Number(t.fee ?? Math.max(amount - discount, 0))
     const receivedToAccountCode = String(t.receivedToAccountCode || '')
@@ -392,12 +392,12 @@ export default function Hospital_TodayTokens() {
     setShowSlip(true)
   }
 
-  function openDetails(r: TokenRow){
+  function openDetails(r: TokenRow) {
     setDetailsRow(r)
     setShowDetails(true)
   }
 
-  
+
 
   // No index mapping needed when actions use row ids
 
@@ -412,7 +412,7 @@ export default function Hospital_TodayTokens() {
   }
 
   const exportCSV = () => {
-    const cols = ['Time','Token #','MR #','Patient','Age','Doctor','Department','Fee','Payment Status','Discount','Returned']
+    const cols = ['Time', 'Token #', 'MR #', 'Patient', 'Age', 'Doctor', 'Department', 'Fee', 'Payment Status', 'Discount', 'Returned']
     const lines = [cols.join(',')]
     for (const r of filtered) {
       lines.push([
@@ -427,28 +427,28 @@ export default function Hospital_TodayTokens() {
         (r.paymentStatus || 'paid').toUpperCase(),
         Number(r.discount ?? r.raw?.discount ?? r.raw?.pricing?.discount ?? 0) || 0,
         r.status === 'returned' ? 'Yes' : 'No',
-      ].map(v => typeof v === 'string' && v.includes(',') ? `"${v.replace(/"/g,'""')}"` : String(v)).join(','))
+      ].map(v => typeof v === 'string' && v.includes(',') ? `"${v.replace(/"/g, '""')}"` : String(v)).join(','))
     }
     const blob = new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8;' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
-    a.download = `todays-tokens-${new Date().toISOString().slice(0,10)}.csv`
+    a.download = `todays-tokens-${new Date().toISOString().slice(0, 10)}.csv`
     a.click()
     URL.revokeObjectURL(url)
   }
 
   return (
     <div>
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <h2 className="text-xl font-semibold text-slate-800">Today's Tokens <span className="ml-1 rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600">{filtered.length}</span></h2>
-        <button onClick={exportCSV} className="rounded-md border border-slate-300 px-3 py-1.5 text-sm hover:bg-slate-50">Export CSV</button>
+        <button onClick={exportCSV} className="w-full sm:w-auto rounded-md border border-slate-300 px-3 py-1.5 text-sm hover:bg-slate-50">Export CSV</button>
       </div>
 
       <div className="mt-4">
         <input
           value={query}
-          onChange={(e)=>setQuery(e.target.value)}
+          onChange={(e) => setQuery(e.target.value)}
           placeholder="Search by name, token#, MR#, phone, doctor, department, age, gender, address, or time..."
           className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-200"
         />
@@ -461,8 +461,8 @@ export default function Hospital_TodayTokens() {
         <StatCard title="Returned Patients" value={returnedPatients} tone="amber" />
       </div>
 
-      <div className="mt-6 overflow-hidden rounded-xl border border-slate-200 bg-white">
-        <table className="min-w-full divide-y divide-slate-200 text-sm">
+      <div className="mt-6 w-full overflow-x-auto rounded-xl border border-slate-200 bg-white">
+        <table className="min-w-max w-full divide-y divide-slate-200 text-sm">
           <thead className="bg-slate-50">
             <tr className="text-left text-slate-600">
               <Th>DateTime</Th>
@@ -497,7 +497,7 @@ export default function Hospital_TodayTokens() {
                 <Td className="font-semibold text-emerald-600">Rs. {r.fee.toLocaleString()}</Td>
                 <Td>
                   <div className="flex items-center gap-2">
-                    <span className={`rounded px-2 py-0.5 text-xs ${String(r.paymentStatus||'paid').toLowerCase()==='paid' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-800'}`}>
+                    <span className={`rounded px-2 py-0.5 text-xs ${String(r.paymentStatus || 'paid').toLowerCase() === 'paid' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-800'}`}>
                       {String(r.paymentStatus || 'paid').toUpperCase()}
                     </span>
                   </div>
@@ -505,30 +505,30 @@ export default function Hospital_TodayTokens() {
                 <Td>
                   Rs. {Number(r.discount ?? r.raw?.discount ?? r.raw?.pricing?.discount ?? 0).toLocaleString()}
                 </Td>
-                <Td><button onClick={()=>printSlip(r)} className="text-sky-600 hover:underline">Print Slip</button></Td>
+                <Td><button onClick={() => printSlip(r)} className="text-sky-600 hover:underline">Print Slip</button></Td>
                 <Td>
                   <div className="flex gap-2">
                     {/* Removed Admit to IPD action button per request */}
-                    
+
                     {/* Removed Complete action button per request */}
-                    
+
                     <button
-                      onClick={()=>openEdit(r)}
+                      onClick={() => openEdit(r)}
                       title="Edit"
                       className="text-slate-600 hover:text-slate-900"
                     >
                       <Pencil size={18} />
                     </button>
                     <button
-                      onClick={()=>openDetails(r)}
+                      onClick={() => openDetails(r)}
                       title="View Details"
                       className="text-slate-600 hover:text-slate-900"
                     >
                       <Eye size={18} />
                     </button>
                     <button
-                      disabled={actioningId===r._id || r.status === 'returned'}
-                      onClick={()=>openReturn(r)}
+                      disabled={actioningId === r._id || r.status === 'returned'}
+                      onClick={() => openReturn(r)}
                       title={r.status === 'returned' ? 'Already Returned' : 'Return'}
                       className="text-amber-700 hover:text-amber-900 disabled:opacity-50"
                     >
@@ -544,24 +544,24 @@ export default function Hospital_TodayTokens() {
         <div className="flex items-center justify-between border-t border-slate-200 p-3 text-sm text-slate-700">
           <div className="flex items-center gap-2">
             <span>Rows per page</span>
-            <select value={rowsPerPage} onChange={e=>{setRowsPerPage(parseInt(e.target.value)); setPage(1)}} className="rounded-md border border-slate-300 px-2 py-1">
-              {[10,20,50].map(n => <option key={n} value={n}>{n}</option>)}
+            <select value={rowsPerPage} onChange={e => { setRowsPerPage(parseInt(e.target.value)); setPage(1) }} className="rounded-md border border-slate-300 px-2 py-1">
+              {[10, 20, 50].map(n => <option key={n} value={n}>{n}</option>)}
             </select>
           </div>
           <div>Page {page} of {totalPages}</div>
           <div className="flex items-center gap-2">
-            <button disabled={page<=1} onClick={()=>setPage(p=>Math.max(1,p-1))} className="rounded-md border border-slate-300 px-2 py-1 disabled:opacity-50">Prev</button>
-            <button disabled={page>=totalPages} onClick={()=>setPage(p=>Math.min(totalPages,p+1))} className="rounded-md border border-slate-300 px-2 py-1 disabled:opacity-50">Next</button>
+            <button disabled={page <= 1} onClick={() => setPage(p => Math.max(1, p - 1))} className="rounded-md border border-slate-300 px-2 py-1 disabled:opacity-50">Prev</button>
+            <button disabled={page >= totalPages} onClick={() => setPage(p => Math.min(totalPages, p + 1))} className="rounded-md border border-slate-300 px-2 py-1 disabled:opacity-50">Next</button>
           </div>
         </div>
       </div>
 
       {showSlip && slipData && (
-        <Hospital_TokenSlip open={showSlip} onClose={()=>setShowSlip(false)} data={slipData} autoPrint={false} />
+        <Hospital_TokenSlip open={showSlip} onClose={() => setShowSlip(false)} data={slipData} autoPrint={false} />
       )}
 
       {showDetails && detailsRow && (
-        <TokenDetailsDialog open={showDetails} onClose={()=>setShowDetails(false)} row={detailsRow} payToAccounts={payToAccounts} />
+        <TokenDetailsDialog open={showDetails} onClose={() => setShowDetails(false)} row={detailsRow} payToAccounts={payToAccounts} />
       )}
 
       {editOpen && editRow && (
@@ -570,7 +570,7 @@ export default function Hospital_TodayTokens() {
             <div className="flex items-center justify-between border-b border-slate-200 px-5 py-3">
               <div className="text-base font-semibold text-slate-800">Edit Token</div>
               <button
-                onClick={()=>{ if (editBusy) return; setEditOpen(false); setEditRow(null) }}
+                onClick={() => { if (editBusy) return; setEditOpen(false); setEditRow(null) }}
                 className="rounded-md border border-slate-300 px-3 py-1.5 text-sm"
               >
                 Close
@@ -584,19 +584,19 @@ export default function Hospital_TodayTokens() {
                 <div className="md:col-span-2 text-sm font-semibold text-slate-800">Patient Details</div>
                 <div className="md:col-span-2">
                   <label className="mb-1 block text-sm font-medium text-slate-700">Patient Name</label>
-                  <input value={editForm.patientName} onChange={e=>setEditForm(p=>({ ...p, patientName: e.target.value }))} className="w-full rounded-md border border-slate-300 px-3 py-2 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-200" />
+                  <input value={editForm.patientName} onChange={e => setEditForm(p => ({ ...p, patientName: e.target.value }))} className="w-full rounded-md border border-slate-300 px-3 py-2 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-200" />
                 </div>
                 <div>
                   <label className="mb-1 block text-sm font-medium text-slate-700">Phone</label>
-                  <input value={editForm.phone} onChange={e=>setEditForm(p=>({ ...p, phone: e.target.value }))} className="w-full rounded-md border border-slate-300 px-3 py-2 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-200" />
+                  <input value={editForm.phone} onChange={e => setEditForm(p => ({ ...p, phone: e.target.value }))} className="w-full rounded-md border border-slate-300 px-3 py-2 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-200" />
                 </div>
                 <div>
                   <label className="mb-1 block text-sm font-medium text-slate-700">Age</label>
-                  <input value={editForm.age} onChange={e=>setEditForm(p=>({ ...p, age: e.target.value }))} className="w-full rounded-md border border-slate-300 px-3 py-2 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-200" />
+                  <input value={editForm.age} onChange={e => setEditForm(p => ({ ...p, age: e.target.value }))} className="w-full rounded-md border border-slate-300 px-3 py-2 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-200" />
                 </div>
                 <div>
                   <label className="mb-1 block text-sm font-medium text-slate-700">Gender</label>
-                  <select value={editForm.gender} onChange={e=>setEditForm(p=>({ ...p, gender: e.target.value }))} className="w-full rounded-md border border-slate-300 px-3 py-2 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-200">
+                  <select value={editForm.gender} onChange={e => setEditForm(p => ({ ...p, gender: e.target.value }))} className="w-full rounded-md border border-slate-300 px-3 py-2 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-200">
                     <option value="">Select gender</option>
                     <option>Male</option>
                     <option>Female</option>
@@ -605,7 +605,7 @@ export default function Hospital_TodayTokens() {
                 </div>
                 <div>
                   <label className="mb-1 block text-sm font-medium text-slate-700">Guardian Rel</label>
-                  <select value={editForm.guardianRel} onChange={e=>setEditForm(p=>({ ...p, guardianRel: e.target.value }))} className="w-full rounded-md border border-slate-300 px-3 py-2 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-200">
+                  <select value={editForm.guardianRel} onChange={e => setEditForm(p => ({ ...p, guardianRel: e.target.value }))} className="w-full rounded-md border border-slate-300 px-3 py-2 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-200">
                     <option value="">S/O or D/O</option>
                     <option value="S/O">S/O</option>
                     <option value="D/O">D/O</option>
@@ -613,15 +613,15 @@ export default function Hospital_TodayTokens() {
                 </div>
                 <div>
                   <label className="mb-1 block text-sm font-medium text-slate-700">Guardian Name</label>
-                  <input value={editForm.guardianName} onChange={e=>setEditForm(p=>({ ...p, guardianName: e.target.value }))} className="w-full rounded-md border border-slate-300 px-3 py-2 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-200" />
+                  <input value={editForm.guardianName} onChange={e => setEditForm(p => ({ ...p, guardianName: e.target.value }))} className="w-full rounded-md border border-slate-300 px-3 py-2 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-200" />
                 </div>
                 <div>
                   <label className="mb-1 block text-sm font-medium text-slate-700">CNIC</label>
-                  <input value={editForm.cnic} onChange={e=>setEditForm(p=>({ ...p, cnic: e.target.value }))} className="w-full rounded-md border border-slate-300 px-3 py-2 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-200" />
+                  <input value={editForm.cnic} onChange={e => setEditForm(p => ({ ...p, cnic: e.target.value }))} className="w-full rounded-md border border-slate-300 px-3 py-2 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-200" />
                 </div>
                 <div className="md:col-span-2">
                   <label className="mb-1 block text-sm font-medium text-slate-700">Address</label>
-                  <textarea value={editForm.address} onChange={e=>setEditForm(p=>({ ...p, address: e.target.value }))} rows={3} className="w-full rounded-md border border-slate-300 px-3 py-2 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-200" />
+                  <textarea value={editForm.address} onChange={e => setEditForm(p => ({ ...p, address: e.target.value }))} rows={3} className="w-full rounded-md border border-slate-300 px-3 py-2 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-200" />
                 </div>
               </section>
 
@@ -629,14 +629,14 @@ export default function Hospital_TodayTokens() {
                 <div className="md:col-span-2 text-sm font-semibold text-slate-800">Doctor / Department</div>
                 <div>
                   <label className="mb-1 block text-sm font-medium text-slate-700">Department</label>
-                  <select value={editForm.departmentId} onChange={e=>setEditForm(p=>({ ...p, departmentId: e.target.value, doctorId: p.doctorId }))} className="w-full rounded-md border border-slate-300 px-3 py-2 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-200">
+                  <select value={editForm.departmentId} onChange={e => setEditForm(p => ({ ...p, departmentId: e.target.value, doctorId: p.doctorId }))} className="w-full rounded-md border border-slate-300 px-3 py-2 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-200">
                     <option value="">Select department</option>
                     {departments.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
                   </select>
                 </div>
                 <div>
                   <label className="mb-1 block text-sm font-medium text-slate-700">Doctor</label>
-                  <select value={editForm.doctorId} onChange={e=>setEditForm(p=>({ ...p, doctorId: e.target.value }))} className="w-full rounded-md border border-slate-300 px-3 py-2 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-200">
+                  <select value={editForm.doctorId} onChange={e => setEditForm(p => ({ ...p, doctorId: e.target.value }))} className="w-full rounded-md border border-slate-300 px-3 py-2 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-200">
                     <option value="">Select doctor</option>
                     {filteredDoctors(editForm.departmentId).map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
                   </select>
@@ -647,16 +647,16 @@ export default function Hospital_TodayTokens() {
                 <div className="md:col-span-2 text-sm font-semibold text-slate-800">Billing / Payment</div>
                 <div>
                   <label className="mb-1 block text-sm font-medium text-slate-700">Total Amount</label>
-                  <input value={editForm.amount} onChange={e=>setEditForm(p=>({ ...p, amount: e.target.value }))} className="w-full rounded-md border border-slate-300 px-3 py-2 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-200" />
+                  <input value={editForm.amount} onChange={e => setEditForm(p => ({ ...p, amount: e.target.value }))} className="w-full rounded-md border border-slate-300 px-3 py-2 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-200" />
                 </div>
                 <div>
                   <label className="mb-1 block text-sm font-medium text-slate-700">Discount</label>
-                  <input value={editForm.discount} onChange={e=>setEditForm(p=>({ ...p, discount: e.target.value }))} className="w-full rounded-md border border-slate-300 px-3 py-2 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-200" />
+                  <input value={editForm.discount} onChange={e => setEditForm(p => ({ ...p, discount: e.target.value }))} className="w-full rounded-md border border-slate-300 px-3 py-2 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-200" />
                 </div>
 
                 <div>
                   <label className="mb-1 block text-sm font-medium text-slate-700">Payment Status</label>
-                  <select value={editForm.paymentStatus} onChange={e=>setEditForm(p=>({ ...p, paymentStatus: e.target.value as any }))} className="w-full rounded-md border border-slate-300 px-3 py-2 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-200">
+                  <select value={editForm.paymentStatus} onChange={e => setEditForm(p => ({ ...p, paymentStatus: e.target.value as any }))} className="w-full rounded-md border border-slate-300 px-3 py-2 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-200">
                     <option value="paid">PAID</option>
                     <option value="unpaid">UNPAID</option>
                   </select>
@@ -664,12 +664,12 @@ export default function Hospital_TodayTokens() {
 
                 <div>
                   <label className="mb-1 block text-sm font-medium text-slate-700">Payed to (Receptionist)</label>
-                  <input value={editForm.receptionistName} onChange={e=>setEditForm(p=>({ ...p, receptionistName: e.target.value }))} className="w-full rounded-md border border-slate-300 px-3 py-2 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-200" />
+                  <input value={editForm.receptionistName} onChange={e => setEditForm(p => ({ ...p, receptionistName: e.target.value }))} className="w-full rounded-md border border-slate-300 px-3 py-2 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-200" />
                 </div>
 
                 <div>
                   <label className="mb-1 block text-sm font-medium text-slate-700">Payment Method</label>
-                  <select value={editForm.paymentMethod} onChange={e=>setEditForm(p=>({ ...p, paymentMethod: e.target.value as any }))} className="w-full rounded-md border border-slate-300 px-3 py-2 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-200" disabled={editForm.paymentStatus !== 'paid'}>
+                  <select value={editForm.paymentMethod} onChange={e => setEditForm(p => ({ ...p, paymentMethod: e.target.value as any }))} className="w-full rounded-md border border-slate-300 px-3 py-2 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-200" disabled={editForm.paymentStatus !== 'paid'}>
                     <option value="Cash">Cash</option>
                     <option value="Card">Card</option>
                     <option value="Insurance">Insurance</option>
@@ -678,14 +678,14 @@ export default function Hospital_TodayTokens() {
 
                 <div>
                   <label className="mb-1 block text-sm font-medium text-slate-700">Account Number/IBAN</label>
-                  <input value={editForm.accountNumberIban} onChange={e=>setEditForm(p=>({ ...p, accountNumberIban: e.target.value }))} className="w-full rounded-md border border-slate-300 px-3 py-2 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-200" disabled={editForm.paymentStatus !== 'paid' || editForm.paymentMethod !== 'Card'} />
+                  <input value={editForm.accountNumberIban} onChange={e => setEditForm(p => ({ ...p, accountNumberIban: e.target.value }))} className="w-full rounded-md border border-slate-300 px-3 py-2 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-200" disabled={editForm.paymentStatus !== 'paid' || editForm.paymentMethod !== 'Card'} />
                 </div>
               </section>
             </div>
 
             <div className="flex items-center justify-end gap-2 border-t border-slate-200 px-5 py-3">
               <button
-                onClick={()=>{ if (editBusy) return; setEditOpen(false); setEditRow(null) }}
+                onClick={() => { if (editBusy) return; setEditOpen(false); setEditRow(null) }}
                 className="rounded-md border border-slate-300 px-3 py-1.5 text-sm"
               >
                 Cancel
@@ -708,7 +708,7 @@ export default function Hospital_TodayTokens() {
             <div className="flex items-center justify-between border-b border-slate-200 px-5 py-3">
               <div className="text-base font-semibold text-slate-800">Return Token</div>
               <button
-                onClick={()=>{ if (returnBusy) return; setReturnOpen(false); setReturnRow(null) }}
+                onClick={() => { if (returnBusy) return; setReturnOpen(false); setReturnRow(null) }}
                 className="rounded-md border border-slate-300 px-3 py-1.5 text-sm"
               >
                 Close
@@ -735,7 +735,7 @@ export default function Hospital_TodayTokens() {
                   <label className="mb-1 block text-sm font-medium text-slate-700">Reason of Return</label>
                   <textarea
                     value={returnReason}
-                    onChange={e=>setReturnReason(e.target.value)}
+                    onChange={e => setReturnReason(e.target.value)}
                     rows={4}
                     className="w-full rounded-md border border-slate-300 px-3 py-2 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-200"
                     placeholder="Enter reason"
@@ -746,7 +746,7 @@ export default function Hospital_TodayTokens() {
 
             <div className="flex items-center justify-end gap-2 border-t border-slate-200 px-5 py-3">
               <button
-                onClick={()=>{ if (returnBusy) return; setReturnOpen(false); setReturnRow(null) }}
+                onClick={() => { if (returnBusy) return; setReturnOpen(false); setReturnRow(null) }}
                 className="rounded-md border border-slate-300 px-3 py-1.5 text-sm"
               >
                 Cancel
@@ -775,7 +775,7 @@ function Td({ children, className = '' }: { children: React.ReactNode; className
   return <td className={`px-4 py-2 ${className}`}>{children}</td>
 }
 
-function StatCard({ title, value, tone }: { title: string; value: React.ReactNode; tone: 'blue'|'green'|'violet'|'amber' }) {
+function StatCard({ title, value, tone }: { title: string; value: React.ReactNode; tone: 'blue' | 'green' | 'violet' | 'amber' }) {
   const tones: Record<string, string> = {
     blue: 'bg-blue-100 text-blue-700 border-blue-100',
     green: 'bg-emerald-100 text-emerald-700 border-emerald-100',
@@ -791,7 +791,7 @@ function StatCard({ title, value, tone }: { title: string; value: React.ReactNod
   )
 }
 
-function TokenDetailsDialog({ open, onClose, row, payToAccounts }: { open: boolean; onClose: ()=>void; row: TokenRow; payToAccounts: Array<{ code: string; label: string }> }){
+function TokenDetailsDialog({ open, onClose, row, payToAccounts }: { open: boolean; onClose: () => void; row: TokenRow; payToAccounts: Array<{ code: string; label: string }> }) {
   if (!open) return null
   const t = row.raw || {}
   const patient = t.patientId || {}
@@ -852,7 +852,7 @@ function TokenDetailsDialog({ open, onClose, row, payToAccounts }: { open: boole
 
   const receptionistName = String(t.receptionistName || row.receptionistName || '')
   const receivedToAccountCode = String(t.receivedToAccountCode || '')
-  const payedToName = (()=>{
+  const payedToName = (() => {
     const code = String(receivedToAccountCode || '').trim().toUpperCase()
     if (!code) return receptionistName || '-'
     const label = payToAccounts.find(x => x.code === code)?.label || ''
@@ -952,7 +952,7 @@ function TokenDetailsDialog({ open, onClose, row, payToAccounts }: { open: boole
   )
 }
 
-function Info({ label, value, full }: { label: string; value: string; full?: boolean }){
+function Info({ label, value, full }: { label: string; value: string; full?: boolean }) {
   return (
     <div className={`${full ? 'sm:col-span-2' : ''} rounded-lg border border-slate-200 bg-slate-50 px-3 py-2`}>
       <div className="text-xs font-medium text-slate-500">{label}</div>

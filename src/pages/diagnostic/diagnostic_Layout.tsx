@@ -9,6 +9,7 @@ export default function Diagnostic_Layout() {
   const [collapsed, setCollapsed] = useState<boolean>(() => {
     try { return localStorage.getItem('diagnostic.sidebar.collapsed') === '1' } catch { return false }
   })
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false)
   const [collapseSignal, setCollapseSignal] = useState(0)
   const [theme, setTheme] = useState<'light' | 'dark'>(() => {
     try { return (localStorage.getItem('diagnostic.theme') as 'light' | 'dark') || 'light' } catch { return 'light' }
@@ -20,6 +21,33 @@ export default function Diagnostic_Layout() {
     try { html.classList.toggle('dark', enable) } catch { }
     return () => { try { html.classList.remove('dark') } catch { } }
   }, [theme])
+
+  useEffect(() => {
+    if (!mobileSidebarOpen) return
+    try { document.body.style.overflow = 'hidden' } catch { }
+
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setMobileSidebarOpen(false)
+    }
+    const onResize = () => {
+      try {
+        if (window.innerWidth >= 768) setMobileSidebarOpen(false)
+      } catch { }
+    }
+
+    try { window.addEventListener('keydown', onKeyDown) } catch { }
+    try { window.addEventListener('resize', onResize) } catch { }
+    return () => {
+      try { document.body.style.overflow = '' } catch { }
+      try { window.removeEventListener('keydown', onKeyDown) } catch { }
+      try { window.removeEventListener('resize', onResize) } catch { }
+    }
+  }, [mobileSidebarOpen])
+
+  useEffect(() => {
+    setMobileSidebarOpen(false)
+  }, [location.pathname])
+
   const toggle = () => {
     setCollapsed(v => {
       const nv = !v
@@ -29,6 +57,12 @@ export default function Diagnostic_Layout() {
   }
 
   const handleToggleSidebar = () => {
+    try {
+      if (window.innerWidth < 768) {
+        setMobileSidebarOpen(v => !v)
+        return
+      }
+    } catch { }
     if (collapsed) { setCollapsed(false); return }
     setCollapseSignal(s => s + 1)
     window.setTimeout(() => { toggle() }, 200)
@@ -88,9 +122,15 @@ export default function Diagnostic_Layout() {
         <div className="flex h-full flex-col">
           <Diagnostic_Header onToggleSidebar={handleToggleSidebar} collapsed={collapsed} onToggleTheme={() => setTheme(t => t === 'dark' ? 'light' : 'dark')} theme={theme} />
           <div className="flex flex-1 min-h-0">
-            <Diagnostic_Sidebar collapsed={collapsed} onExpand={() => setCollapsed(false)} collapseSignal={collapseSignal} />
+            <Diagnostic_Sidebar
+              collapsed={collapsed}
+              onExpand={() => setCollapsed(false)}
+              collapseSignal={collapseSignal}
+              mobileOpen={mobileSidebarOpen}
+              onCloseMobile={() => setMobileSidebarOpen(false)}
+            />
             <div className="flex-1 min-h-0 overflow-y-auto">
-              <main className="w-full px-4 py-5 sm:px-6 lg:px-8 lg:py-7">
+              <main className="w-full px-2 sm:px-4 py-4">
                 <div className="mx-auto w-full max-w-7xl">
                   <Outlet />
                 </div>

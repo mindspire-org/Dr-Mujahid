@@ -407,8 +407,8 @@ export default function Hospital_CreditPatients(){
         </div>
       </div>
 
-      <div className="mt-4 overflow-hidden rounded-xl border border-slate-200 bg-white">
-        <table className="min-w-full divide-y divide-slate-200 text-sm">
+      <div className="mt-4 w-full overflow-x-auto rounded-xl border border-slate-200 bg-white">
+        <table className="min-w-max w-full divide-y divide-slate-200 text-sm">
           <thead className="bg-slate-50">
             <tr className="text-left text-slate-600">
               <th className="px-4 py-2 font-medium">MRN</th>

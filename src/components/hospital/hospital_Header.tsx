@@ -1,12 +1,17 @@
-import { Link } from 'react-router-dom'
-import { Menu } from 'lucide-react'
+import { Link, useNavigate } from 'react-router-dom'
+import { Bell, Menu } from 'lucide-react'
 import { useEffect, useState } from 'react'
+import { hospitalApi } from '../../utils/api'
+import Hospital_NotificationPopup from './hospital_NotificationPopup'
 
 type Props = { onToggleSidebar?: () => void; collapsed?: boolean; onToggleTheme?: () => void; theme?: 'light'|'dark' }
 
 export default function Hospital_Header({ onToggleSidebar, collapsed, onToggleTheme, theme }: Props) {
+  const navigate = useNavigate()
   const DEFAULT_HOSPITAL_NAME = "Men's Care Clinic"
   const [displayName, setDisplayName] = useState<string>('—')
+  const [notificationCount, setNotificationCount] = useState(0)
+  const [showNotificationPopup, setShowNotificationPopup] = useState(false)
   const [brand, setBrand] = useState<{ name?: string; logoDataUrl?: string }>(() => {
     try {
       const raw = localStorage.getItem('hospital.settings')
@@ -36,6 +41,24 @@ export default function Hospital_Header({ onToggleSidebar, collapsed, onToggleTh
       setDisplayName(name || '—')
     } catch {
       setDisplayName('—')
+    }
+  }, [])
+
+  useEffect(() => {
+    let mounted = true
+    const fetchNotifications = async () => {
+      try {
+        const res: any = await hospitalApi.listUserNotifications()
+        const list = Array.isArray(res?.notifications) ? res.notifications : []
+        const unread = list.filter((n: any) => !n?.read).length
+        if (mounted) setNotificationCount(Number(unread || 0))
+      } catch {}
+    }
+    void fetchNotifications()
+    const interval = setInterval(fetchNotifications, 30000)
+    return () => {
+      mounted = false
+      clearInterval(interval)
     }
   }, [])
 
@@ -76,8 +99,8 @@ export default function Hospital_Header({ onToggleSidebar, collapsed, onToggleTh
             <Menu className="h-5 w-5" />
           </button>
 
-          <Link to="/hospital" className="flex items-center gap-2">
-          <div className="flex h-8 w-8 items-center justify-center overflow-hidden rounded-full bg-white/10 ring-1 ring-white/15">
+          <Link to="/hospital" className="flex min-w-0 items-center gap-2">
+          <div className="flex h-7 w-7 sm:h-8 sm:w-8 items-center justify-center overflow-hidden rounded-full bg-white/10 ring-1 ring-white/15">
             {brand.logoDataUrl ? (
               <img src={brand.logoDataUrl} alt="Logo" className="h-full w-full object-cover" />
             ) : (
@@ -86,11 +109,25 @@ export default function Hospital_Header({ onToggleSidebar, collapsed, onToggleTh
               </div>
             )}
           </div>
-          <div className="font-semibold text-white">{String(brand.name || '').trim() || DEFAULT_HOSPITAL_NAME}</div>
-          <span className="ml-2 rounded-full bg-sky-100 px-2 py-0.5 text-xs font-medium text-sky-700">Online</span>
+          <div className="min-w-0 font-semibold text-white text-sm sm:text-base truncate">{String(brand.name || '').trim() || DEFAULT_HOSPITAL_NAME}</div>
+          <span className="ml-2 hidden sm:inline-flex rounded-full bg-sky-100 px-2 py-0.5 text-xs font-medium text-sky-700">Online</span>
           </Link>
 
           <div className="ml-auto flex items-center gap-3 text-sm">
+          {/* Notification Bell */}
+          <button
+            type="button"
+            onClick={() => setShowNotificationPopup(!showNotificationPopup)}
+            className="relative inline-flex h-9 w-9 items-center justify-center rounded-lg text-white/85 hover:bg-white/10 transition-all"
+            title="Notifications"
+          >
+            <Bell className="h-4 w-4" />
+            {notificationCount > 0 && (
+              <span className="absolute -top-0.5 -right-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-rose-500 text-[9px] font-bold text-white">
+                {notificationCount > 9 ? '9+' : notificationCount}
+              </span>
+            )}
+          </button>
           <div className="hidden items-center gap-2 text-white/85 sm:flex">
             <svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='currentColor' className='h-4 w-4'><path d='M6.75 3A2.75 2.75 0 0 0 4 5.75v12.5A2.75 2.75 0 0 0 6.75 21h10.5A2.75 2.75 0 0 0 20 18.25V5.75A2.75 2.75 0 0 0 17.25 3H6.75Zm0 1.5h10.5c.69 0 1.25.56 1.25 1.25v12.5c0 .69-.56 1.25-1.25 1.25H6.75c-.69 0-1.25-.56-1.25-1.25V5.75c0-.69.56-1.25 1.25-1.25Z'/></svg>
             <span>{new Date().toLocaleDateString()}</span>
@@ -104,6 +141,15 @@ export default function Hospital_Header({ onToggleSidebar, collapsed, onToggleTh
           </div>
         </div>
       </div>
+
+      <Hospital_NotificationPopup
+        open={showNotificationPopup}
+        onClose={() => setShowNotificationPopup(false)}
+        onViewAll={() => {
+          setShowNotificationPopup(false)
+          navigate('/hospital/notifications')
+        }}
+      />
     </header>
   )
 }

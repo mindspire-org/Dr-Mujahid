@@ -261,7 +261,7 @@ export default function Doctor_Prescription() {
   const [to, setTo] = useState<string>('')
   const [prefillTokenId, setPrefillTokenId] = useState<string>('')
   const [prefillEncounterId, setPrefillEncounterId] = useState<string>('')
-  const [prefillPrescriptionId, setPrefillPrescriptionId] = useState<string>('')
+
   const [hxBy, setHxBy] = useState<string>('')
   const [hxDate, setHxDate] = useState<string>(today)
   const [historyTakingId, setHistoryTakingId] = useState<string>('')
@@ -284,7 +284,6 @@ export default function Doctor_Prescription() {
   ])
   const [labReportsLabInformation, setLabReportsLabInformation] = useState<LabInformation>(EMPTY_LAB_INFORMATION)
   const [labReportsSemenAnalysis, setLabReportsSemenAnalysis] = useState<SemenAnalysis>(EMPTY_SEMEN_ANALYSIS)
-  const [historySaving, setHistorySaving] = useState(false)
   const [personalInfo, setPersonalInfo] = useState({
     name: '',
     mrNo: '',
@@ -597,7 +596,7 @@ export default function Doctor_Prescription() {
     diagDisplay: { testsText: '', notes: '', discount: '0' },
     meds: [{ name: '', morning: '', noon: '', evening: '', night: '', qty: '', route: '', instruction: '', durationText: '', freqText: '' }] as MedicineRow[],
   })
-  const [saved, setSaved] = useState(false)
+  const [saved] = useState(false)
   const [settings] = useState<{ name: string; address: string; phone: string; logoDataUrl?: string }>({ name: 'Hospital', address: '', phone: '' })
   const [pat, setPat] = useState<{ address?: string; phone?: string; fatherName?: string; gender?: string; age?: string } | null>(null)
   const [doctorInfo, setDoctorInfo] = useState<{ name?: string; specialization?: string; phone?: string; qualification?: string; departmentName?: string } | null>(null)
@@ -789,7 +788,7 @@ export default function Doctor_Prescription() {
       const date = String(st?.date || '')
       const tokenId = String(st?.tokenId || '')
       const encounterId = String(st?.encounterId || '')
-      const prescriptionId = String(st?.prescriptionId || '')
+
 
       if (date) {
         setFrom(date)
@@ -801,7 +800,7 @@ export default function Doctor_Prescription() {
 
       if (tokenId) setPrefillTokenId(tokenId)
       if (encounterId) setPrefillEncounterId(encounterId)
-      if (prescriptionId) setPrefillPrescriptionId(prescriptionId)
+
     } catch { }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
@@ -1797,10 +1796,12 @@ export default function Doctor_Prescription() {
         status: '' as '' | 'Atrophic' | 'Normal',
       },
       epidCst: {
-        side: '' as '' | 'Right' | 'Left',
+        right: false,
+        left: false,
       },
       varicocele: {
-        side: '' as '' | 'Right' | 'Left',
+        right: false,
+        left: false,
         rightGrades: { g1: false, g2: false, g3: false },
         leftGrades: { g1: false, g2: false, g3: false },
       },
@@ -1978,47 +1979,6 @@ export default function Doctor_Prescription() {
       })()
   }, [sel?.encounterId])
 
-  const saveHistoryTaking = async () => {
-    if (!sel?.encounterId) {
-      showToast('error', 'Select a patient first')
-      return
-    }
-    if (!hxBy.trim()) {
-      showToast('error', 'Hx by is required')
-      return
-    }
-    try {
-      setHistorySaving(true)
-      const snapshotObj: any = {
-        hxBy,
-        hxDate,
-        data: {
-          hxBy,
-          hxDate,
-          personalInfo,
-          maritalStatus,
-          coitus,
-          health,
-          sexualHistory,
-          previousMedicalHistory,
-          arrivalReference,
-        },
-      }
-      const payload: any = {
-        ...snapshotObj,
-        submittedBy: doc?.name || undefined,
-      }
-      const res: any = await hospitalApi.upsertHistoryTaking(sel.encounterId, payload)
-      const id = String(res?.historyTaking?._id || historyTakingId || '')
-      setHistoryTakingId(id)
-      historyTakingBaselineRef.current = stableStringify(snapshotObj)
-      showToast('success', 'History Taking saved')
-    } catch {
-      showToast('error', 'Failed to save History Taking')
-    } finally {
-      setHistorySaving(false)
-    }
-  }
 
   const [saving, setSaving] = useState(false)
 
@@ -2191,7 +2151,7 @@ export default function Doctor_Prescription() {
       const wasEdit = !!prefillEncounterId
       showToast('success', wasEdit ? 'Prescription updated successfully' : 'Prescription saved successfully')
       setPrefillEncounterId('')
-      setPrefillPrescriptionId('')
+
       setForcedToken(null)
       resetAllTabs({ keepPatientKey: '' })
     } catch (err: any) {
@@ -2341,19 +2301,6 @@ export default function Doctor_Prescription() {
     resetAllTabs({ keepPatientKey: '' })
   }
 
-  async function referToDiagnosticQuick() {
-    const sel = myPatients.find(t => `${t.id}` === form.patientKey)
-    if (!doc?.id || !sel?.encounterId) { alert('Select a patient first'); return }
-    try {
-      const d = diagRef.current?.getData?.() || {}
-      const tests = Array.isArray(d.tests) && d.tests.length ? d.tests : undefined
-      const notes = d.notes && String(d.notes).trim() ? String(d.notes).trim() : undefined
-      await hospitalApi.createReferral({ type: 'diagnostic', encounterId: sel.encounterId, doctorId: doc.id, tests, notes })
-      alert('Diagnostic referral created')
-    } catch (e: any) {
-      alert(e?.message || 'Failed to create diagnostic referral')
-    }
-  }
 
   // Always read patient details from DB for printing/header (same behavior as prescription history)
   useEffect(() => {
@@ -3038,8 +2985,8 @@ export default function Doctor_Prescription() {
         )}
 
         {showPrevPrescriptionsDlg && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-3 sm:p-6" onClick={() => setShowPrevPrescriptionsDlg(false)}>
-            <div className="w-full max-w-4xl overflow-hidden rounded-2xl bg-white shadow-2xl" onClick={(e) => e.stopPropagation()}>
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-2 py-4 sm:px-4" onClick={() => setShowPrevPrescriptionsDlg(false)}>
+            <div className="w-full max-w-4xl max-h-[96dvh] flex flex-col overflow-hidden rounded-2xl bg-white shadow-2xl" onClick={(e) => e.stopPropagation()}>
               <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3 sm:px-6">
                 <div className="text-base font-semibold text-slate-900">Previous Prescriptions</div>
                 <button
@@ -3053,7 +3000,7 @@ export default function Doctor_Prescription() {
                   <X className="h-5 w-5" />
                 </button>
               </div>
-              <div className="max-h-[80vh] overflow-y-auto p-4 sm:p-6">
+              <div className="flex-1 overflow-y-auto p-4 sm:p-6">
                 <div className="mb-2 text-sm font-semibold text-slate-800">Visits</div>
                 <div className="space-y-3">
                   {prevPrescriptions.map((p, idx) => {
@@ -3085,8 +3032,8 @@ export default function Doctor_Prescription() {
         )}
 
         {previousVisitOpen && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-3 sm:p-6" onClick={() => setPreviousVisitOpen(false)}>
-            <div className="w-full max-w-5xl overflow-hidden rounded-2xl bg-white shadow-2xl" onClick={(e) => e.stopPropagation()}>
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-2 py-4 sm:px-4" onClick={() => setPreviousVisitOpen(false)}>
+            <div className="w-full max-w-5xl max-h-[96dvh] flex flex-col overflow-hidden rounded-2xl bg-white shadow-2xl" onClick={(e) => e.stopPropagation()}>
               <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3 sm:px-6">
                 <div className="text-base font-semibold text-slate-900">Previous Visits</div>
                 <button type="button" className="rounded-md p-2 text-slate-600 hover:bg-slate-100" onClick={() => setPreviousVisitOpen(false)} aria-label="Close">
@@ -3094,7 +3041,7 @@ export default function Doctor_Prescription() {
                 </button>
               </div>
 
-              <div className="max-h-[80vh] overflow-y-auto px-4 py-4 sm:px-6">
+              <div className="flex-1 overflow-y-auto px-4 py-4 sm:px-6">
                 <div className="grid gap-2 sm:grid-cols-2">
                   <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
                     <div className="text-xs text-slate-500">Patient</div>
@@ -6252,11 +6199,11 @@ export default function Doctor_Prescription() {
             </div>
           )}
           <div className="flex flex-wrap items-center justify-end gap-2">
-            <button type="button" onClick={openPrint} className="btn-outline-navy">Print</button>
-            <button type="button" onClick={resetForms} className="btn-outline-navy">Reset Forms</button>
-            <button type="submit" className="btn">Save</button>
+            <button type="button" onClick={openPrint} className="btn-outline-navy w-full sm:w-auto">Print</button>
+            <button type="button" onClick={resetForms} className="btn-outline-navy w-full sm:w-auto">Reset Forms</button>
+            <button type="submit" className="btn w-full sm:w-auto">Save</button>
           </div>
-          {saved && <div className="text-sm text-emerald-600">Saved</div>}
+          {saved && <div className="text-center text-sm text-emerald-600 sm:text-right">Saved</div>}
         </form>
       </div>
 
