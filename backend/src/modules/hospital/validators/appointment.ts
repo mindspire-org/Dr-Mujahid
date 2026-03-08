@@ -24,10 +24,15 @@ export const createAppointmentSchema = z.object({
 
   notes: z.string().optional(),
   receptionistName: z.string().optional(),
+  status: z.enum(['Scheduled', 'Checked-In', 'Completed', 'Cancelled']).optional(),
+  encounterId: z.string().optional(),
 })
 
 export const updateAppointmentSchema = createAppointmentSchema.partial().extend({
   appointmentType: appointmentTypeEnum.optional(),
   patientName: z.string().min(1).optional(),
   appointmentDate: z.string().min(1).optional(),
+  status: z.enum(['Scheduled', 'Checked-In', 'Completed', 'Cancelled']).optional(),
+  encounterId: z.string().optional(),
+  counsellingSaved: z.boolean().optional(),
 })

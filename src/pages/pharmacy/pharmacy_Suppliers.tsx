@@ -1,8 +1,10 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import Pharmacy_AddSupplierDialog, { type Supplier } from '../../components/pharmacy/pharmacy_AddSupplierDialog'
 import Pharmacy_SupplierDetailsDialog from '../../components/pharmacy/pharmacy_SupplierDetailsDialog'
 import Pharmacy_AssignSupplierCompaniesDialog from '../../components/pharmacy/pharmacy_AssignSupplierCompaniesDialog'
+import Pharmacy_ConfirmDialog from '../../components/pharmacy/pharmacy_ConfirmDialog'
 import { pharmacyApi } from '../../utils/api'
+import * as XLSX from 'xlsx'
 
 export default function Pharmacy_Suppliers() {
   const [query, setQuery] = useState('')
@@ -22,6 +24,11 @@ export default function Pharmacy_Suppliers() {
   const [payingPurchases, setPayingPurchases] = useState<any[]>([])
   const [reloadTick, setReloadTick] = useState(0)
 
+  const importInputRef = useRef<HTMLInputElement | null>(null)
+  const [importing, setImporting] = useState(false)
+  const [importConfirm, setImportConfirm] = useState<null | { count: number; suppliers: any[] }>(null)
+  const [importErr, setImportErr] = useState<string | null>(null)
+
   useEffect(() => {
     let mounted = true
     ;(async () => {
@@ -33,11 +40,16 @@ export default function Pharmacy_Suppliers() {
           name: x.name,
           company: x.company,
           phone: x.phone,
+          email: x.email,
           address: x.address,
+          city: x.city,
+          state: x.state,
+          country: x.country,
           taxId: x.taxId,
           status: x.status || 'Active',
           totalPurchases: x.totalPurchases || 0,
           paid: x.paid || 0,
+          totalOverdue: x.totalOverdue || 0,
           lastOrder: x.lastOrder || '',
         }))
         setSuppliers(mapped)
@@ -73,6 +85,109 @@ export default function Pharmacy_Suppliers() {
     return () => { mounted = false }
   }, [reloadTick, query, page, limit])
 
+  const exportRows = useMemo(() => {
+    return suppliers.map(s => ({
+      'Complete Name': s.name || '',
+      'Contact Number': s.phone || '',
+      'Email': (s as any).email || '',
+      'Address': s.address || '',
+      'City': (s as any).city || '',
+      'State': (s as any).state || '',
+      'Country': (s as any).country || '',
+      'Tax ID': s.taxId || '',
+      'Total Overdue': Number(((s.totalPurchases || 0) - (s.paid || 0)) || 0),
+    }))
+  }, [suppliers])
+
+  const exportExcel = async () => {
+    const ws = XLSX.utils.json_to_sheet(exportRows)
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, ws, 'Suppliers')
+    XLSX.writeFile(wb, `pharmacy-suppliers-${new Date().toISOString().slice(0, 10)}.xlsx`)
+  }
+
+  const normHeader = (s: any) => String(s ?? '').trim().toLowerCase().replace(/\s+/g, ' ')
+  const pick = (row: any, keys: string[]) => {
+    for (const k of keys) {
+      const v = row[k]
+      if (v != null && String(v).trim() !== '') return v
+    }
+    return ''
+  }
+
+  const onImportFilePicked = async (file: File) => {
+    setImporting(true)
+    try {
+      const buf = await file.arrayBuffer()
+      const wb = XLSX.read(buf, { type: 'array' })
+      const sheetName = wb.SheetNames[0]
+      const ws = wb.Sheets[sheetName]
+      const raw = XLSX.utils.sheet_to_json(ws, { defval: '' }) as any[]
+      if (!raw.length) return
+
+      // Normalize column names
+      const rows = raw.map(r => {
+        const out: any = {}
+        Object.keys(r || {}).forEach(k => { out[normHeader(k)] = r[k] })
+        return out
+      })
+
+      const toCreate = rows
+        .map(r => {
+          const name = String(pick(r, ['complete name', 'supplier name', 'name', 'supplier']) || '').trim()
+          if (!name) return null
+          const phone = String(pick(r, ['contact number', 'phone', 'phone number', 'mobile', 'mobile #', 'contact']) || '').trim()
+          const email = String(pick(r, ['email', 'e-mail']) || '').trim()
+          const address = String(pick(r, ['address', 'full address']) || '').trim()
+          const city = String(pick(r, ['city', 'town']) || '').trim()
+          const state = String(pick(r, ['state', 'province']) || '').trim()
+          const country = String(pick(r, ['country']) || '').trim()
+          const taxId = String(pick(r, ['tax id', 'taxid', 'ntn', 'gst']) || '').trim()
+          return { name, phone, email, address, city, state, country, taxId }
+        })
+        .filter(Boolean) as any[]
+
+      if (!toCreate.length) return
+
+      setImportConfirm({ count: toCreate.length, suppliers: toCreate })
+    } catch (e) {
+      console.error(e)
+      setImportErr('Failed to import file')
+    } finally {
+      setImporting(false)
+      if (importInputRef.current) importInputRef.current.value = ''
+    }
+  }
+
+  const confirmImport = async () => {
+    const payload = importConfirm?.suppliers || []
+    if (!payload.length) { setImportConfirm(null); return }
+    setImporting(true)
+    setImportErr(null)
+    try {
+      for (const s of payload) {
+        await pharmacyApi.createSupplier({
+          name: s.name,
+          phone: s.phone || undefined,
+          address: s.address || undefined,
+          taxId: s.taxId || undefined,
+          email: s.email || undefined,
+          city: s.city || undefined,
+          state: s.state || undefined,
+          country: s.country || undefined,
+          status: 'Active',
+        })
+      }
+      setReloadTick(t => t + 1)
+    } catch (e) {
+      console.error(e)
+      setImportErr('Failed to import suppliers')
+    } finally {
+      setImporting(false)
+      setImportConfirm(null)
+    }
+  }
+
   useEffect(() => {
     function onReturn(){ setReloadTick(t=>t+1) }
     window.addEventListener('pharmacy:return', onReturn as any)
@@ -87,8 +202,13 @@ export default function Pharmacy_Suppliers() {
         name: s.name,
         company: s.company,
         phone: s.phone,
+        email: (s as any).email,
         address: s.address,
+        city: (s as any).city,
+        state: (s as any).state,
+        country: (s as any).country,
         taxId: s.taxId,
+        totalOverdue: (s as any).totalOverdue,
         status: s.status,
       })
       // If a company was selected in the dialog, assign it to this supplier server-side
@@ -106,8 +226,13 @@ export default function Pharmacy_Suppliers() {
       name: s.name,
       company: s.company,
       phone: s.phone,
+      email: (s as any).email,
       address: s.address,
+      city: (s as any).city,
+      state: (s as any).state,
+      country: (s as any).country,
       taxId: s.taxId,
+      totalOverdue: (s as any).totalOverdue,
       status: s.status,
     })
     setSuppliers(prev => prev.map(x => x.id === s.id ? s : x))
@@ -150,9 +275,29 @@ export default function Pharmacy_Suppliers() {
       <div className="flex items-center justify-between">
         <div className="text-xl font-bold text-slate-800">Supplier Management</div>
         <div className="flex items-center gap-2">
+          <input
+            ref={importInputRef}
+            type="file"
+            accept=".xlsx,.xls,.csv"
+            className="hidden"
+            onChange={(e) => {
+              const f = e.target.files?.[0]
+              if (f) void onImportFilePicked(f)
+            }}
+          />
+          <button type="button" onClick={() => importInputRef.current?.click()} disabled={importing} className="btn-outline-navy">
+            {importing ? 'Importing…' : 'Import Excel'}
+          </button>
+          <button type="button" onClick={exportExcel} className="btn-outline-navy">Export Excel</button>
           <button type="button" onClick={()=>setAddOpen(true)} className="btn">+ Add Supplier</button>
         </div>
       </div>
+
+      {importErr && (
+        <div className="rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-800">
+          {importErr}
+        </div>
+      )}
 
       <div className="rounded-xl border border-slate-200 bg-white p-3">
         <div className="flex items-center gap-3">
@@ -249,6 +394,15 @@ export default function Pharmacy_Suppliers() {
       <Pharmacy_AddSupplierDialog open={editOpen} onClose={()=>setEditOpen(false)} onSave={saveEdit} initial={selected ?? undefined} title="Edit Supplier" submitLabel="Save" />
       <Pharmacy_SupplierDetailsDialog open={detailsOpen} onClose={()=>setDetailsOpen(false)} supplier={selected} />
       <Pharmacy_AssignSupplierCompaniesDialog open={assignCompaniesOpen} onClose={()=>setAssignCompaniesOpen(false)} supplier={selected} />
+
+      <Pharmacy_ConfirmDialog
+        open={!!importConfirm}
+        title="Import Suppliers"
+        message={importConfirm ? `Import ${importConfirm.count} suppliers from Excel?` : ''}
+        confirmText={importing ? 'Importing…' : 'Import'}
+        onCancel={() => setImportConfirm(null)}
+        onConfirm={() => { void confirmImport() }}
+      />
     </div>
   )
 }

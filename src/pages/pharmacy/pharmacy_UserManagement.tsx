@@ -238,7 +238,7 @@ export default function Pharmacy_UserManagement() {
                   <div className="text-sm font-semibold text-slate-900">Add New User</div>
                   <div className="mt-0.5 text-xs text-slate-500">Create a user and assign a role.</div>
                 </div>
-                <div className="rounded-full bg-slate-900 px-3 py-1 text-[11px] font-semibold text-white dark:bg-slate-700">Healthspire</div>
+                <div className="rounded-full bg-slate-900 px-3 py-1 text-[11px] font-semibold text-white dark:bg-slate-700">Men's Care Clinic</div>
               </div>
 
               <div className="mt-4">

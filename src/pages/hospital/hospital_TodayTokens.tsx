@@ -77,6 +77,7 @@ export default function Hospital_TodayTokens() {
     receptionistName: '',
     paymentMethod: 'Cash' as 'Cash' | 'Card' | 'Insurance',
     accountNumberIban: '',
+    mrn: '',
   })
 
 
@@ -254,6 +255,8 @@ export default function Hospital_TodayTokens() {
     const cnic = String(patient.cnicNormalized || t.cnic || '')
     const address = String(patient.address || t.address || '')
 
+    const mrn = String(patient.mrn || t.mrn || r.mrNo || '')
+
     const departmentId = String(t.departmentId?._id || t.departmentId || '')
     const doctorId = String(t.doctorId?._id || t.doctorId || '')
 
@@ -276,6 +279,7 @@ export default function Hospital_TodayTokens() {
       guardianName,
       cnic,
       address,
+      mrn,
       departmentId,
       doctorId,
       amount,
@@ -582,6 +586,15 @@ export default function Hospital_TodayTokens() {
 
               <section className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 <div className="md:col-span-2 text-sm font-semibold text-slate-800">Patient Details</div>
+                <div className="md:col-span-2">
+                  <label className="mb-1 block text-sm font-medium text-slate-700">MR Number</label>
+                  <input 
+                    value={editForm.mrn} 
+                    readOnly 
+                    className="w-full rounded-md border border-slate-300 bg-slate-50 px-3 py-2 text-slate-700 outline-none" 
+                    placeholder="MR Number"
+                  />
+                </div>
                 <div className="md:col-span-2">
                   <label className="mb-1 block text-sm font-medium text-slate-700">Patient Name</label>
                   <input value={editForm.patientName} onChange={e => setEditForm(p => ({ ...p, patientName: e.target.value }))} className="w-full rounded-md border border-slate-300 px-3 py-2 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-200" />

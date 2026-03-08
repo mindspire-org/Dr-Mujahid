@@ -189,6 +189,11 @@ import Aesthetic_DoctorFinance from './pages/aesthetic/aesthetic_DoctorFinance'
 import Aesthetic_DoctorPayouts from './pages/aesthetic/aesthetic_DoctorPayouts'
 
 import Counselling_Login from './pages/counselling/counselling_Login'
+import Counselling_Layout from './pages/counselling/counselling_Layout'
+import Counselling_Dashboard from './pages/counselling/counselling_Dashboard'
+import Counselling_Appointments from './pages/counselling/counselling_Appointments'
+import Counselling_Workspace from './pages/counselling/counselling_Workspace'
+import Counselling_History from './pages/counselling/counselling_History'
 
 import { hospitalApi } from './utils/api'
 
@@ -248,6 +253,12 @@ export default function App() {
       <Route path="/hospital/login" element={<Hospital_Login />} />
       <Route path="/therapy-lab/login" element={<TherapyLab_Login />} />
       <Route path="/counselling/login" element={<Counselling_Login />} />
+      <Route path="/counselling" element={<Counselling_Layout />}>
+        <Route index element={<Counselling_Dashboard />} />
+        <Route path="appointments" element={<Counselling_Appointments />} />
+        <Route path="session/:encounterId" element={<Counselling_Workspace />} />
+        <Route path="history" element={<Counselling_History />} />
+      </Route>
       <Route path="/therapy-lab" element={<TherapyLab_Layout />}>
         <Route index element={<Navigate to="lab-reports-entry" replace />} />
         <Route path="lab-reports-entry" element={<Hospital_LabReportsEntry />} />

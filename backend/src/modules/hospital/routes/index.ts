@@ -44,6 +44,7 @@ import * as Appointments from '../controllers/appointments.controller'
 import * as Roles from '../controllers/roles.controller'
 import * as Access from '../controllers/access.controller'
 import * as AuthCtl from '../controllers/auth.controller'
+import * as PatientImport from '../controllers/patient_import.controller'
 import * as StaffEarnings from '../controllers/staff_earnings.controller'
 import { auth } from '../../../common/middleware/auth'
 
@@ -107,6 +108,7 @@ r.post('/appointments', Appointments.create)
 r.get('/appointments/:id', Appointments.getById)
 r.put('/appointments/:id', Appointments.update)
 r.delete('/appointments/:id', Appointments.remove)
+r.post('/appointments/:id/encounter', Appointments.createEncounter)
 
 // Prescriptions (OPD)
 r.post('/opd/prescriptions', Prescriptions.create)
@@ -387,6 +389,9 @@ r.put('/settings', Settings.update)
 
 // Patients (lookup)
 r.get('/patients/search', Patients.search)
+r.post('/patients/import', auth, PatientImport.bulkImport)
+r.get('/patients/imported', auth, PatientImport.listImported)
+r.delete('/patients/imported', auth, PatientImport.deleteAllImported)
 
 // Notifications (Doctor portal)
 r.get('/notifications', Notifications.list)

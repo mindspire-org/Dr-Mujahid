@@ -5,6 +5,7 @@ export default function Hospital_PettyCashBalance() {
   const [pettyAccounts, setPettyAccounts] = useState<Array<{ id: string; code: string; name: string }>>([])
   const [bankAccounts, setBankAccounts] = useState<any[]>([])
   const [pettyCode, setPettyCode] = useState('')
+  const [hasAssignedPetty, setHasAssignedPetty] = useState(false)
   const [senderAccountCode, setSenderAccountCode] = useState(() => {
     try { return String(localStorage.getItem('hospital.petty.senderAccountCode') || '') } catch { return '' }
   })
@@ -72,17 +73,27 @@ export default function Hospital_PettyCashBalance() {
           if (!cancelled) {
             setPettyAccounts(petty)
             setBankAccounts(bankRaw)
-            const code = String(mine?.account?.code || '')
-            setPettyCode(code)
-            setPettyFilterCode(code)
+            const assigned = String(mine?.account?.code || '').trim().toUpperCase()
+            const has = !!assigned
+            setHasAssignedPetty(has)
 
-            if (code) {
+            if (has) {
+              setPettyCode(assigned)
+              setPettyFilterCode(assigned)
+            } else {
+              // Admin/no assignment: default to first active petty cash account so page works.
+              const first = String(petty?.[0]?.code || '').trim().toUpperCase()
+              setPettyCode(first)
+              setPettyFilterCode(first)
+            }
+
+            if (assigned) {
               try {
-                const key = `hospital.pettyAssignedToastShown:${code}`
+                const key = `hospital.pettyAssignedToastShown:${assigned}`
                 const shown = sessionStorage.getItem(key)
                 if (!shown) {
                   sessionStorage.setItem(key, '1')
-                  showToast(`Petty cash account assigned: ${code}`)
+                  showToast(`Petty cash account assigned: ${assigned}`)
                 }
               } catch { }
             }
@@ -260,8 +271,26 @@ export default function Hospital_PettyCashBalance() {
           </div>
           <div>
             <label className="mb-1 block text-sm font-medium text-slate-700">Petty Cash Account(Receiver)</label>
-            <select value={pettyCode} disabled className="w-full rounded-md border border-slate-300 bg-slate-50 px-3 py-2 text-sm">
-              <option value={pettyCode}>{pettyCode || 'No petty cash assigned'}</option>
+            <select
+              value={pettyCode}
+              disabled={hasAssignedPetty}
+              onChange={e => {
+                const code = String(e.target.value || '').trim().toUpperCase()
+                setPettyCode(code)
+                setPettyFilterCode(code)
+              }}
+              className={`w-full rounded-md border border-slate-300 px-3 py-2 text-sm ${hasAssignedPetty ? 'bg-slate-50' : 'bg-white'}`}
+            >
+              {hasAssignedPetty ? (
+                <option value={pettyCode}>{pettyCode || 'No petty cash assigned'}</option>
+              ) : (
+                <>
+                  <option value="">Select petty cash</option>
+                  {pettyAccounts.map(a => (
+                    <option key={a.id} value={a.code}>{a.code} — {a.name}</option>
+                  ))}
+                </>
+              )}
             </select>
           </div>
           <div className="sm:col-span-2">
@@ -309,20 +338,28 @@ export default function Hospital_PettyCashBalance() {
             onClick={async () => {
               if (!dateIso || !pettyCode || !(amount > 0) || !senderAccountCode) return
               try {
-                await hospitalApi.pullFundsToMyPettyCash({ fromAccountCode: senderAccountCode, amount: Number(amount || 0), dateIso, memo })
-                await reloadPullHistory()
+                if (hasAssignedPetty) {
+                  // Regular user flow: pull into assigned petty cash
+                  await hospitalApi.pullFundsToMyPettyCash({ fromAccountCode: senderAccountCode, amount: Number(amount || 0), dateIso, memo })
+                  await reloadPullHistory()
+                } else {
+                  // Admin/no assignment flow: transfer between finance accounts into selected petty cash
+                  const from = String(senderAccountCode || '').trim().toUpperCase()
+                  const to = String(pettyCode || '').trim().toUpperCase()
+                  await hospitalApi.transferPettyCash({ fromAccountCode: from, toPettyCode: to, amount: Number(amount || 0), dateIso, memo })
+                }
                 if (pettyCode) {
                   await loadLedger(pettyCode, pettyFrom || undefined, pettyTo || undefined)
                 }
                 setPettyFilterCode(pettyCode)
-                showToast('Funds received to your petty cash')
+                showToast(hasAssignedPetty ? 'Funds received to your petty cash' : 'Petty cash transfer completed')
 
                 // Reset fields (keep date as-is)
                 setSenderAccountCode('')
                 setAmount(0)
                 setMemo('')
               } catch (e: any) {
-                alert(e?.message || 'Failed')
+                showToast(e?.message || 'Failed')
               }
             }}
           >Receive</button>

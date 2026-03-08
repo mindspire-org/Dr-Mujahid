@@ -25,7 +25,7 @@ export async function search(req: Request, res: Response){
   const limit = Math.max(1, Math.min(50, parseInt(String(q.limit || '10')) || 10))
 
   const criteria: any[] = []
-  if (mrn) criteria.push({ mrn: { $regex: new RegExp(mrn.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i') } })
+  if (mrn) criteria.push({ mrn: mrn }) // Exact match for MRN
   if (name) criteria.push({ fullName: { $regex: new RegExp(name, 'i') } })
   if (fatherName) criteria.push({ fatherName: { $regex: new RegExp(fatherName, 'i') } })
   if (phone) criteria.push({ phoneNormalized: { $regex: new RegExp(phone + '$') } })

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { hospitalApi, labApi, diagnosticApi } from '../../utils/api'
 import { previewPrescriptionPdf } from '../../utils/prescriptionPdf'
@@ -9,7 +9,8 @@ import { printEchocardiographyReport } from '../../components/diagnostic/diagnos
 import { printColonoscopyReport } from '../../components/diagnostic/diagnostic_Colonoscopy'
 import { printUpperGIEndoscopyReport } from '../../components/diagnostic/diagnostic_UpperGIEndoscopy'
 import { previewLabReportPdf } from '../../utils/printLabReport'
-import { Eye, X } from 'lucide-react'
+import { Eye, X, FileSpreadsheet } from 'lucide-react'
+import * as XLSX from 'xlsx'
 
 export default function Hospital_SearchPatients() {
   const location = useLocation()
@@ -23,10 +24,22 @@ export default function Hospital_SearchPatients() {
   const [loading, setLoading] = useState(false)
   const [patients, setPatients] = useState<any[]>([])
   const [expanded, setExpanded] = useState<Record<string, boolean>>({})
-  const [details, setDetails] = useState<Record<string, { patient?: any; pres?: any[]; lab?: any[]; diag?: any[]; ipd?: any[]; loading?: boolean }>>({})
+  const [details, setDetails] = useState<Record<string, { patient?: any; pres?: any[]; lab?: any[]; diag?: any[]; ipd?: any[]; historyTaking?: any[]; loading?: boolean }>>({})
   const [busy, setBusy] = useState<{ pres?: string; lab?: string; diag?: string }>({})
   const [patientDetailsOpen, setPatientDetailsOpen] = useState(false)
   const [patientDetailsRow, setPatientDetailsRow] = useState<any | null>(null)
+  
+  // Excel import state
+  const [importLoading, setImportLoading] = useState(false)
+  const [showImportDialog, setShowImportDialog] = useState(false)
+  const [previewData, setPreviewData] = useState<any[]>([])
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  
+  // Imported patients management
+  const [importedCount, setImportedCount] = useState(0)
+  const [showImportedList, setShowImportedList] = useState(false)
+  const [importedPatients, setImportedPatients] = useState<any[]>([])
+  const [loadingImported, setLoadingImported] = useState(false)
 
   const update = (k: keyof typeof form, v: string) => setForm(prev => ({ ...prev, [k]: v }))
 
@@ -327,7 +340,13 @@ export default function Hospital_SearchPatients() {
         const lab: any[] = (res?.lab || [])
         const diag: any[] = (res?.diag || [])
         const patient = res?.patient || null
-        setDetails(prev => ({ ...prev, [mrn]: { patient, pres, lab, diag, ipd: [], loading: false } }))
+        // Fetch history taking for this patient
+        let historyTaking: any[] = []
+        try {
+          const htRes: any = await hospitalApi.listHistoryTakings({ patientId: patient?._id || patient?.id, limit: 50 })
+          historyTaking = htRes?.historyTakings || []
+        } catch {}
+        setDetails(prev => ({ ...prev, [mrn]: { patient, pres, lab, diag, ipd: [], historyTaking, loading: false } }))
         return
       } catch { }
 
@@ -362,15 +381,139 @@ export default function Hospital_SearchPatients() {
         } catch { }
         diag.push({ id: String(o._id || o.id), tokenNo: o.tokenNo, createdAt: o.createdAt, status: o.status, tests: o.tests || [], hasResult })
       }
-      setDetails(prev => ({ ...prev, [mrn]: { patient, pres, lab, diag, ipd: [], loading: false } }))
+      // Fetch history taking for this patient
+      let historyTaking: any[] = []
+      try {
+        const htRes: any = await hospitalApi.listHistoryTakings({ patientId: patient?._id || patient?.id, limit: 50 })
+        historyTaking = htRes?.historyTakings || []
+      } catch {}
+      setDetails(prev => ({ ...prev, [mrn]: { patient, pres, lab, diag, ipd: [], historyTaking, loading: false } }))
     } catch {
-      setDetails(prev => ({ ...prev, [mrn]: { patient: null, pres: [], lab: [], diag: [], ipd: [], loading: false } }))
+      setDetails(prev => ({ ...prev, [mrn]: { patient: null, pres: [], lab: [], diag: [], ipd: [], historyTaking: [], loading: false } }))
     }
+  }
+
+  // Excel import functions
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    
+    const reader = new FileReader()
+    reader.onload = (event) => {
+      try {
+        const data = event.target?.result
+        const workbook = XLSX.read(data, { type: 'binary' })
+        const sheetName = workbook.SheetNames[0]
+        const worksheet = workbook.Sheets[sheetName]
+        const jsonData = XLSX.utils.sheet_to_json(worksheet)
+        setPreviewData(jsonData)
+        setShowImportDialog(true)
+      } catch (err: any) {
+        alert('Error reading Excel file: ' + err?.message)
+      }
+    }
+    reader.readAsBinaryString(file)
+  }
+
+  const processImport = async () => {
+    if (previewData.length === 0) return
+    setImportLoading(true)
+    try {
+      const res: any = await hospitalApi.importPatients(previewData)
+      setPreviewData([])
+      setShowImportDialog(false)
+      alert(res?.message || 'Import completed successfully')
+      // Refresh imported count after successful import
+      loadImportedCount()
+    } catch (err: any) {
+      alert('Import failed: ' + (err?.message || 'Unknown error'))
+    } finally {
+      setImportLoading(false)
+    }
+  }
+
+  const closeImportDialog = () => {
+    setShowImportDialog(false)
+    setPreviewData([])
+    if (fileInputRef.current) fileInputRef.current.value = ''
+  }
+
+  // Load imported patients count on mount
+  useEffect(() => {
+    loadImportedCount()
+  }, [])
+
+  async function loadImportedCount() {
+    try {
+      const res: any = await hospitalApi.listImportedPatients()
+      setImportedCount(res?.count || 0)
+    } catch {
+      setImportedCount(0)
+    }
+  }
+
+  async function loadImportedPatients() {
+    setLoadingImported(true)
+    try {
+      const res: any = await hospitalApi.listImportedPatients()
+      setImportedPatients(res?.patients || [])
+      setImportedCount(res?.count || 0)
+    } catch {
+      setImportedPatients([])
+    } finally {
+      setLoadingImported(false)
+    }
+  }
+
+  async function handleDeleteAllImported() {
+    if (!confirm('Are you sure you want to delete ALL imported patients? This action cannot be undone.')) return
+    try {
+      const res: any = await hospitalApi.deleteAllImportedPatients()
+      alert(res?.message || 'Deleted successfully')
+      setImportedPatients([])
+      setImportedCount(0)
+      setShowImportedList(false)
+    } catch (err: any) {
+      alert('Delete failed: ' + (err?.message || 'Unknown error'))
+    }
+  }
+
+  function openImportedList() {
+    loadImportedPatients()
+    setShowImportedList(true)
   }
 
   return (
     <div>
-      <h2 className="text-xl font-semibold text-slate-800">Patient Profile Mangement</h2>
+      <div className="flex items-center justify-between">
+        <h2 className="text-xl font-semibold text-slate-800">Patient Profile Management</h2>
+        
+        {/* Imported Patients Card */}
+        <div className="rounded-lg border border-slate-200 bg-white px-4 py-3 shadow-sm">
+          <div className="flex items-center gap-4">
+            <div>
+              <div className="text-xs text-slate-500">Imported Patients</div>
+              <div className="text-xl font-bold text-slate-800">{importedCount}</div>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={openImportedList}
+                className="rounded-md border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
+              >
+                View All
+              </button>
+              {importedCount > 0 && (
+                <button
+                  onClick={handleDeleteAllImported}
+                  className="rounded-md border border-rose-300 bg-rose-50 px-3 py-1.5 text-xs font-medium text-rose-700 hover:bg-rose-100"
+                >
+                  Delete All
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
 
       <form onSubmit={onSearch} className="mt-5 space-y-5">
         <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
@@ -395,6 +538,21 @@ export default function Hospital_SearchPatients() {
         <div className="flex items-center gap-2">
           <button type="submit" className="rounded-md bg-sky-600 px-4 py-2 text-sm font-medium text-white hover:bg-sky-700 disabled:opacity-50" disabled={loading}>{loading ? 'Searching...' : 'Search Patients'}</button>
           <button type="button" onClick={onClear} className="rounded-md border border-slate-300 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50">Clear Filters</button>
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            className="inline-flex items-center gap-2 rounded-md border border-emerald-600 bg-emerald-50 px-4 py-2 text-sm font-medium text-emerald-700 hover:bg-emerald-100"
+          >
+            <FileSpreadsheet size={16} />
+            Import Excel
+          </button>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".xlsx,.xls,.csv"
+            onChange={handleFileUpload}
+            className="hidden"
+          />
         </div>
       </form>
 
@@ -455,10 +613,12 @@ export default function Hospital_SearchPatients() {
                       const presAll: any[] = Array.isArray(d.pres) ? d.pres : []
                       const labAll: any[] = Array.isArray(d.lab) ? (d.lab.filter((lr: any) => !!lr?.hasResult)) : []
                       const diagAll: any[] = Array.isArray(d.diag) ? (d.diag.filter((dr: any) => !!dr?.hasResult)) : []
+                      const htAll: any[] = Array.isArray(d.historyTaking) ? d.historyTaking : []
                       const visitKeys = Array.from(new Set([
                         ...presAll.map((x: any) => toDay(x.createdAt)),
                         ...labAll.map((x: any) => toDay(x.createdAt)),
                         ...diagAll.map((x: any) => toDay(x.createdAt)),
+                        ...htAll.map((x: any) => toDay(x.hxDate || x.createdAt || x.submittedAt)),
                       ].filter((x: any) => x != null && String(x).trim() !== '')))
                         .sort((a, b) => (a > b ? -1 : a < b ? 1 : 0))
 
@@ -480,6 +640,12 @@ export default function Hospital_SearchPatients() {
                           <div className="mt-2 text-slate-600">No diagnostic reports found</div>
                         </div>
                       )
+                      const htEmpty = (
+                        <div className="rounded-lg border border-slate-200 bg-white p-3 text-xs">
+                          <div className="text-[10px] font-bold text-slate-900">MEDICAL CARD / HISTORY</div>
+                          <div className="mt-2 text-slate-600">No history taking records found</div>
+                        </div>
+                      )
 
                       return (
                         <div className="mt-3 space-y-3">
@@ -488,10 +654,11 @@ export default function Hospital_SearchPatients() {
                             <>
                               {visitKeys.length === 0 && (
                                 <div className="rounded-lg border border-blue-800 bg-white p-3">
-                                  <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                                  <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
                                     {presEmpty}
                                     {labEmpty}
                                     {diagEmpty}
+                                    {htEmpty}
                                   </div>
                                 </div>
                               )}
@@ -499,11 +666,12 @@ export default function Hospital_SearchPatients() {
                                 const presFor = presAll.filter((x: any) => toDay(x.createdAt) === vk)
                                 const labFor = labAll.filter((x: any) => toDay(x.createdAt) === vk)
                                 const diagFor = diagAll.filter((x: any) => toDay(x.createdAt) === vk)
+                                const htFor = htAll.filter((x: any) => toDay(x.hxDate || x.createdAt || x.submittedAt) === vk)
 
                                 return (
                                   <div key={`visit_${vk}`} className="rounded-lg border border-blue-800 bg-white p-3">
                                     <div className="mb-2 text-xs font-semibold text-slate-800">Visit: {vk}</div>
-                                    <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                                    <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
                                       <div className="space-y-3">
                                         {presFor.length ? presFor.map((pr: any) => (
                                           <div key={`pres_${String(pr.id)}`} className="rounded-lg border border-slate-200 bg-white p-3 text-xs">
@@ -556,6 +724,20 @@ export default function Hospital_SearchPatients() {
                                           </div>
                                         )) : diagEmpty}
                                       </div>
+
+                                      <div className="space-y-3">
+                                        {htFor.length ? htFor.map((ht: any) => (
+                                          <div key={`ht_${String(ht._id || ht.id)}`} className="rounded-lg border border-slate-200 bg-white p-3 text-xs">
+                                            <div className="text-[10px] font-bold text-slate-900">MEDICAL CARD / HISTORY</div>
+                                            <div className="mt-1 font-semibold text-slate-800">{new Date(ht.hxDate || ht.createdAt || ht.submittedAt).toLocaleString()}</div>
+                                            <div className="mt-0.5 text-slate-600">Hx by: {ht.hxBy || '-'}</div>
+                                            <div className="mt-2 text-slate-700"><span className="font-semibold">Personal Info:</span> {ht.data?.personalInfo?.name || '-'}</div>
+                                            <div className="mt-2">
+                                              <Link to={`/hospital/history-taking?patientId=${encodeURIComponent(String(p._id || p.id || ''))}`} className="text-sky-700 hover:underline text-xs">View Full History</Link>
+                                            </div>
+                                          </div>
+                                        )) : htEmpty}
+                                      </div>
                                     </div>
                                   </div>
                                 )
@@ -583,10 +765,12 @@ export default function Hospital_SearchPatients() {
                     const presAll: any[] = Array.isArray(d.pres) ? d.pres : []
                     const labAll: any[] = Array.isArray(d.lab) ? (d.lab.filter((lr: any) => !!lr?.hasResult)) : []
                     const diagAll: any[] = Array.isArray(d.diag) ? (d.diag.filter((dr: any) => !!dr?.hasResult)) : []
+                    const htAll: any[] = Array.isArray(d.historyTaking) ? d.historyTaking : []
                     const visitKeys = Array.from(new Set([
                       ...presAll.map((x: any) => toDay(x.createdAt)),
                       ...labAll.map((x: any) => toDay(x.createdAt)),
                       ...diagAll.map((x: any) => toDay(x.createdAt)),
+                      ...htAll.map((x: any) => toDay(x.hxDate || x.createdAt || x.submittedAt)),
                     ].filter((x: any) => x != null && String(x).trim() !== '')))
                       .sort((a, b) => (a > b ? -1 : a < b ? 1 : 0))
 
@@ -608,6 +792,12 @@ export default function Hospital_SearchPatients() {
                         <div className="mt-2 text-slate-600">No diagnostic reports found</div>
                       </div>
                     )
+                    const htEmpty = (
+                      <div className="rounded-lg border border-slate-200 bg-white p-3 text-xs">
+                        <div className="text-[10px] font-bold text-slate-900">MEDICAL CARD / HISTORY</div>
+                        <div className="mt-2 text-slate-600">No history taking records found</div>
+                      </div>
+                    )
 
                     return (
                       <div className="mt-3 space-y-3">
@@ -616,10 +806,11 @@ export default function Hospital_SearchPatients() {
                           <>
                             {visitKeys.length === 0 && (
                               <div className="rounded-lg border border-blue-800 bg-white p-3">
-                                <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                                <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
                                   {presEmpty}
                                   {labEmpty}
                                   {diagEmpty}
+                                  {htEmpty}
                                 </div>
                               </div>
                             )}
@@ -627,11 +818,12 @@ export default function Hospital_SearchPatients() {
                               const presFor = presAll.filter((x: any) => toDay(x.createdAt) === vk)
                               const labFor = labAll.filter((x: any) => toDay(x.createdAt) === vk)
                               const diagFor = diagAll.filter((x: any) => toDay(x.createdAt) === vk)
+                              const htFor = htAll.filter((x: any) => toDay(x.hxDate || x.createdAt || x.submittedAt) === vk)
 
                               return (
                                 <div key={`visit_${vk}`} className="rounded-lg border border-blue-800 bg-white p-3">
                                   <div className="mb-2 text-xs font-semibold text-slate-800">Visit: {vk}</div>
-                                  <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                                  <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
                                     <div className="space-y-3">
                                       {presFor.length ? presFor.map((pr: any) => (
                                         <div key={`pres_${String(pr.id)}`} className="rounded-lg border border-slate-200 bg-white p-3 text-xs">
@@ -684,6 +876,20 @@ export default function Hospital_SearchPatients() {
                                         </div>
                                       )) : diagEmpty}
                                     </div>
+
+                                    <div className="space-y-3">
+                                      {htFor.length ? htFor.map((ht: any) => (
+                                        <div key={`ht_${String(ht._id || ht.id)}`} className="rounded-lg border border-slate-200 bg-white p-3 text-xs">
+                                          <div className="text-[10px] font-bold text-slate-900">MEDICAL CARD / HISTORY</div>
+                                          <div className="mt-1 font-semibold text-slate-800">{new Date(ht.hxDate || ht.createdAt || ht.submittedAt).toLocaleString()}</div>
+                                          <div className="mt-0.5 text-slate-600">Hx by: {ht.hxBy || '-'}</div>
+                                          <div className="mt-2 text-slate-700"><span className="font-semibold">Personal Info:</span> {ht.data?.personalInfo?.name || '-'}</div>
+                                          <div className="mt-2">
+                                            <Link to={`/hospital/history-taking?patientId=${encodeURIComponent(String(p._id || p.id || ''))}`} className="text-sky-700 hover:underline text-xs">View Full History</Link>
+                                          </div>
+                                        </div>
+                                      )) : htEmpty}
+                                    </div>
                                   </div>
                                 </div>
                               )
@@ -705,6 +911,26 @@ export default function Hospital_SearchPatients() {
           open={patientDetailsOpen}
           onClose={() => { setPatientDetailsOpen(false); setPatientDetailsRow(null) }}
           patient={patientDetailsRow}
+        />
+      )}
+
+      {showImportDialog && (
+        <ImportDialog
+          open={showImportDialog}
+          onClose={closeImportDialog}
+          data={previewData}
+          onImport={processImport}
+          loading={importLoading}
+        />
+      )}
+
+      {showImportedList && (
+        <ImportedListDialog
+          open={showImportedList}
+          onClose={() => setShowImportedList(false)}
+          patients={importedPatients}
+          loading={loadingImported}
+          onDeleteAll={handleDeleteAllImported}
         />
       )}
     </div>
@@ -762,6 +988,155 @@ function Info({ label, value, full }: { label: string; value: string; full?: boo
     <div className={`${full ? 'sm:col-span-2' : ''} rounded-lg border border-slate-200 bg-slate-50 px-3 py-2`}>
       <div className="text-xs font-medium text-slate-500">{label}</div>
       <div className="mt-0.5 text-sm text-slate-800 break-words">{value || '-'}</div>
+    </div>
+  )
+}
+
+function ImportDialog({ open, onClose, data, onImport, loading }: { open: boolean; onClose: () => void; data: any[]; onImport: () => void; loading: boolean }) {
+  if (!open) return null
+  
+  const headers = data.length > 0 ? Object.keys(data[0]) : []
+  
+  return (
+    <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 px-4 py-8">
+      <div className="w-full max-w-5xl overflow-hidden rounded-xl bg-white shadow-2xl ring-1 ring-black/5">
+        <div className="flex items-center justify-between border-b border-slate-200 px-5 py-3">
+          <div>
+            <h3 className="text-base font-semibold text-slate-800">Import Patients from Excel</h3>
+            <div className="mt-0.5 text-xs text-slate-500">{data.length} records found</div>
+          </div>
+          <button onClick={onClose} className="rounded-md border border-slate-200 p-2 text-slate-600 hover:bg-slate-50 hover:text-slate-900" aria-label="Close">
+            <X size={18} />
+          </button>
+        </div>
+
+        <div className="max-h-[60vh] overflow-auto px-5 py-4">
+          {data.length === 0 ? (
+            <div className="py-8 text-center text-slate-500">No data to preview</div>
+          ) : (
+            <table className="w-full text-sm">
+              <thead className="sticky top-0 bg-slate-100">
+                <tr>
+                  <th className="px-3 py-2 text-left text-xs font-semibold text-slate-700">#</th>
+                  {headers.map((h) => (
+                    <th key={h} className="px-3 py-2 text-left text-xs font-semibold text-slate-700">{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-200">
+                {data.slice(0, 50).map((row, idx) => (
+                  <tr key={idx} className="hover:bg-slate-50">
+                    <td className="px-3 py-2 text-xs text-slate-500">{idx + 1}</td>
+                    {headers.map((h) => (
+                      <td key={h} className="px-3 py-2 text-xs text-slate-700">{String(row[h] ?? '-')}</td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+          {data.length > 50 && (
+            <div className="py-2 text-center text-xs text-slate-500">
+              ... and {data.length - 50} more rows
+            </div>
+          )}
+        </div>
+
+        <div className="border-t border-slate-200 px-5 py-4">
+          <div className="flex items-center justify-between">
+            <div className="text-xs text-slate-500">
+              Expected columns: MR Number, Name, Phone, Age, Gender, Address, Doctor, Last Visit, Department
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={onClose}
+                className="rounded-md border border-slate-300 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50"
+                disabled={loading}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={onImport}
+                disabled={loading || data.length === 0}
+                className="rounded-md bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700 disabled:opacity-50"
+              >
+                {loading ? 'Importing...' : `Import ${data.length} Patients`}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function ImportedListDialog({ open, onClose, patients, loading, onDeleteAll }: { open: boolean; onClose: () => void; patients: any[]; loading: boolean; onDeleteAll: () => void }) {
+  if (!open) return null
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 px-4 py-8">
+      <div className="w-full max-w-6xl overflow-hidden rounded-xl bg-white shadow-2xl ring-1 ring-black/5">
+        <div className="flex items-center justify-between border-b border-slate-200 px-5 py-3">
+          <div>
+            <h3 className="text-base font-semibold text-slate-800">Imported Patients</h3>
+            <div className="mt-0.5 text-xs text-slate-500">{patients.length} patients imported</div>
+          </div>
+          <div className="flex items-center gap-2">
+            {patients.length > 0 && (
+              <button
+                onClick={onDeleteAll}
+                className="rounded-md border border-rose-300 bg-rose-50 px-3 py-1.5 text-xs font-medium text-rose-700 hover:bg-rose-100"
+              >
+                Delete All
+              </button>
+            )}
+            <button onClick={onClose} className="rounded-md border border-slate-200 p-2 text-slate-600 hover:bg-slate-50 hover:text-slate-900" aria-label="Close">
+              <X size={18} />
+            </button>
+          </div>
+        </div>
+
+        <div className="max-h-[65vh] overflow-auto px-5 py-4">
+          {loading ? (
+            <div className="py-8 text-center text-slate-500">Loading...</div>
+          ) : patients.length === 0 ? (
+            <div className="py-8 text-center text-slate-500">No imported patients found</div>
+          ) : (
+            <table className="w-full text-sm">
+              <thead className="sticky top-0 bg-slate-100">
+                <tr>
+                  <th className="px-3 py-2 text-left text-xs font-semibold text-slate-700">#</th>
+                  <th className="px-3 py-2 text-left text-xs font-semibold text-slate-700">MR Number</th>
+                  <th className="px-3 py-2 text-left text-xs font-semibold text-slate-700">Name</th>
+                  <th className="px-3 py-2 text-left text-xs font-semibold text-slate-700">Phone</th>
+                  <th className="px-3 py-2 text-left text-xs font-semibold text-slate-700">Age</th>
+                  <th className="px-3 py-2 text-left text-xs font-semibold text-slate-700">Gender</th>
+                  <th className="px-3 py-2 text-left text-xs font-semibold text-slate-700">Doctor</th>
+                  <th className="px-3 py-2 text-left text-xs font-semibold text-slate-700">Department</th>
+                  <th className="px-3 py-2 text-left text-xs font-semibold text-slate-700">Last Visit</th>
+                  <th className="px-3 py-2 text-left text-xs font-semibold text-slate-700">Imported At</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-200">
+                {patients.map((p, idx) => (
+                  <tr key={p._id || idx} className="hover:bg-slate-50">
+                    <td className="px-3 py-2 text-xs text-slate-500">{idx + 1}</td>
+                    <td className="px-3 py-2 text-xs font-medium text-slate-700">{p.mrn || '-'}</td>
+                    <td className="px-3 py-2 text-xs text-slate-700">{p.fullName || '-'}</td>
+                    <td className="px-3 py-2 text-xs text-slate-600">{p.phoneNormalized || '-'}</td>
+                    <td className="px-3 py-2 text-xs text-slate-600">{p.age || '-'}</td>
+                    <td className="px-3 py-2 text-xs text-slate-600">{p.gender || '-'}</td>
+                    <td className="px-3 py-2 text-xs text-slate-600">{p.fatherName || '-'}</td>
+                    <td className="px-3 py-2 text-xs text-slate-600">{p.department || '-'}</td>
+                    <td className="px-3 py-2 text-xs text-slate-600">{p.lastVisit || '-'}</td>
+                    <td className="px-3 py-2 text-xs text-slate-500">{p.importedAt ? new Date(p.importedAt).toLocaleString() : '-'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      </div>
     </div>
   )
 }

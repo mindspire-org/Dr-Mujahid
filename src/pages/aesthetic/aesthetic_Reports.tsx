@@ -108,7 +108,7 @@ export default function Pharmacy_Reports() {
         <body>
           <div class="container">
             <div class="header">
-              <div class="logo">HealthSpire</div>
+              <div class="logo">Men's Care Clinic</div>
               <div class="pharmacy-name">${pharmacyName}</div>
               <div class="subtitle">Daily Closing Sheet</div>
             </div>
@@ -156,7 +156,7 @@ export default function Pharmacy_Reports() {
               </div>
             </div>
             <div class="footer">
-              <div class="footer-brand">HealthSpire Pharmacy Manegment System</div>
+              <div class="footer-brand">Men's Care Clinic Management System</div>
               <div>Generated on ${new Date().toLocaleString()}</div>
             </div>
           </div>
@@ -526,7 +526,7 @@ export default function Pharmacy_Reports() {
               onClick={() => {
                 const text = [
                   `====================================`,
-                  `HealthSpire - ${pharmacyName}`,
+                  `Men's Care Clinic - ${pharmacyName}`,
                   `Daily Closing Sheet`,
                   `====================================`,
                   ``,
@@ -548,7 +548,7 @@ export default function Pharmacy_Reports() {
                   `Stock Value:      PKR ${summary.stockValue.toLocaleString()}`,
                   ``,
                   `====================================`,
-                  `HealthSpire Pharmacy Manegment System`,
+                  `Men's Care Clinic Management System`,
                   `====================================`,
                 ].join('\n')
                 downloadTextFile(`closing-sheet-${pharmacyName.replace(/\s+/g, '-')}-${from}-to-${to}.txt`, text)
@@ -568,7 +568,7 @@ export default function Pharmacy_Reports() {
               <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">Period: <span className="font-semibold text-slate-700 dark:text-slate-300">{from} to {to}</span></div>
             </div>
             <div className="rounded-lg bg-gradient-to-br from-sky-100 to-indigo-100 px-3 py-1.5 dark:from-sky-900/30 dark:to-indigo-900/30">
-              <div className="text-xs font-semibold text-sky-700 dark:text-sky-400">HealthSpire</div>
+              <div className="text-xs font-semibold text-sky-700 dark:text-sky-400">Men's Care Clinic</div>
             </div>
           </div>
 

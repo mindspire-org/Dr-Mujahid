@@ -10,6 +10,9 @@ const PatientSchema = new Schema({
   age: { type: String },
   guardianRel: { type: String },
   address: { type: String },
+  lastVisit: { type: String },
+  department: { type: String },
+  importedAt: { type: String },
   createdAtIso: { type: String },
 }, { timestamps: true })
 

@@ -598,7 +598,7 @@ export default function Hospital_UserManagement() {
         <div className="text-sm font-semibold text-slate-700">Permissions</div>
         <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-3">
           <div>
-            <label className="mb-1 block text-sm text-slate-700">Select User</label>
+            <label className="mb-1 block text-sm text-slate-700 dark:text-slate-200">Select User</label>
             <select
               value={permUserId}
               onChange={e => {
@@ -606,10 +606,10 @@ export default function Hospital_UserManagement() {
                 setPermUserId(id)
                 void loadPermissionsForUser(id)
               }}
-              className="w-full rounded-md border border-slate-300 px-3 py-2 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-200"
+              className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-slate-900 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-200 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
             >
               {users.map(u => (
-                <option key={u.id} value={u.id}>{u.username}-{u.role}</option>
+                <option key={u.id} value={u.id} className="text-slate-900 dark:bg-slate-800 dark:text-slate-100">{u.username}-{u.role}</option>
               ))}
             </select>
           </div>

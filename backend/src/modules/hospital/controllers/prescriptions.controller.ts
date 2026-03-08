@@ -69,8 +69,21 @@ export async function getByEncounter(req: Request, res: Response){
   try {
     const { encounterId } = req.params as any
     const enc = await getEncounter(String(encounterId))
-    const doc = await HospitalPrescription.findOne({ encounterId: enc._id }).lean()
-    res.json({ prescription: normalizePrescriptionOut(doc) || null })
+    let doc: any = await HospitalPrescription.findOne({ encounterId: enc._id }).lean()
+
+    // Ensure a prescription exists for the encounter (counselling portal relies on it).
+    if (!doc) {
+      const created: any = await HospitalPrescription.create({
+        patientId: (enc as any).patientId,
+        encounterId: enc._id,
+      })
+      doc = created?.toObject ? created.toObject() : created
+    }
+
+    const populated = await HospitalPrescription.findById((doc as any)._id)
+      .populate({ path: 'encounterId', select: 'doctorId patientId startAt', populate: [{ path: 'doctorId', select: 'name' }, { path: 'patientId', select: 'fullName mrn' }] })
+      .lean()
+    res.json({ prescription: normalizePrescriptionOut(populated) || null })
   } catch (e) {
     return handleError(res, e)
   }

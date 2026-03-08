@@ -3,6 +3,9 @@ import { z } from 'zod'
 export const diagnosticTestCreateSchema = z.object({
   name: z.string().min(1),
   price: z.coerce.number().nonnegative().optional().default(0),
+  department: z.string().optional(),
+  purchasePrice: z.coerce.number().nonnegative().optional().default(0),
+  qtyPerPack: z.coerce.number().nonnegative().optional().default(1),
 })
 
 export const diagnosticTestUpdateSchema = diagnosticTestCreateSchema.partial()

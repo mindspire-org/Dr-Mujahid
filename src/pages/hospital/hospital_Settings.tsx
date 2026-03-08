@@ -137,9 +137,14 @@ export default function Hospital_Settings() {
               <input value={settings.code} onChange={e=>update('code', e.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-2 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-200" />
             </div>
             <div>
-              <label className="mb-1 block text-sm font-medium text-slate-700">MR Number Format</label>
-              <input value={settings.mrFormat} onChange={e=>update('mrFormat', e.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-2 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-200" />
-              <p className="mt-1 text-xs text-slate-500">Example: SAFH/OPD/2025/06/001</p>
+              <label className="mb-1 block text-sm font-medium text-slate-700">MRN Starting Number</label>
+              <input 
+                value={settings.mrFormat} 
+                onChange={e=>update('mrFormat', e.target.value)} 
+                placeholder="e.g., 124"
+                className="w-full rounded-md border border-slate-300 px-3 py-2 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-200" 
+              />
+              <p className="mt-1 text-xs text-slate-500">Enter the starting MRN number (e.g., 124). Next patient will get MR124, then MR125, etc.</p>
             </div>
           </div>
 

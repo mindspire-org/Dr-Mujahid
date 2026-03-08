@@ -3,6 +3,9 @@ import { HospitalAppointment } from '../models/Appointment'
 import { createAppointmentSchema, updateAppointmentSchema } from '../validators/appointment'
 import { LabPatient } from '../../lab/models/Patient'
 import { LabCounter } from '../../lab/models/Counter'
+import { HospitalSettings } from '../models/Settings'
+import { HospitalEncounter } from '../models/Encounter'
+import { HospitalPrescription } from '../models/Prescription'
 
 function handleError(res: Response, e: any){
   if (e?.name === 'ZodError') return res.status(400).json({ error: e.errors?.[0]?.message || 'Invalid payload' })
@@ -14,11 +17,45 @@ function normDigits(s?: string){
   return (s || '').replace(/\D+/g, '')
 }
 
-async function nextMrn(){
-  const key = 'lab_mrn_mr7553'
-  const c = await LabCounter.findByIdAndUpdate(key, { $inc: { seq: 1 } }, { upsert: true, new: true, setDefaultsOnInsert: true })
-  const seq = Number((c as any).seq || 1)
-  return `MR7553${seq}`
+async function nextMrn(): Promise<string> {
+  // Get MR Number Format from settings (e.g., "7732")
+  let startSerial = 7732
+  try {
+    const settings: any = await HospitalSettings.findOne().lean()
+    const format = String(settings?.mrFormat || '').trim()
+    if (format) {
+      const parsed = parseInt(format, 10)
+      if (!isNaN(parsed) && parsed > 0) startSerial = parsed
+    }
+  } catch { /* fallback to default */ }
+
+  // Use a stable counter key and reset sequence when startSerial changes.
+  const key = `mrn_counter`
+  const existing: any = await LabCounter.findById(key).lean()
+  const existingStart = Number(existing?.startSerial || 0)
+  const shouldReset = !existing || !existingStart || existingStart !== startSerial
+
+  const update: any = shouldReset
+    ? { $set: { startSerial, seq: 1 } }
+    : { $inc: { seq: 1 } }
+
+  // Ensure uniqueness even if counter is out-of-sync with existing patients.
+  for (let attempts = 0; attempts < 50; attempts++) {
+    const c: any = await LabCounter.findByIdAndUpdate(
+      key,
+      attempts === 0 ? update : { $inc: { seq: 1 } },
+      { upsert: true, new: true, setDefaultsOnInsert: true }
+    )
+    const seq = Number(c?.seq || 1)
+    const mrNumber = startSerial + seq - 1
+    const candidate = `MR${mrNumber}`
+    const exists = await LabPatient.exists({ mrn: candidate })
+    if (!exists) return candidate
+  }
+  // Fallback
+  const c: any = await LabCounter.findByIdAndUpdate(key, { $inc: { seq: 1 } }, { upsert: true, new: true, setDefaultsOnInsert: true })
+  const seq = Number(c?.seq || 1)
+  return `MR${startSerial + seq - 1}`
 }
 
 async function resolvePatient(data: any){
@@ -96,6 +133,7 @@ export async function list(req: Request, res: Response){
     const appointmentType = String(q.appointmentType || '').trim()
     const doctorId = String(q.doctorId || '').trim()
     const departmentId = String(q.departmentId || '').trim()
+    const encounterId = String(q.encounterId || '').trim()
     const search = String(q.q || '').trim().toLowerCase()
 
     const filter: any = {}
@@ -107,6 +145,7 @@ export async function list(req: Request, res: Response){
     if (appointmentType) filter.appointmentType = appointmentType
     if (doctorId) filter.doctorId = doctorId
     if (departmentId) filter.departmentId = departmentId
+    if (encounterId) filter.encounterId = encounterId
 
     if (search) {
       filter.$or = [
@@ -121,6 +160,7 @@ export async function list(req: Request, res: Response){
       .populate([
         { path: 'doctorId', select: 'name opdBaseFee opdFollowupFee' },
         { path: 'departmentId', select: 'name opdBaseFee opdFollowupFee doctorPrices' },
+        { path: 'patientId', select: 'fullName mrn' },
       ])
       .lean()
 
@@ -218,6 +258,72 @@ export async function remove(req: Request, res: Response){
     if (!doc) return res.status(404).json({ error: 'Appointment not found' })
     res.json({ ok: true })
   } catch (e) {
+    return handleError(res, e)
+  }
+}
+
+// Create an encounter for an appointment (used by counselling portal)
+export async function createEncounter(req: Request, res: Response){
+  try {
+    const id = String(req.params.id || '')
+    const appointment = await HospitalAppointment.findById(id).populate('patientId', 'fullName mrn').populate('doctorId', 'name').lean() as any
+    if (!appointment) return res.status(404).json({ error: 'Appointment not found' })
+
+    console.log('Creating encounter for appointment:', appointment)
+
+    // If encounter already exists, return it with prescription
+    if (appointment.encounterId) {
+      const existing: any = await HospitalEncounter.findById(appointment.encounterId).lean()
+      if (existing) {
+        // Check if prescription exists, if not create one
+        let prescription: any = await HospitalPrescription.findOne({ encounterId: existing._id }).lean()
+        if (!prescription) {
+          prescription = await HospitalPrescription.create({
+            patientId: existing.patientId,
+            encounterId: existing._id,
+          })
+        }
+        return res.json({ encounter: existing, appointment, prescription })
+      }
+    }
+
+    // Check if patientId exists
+    if (!appointment.patientId) {
+      return res.status(400).json({ error: 'Appointment has no patient linked' })
+    }
+
+    // Create new encounter
+    const encounter = await HospitalEncounter.create({
+      patientId: appointment.patientId?._id || appointment.patientId,
+      doctorId: appointment.doctorId?._id || appointment.doctorId,
+      departmentId: appointment.departmentId?._id || appointment.departmentId,
+      type: 'OPD',
+      status: 'Active',
+      startAt: new Date().toISOString(),
+    })
+
+    console.log('Created encounter:', encounter)
+
+    // Create prescription for this encounter
+    const prescription = await HospitalPrescription.create({
+      patientId: encounter.patientId,
+      encounterId: encounter._id,
+    })
+
+    console.log('Created prescription:', prescription)
+
+    // Update appointment with encounterId
+    await HospitalAppointment.findByIdAndUpdate(id, { encounterId: encounter._id })
+
+    // Populate and return
+    const populatedEncounter = await HospitalEncounter.findById(encounter._id)
+      .populate('patientId', 'fullName mrn')
+      .populate('doctorId', 'name')
+      .lean()
+
+    res.json({ encounter: populatedEncounter, appointment: { ...appointment, encounterId: encounter._id }, prescription })
+  } catch (e) {
+    console.error('Error creating encounter:', e)
     return handleError(res, e)
   }
 }

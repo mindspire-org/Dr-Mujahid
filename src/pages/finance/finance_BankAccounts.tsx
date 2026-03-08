@@ -30,6 +30,12 @@ export default function Finance_BankAccounts(){
   const [txnRows, setTxnRows] = useState<any[]>([])
   const [txnLoading, setTxnLoading] = useState(false)
 
+  const [toast, setToast] = useState<null | { type: 'success' | 'error'; message: string }>(null)
+  const showToast = (type: 'success' | 'error', message: string) => {
+    setToast({ type, message })
+    setTimeout(() => setToast(null), 2500)
+  }
+
   const [deleteItem, setDeleteItem] = useState<any|null>(null)
   const [deleteLoading, setDeleteLoading] = useState(false)
 
@@ -43,7 +49,7 @@ export default function Finance_BankAccounts(){
       const res: any = await hospitalApi.listFinanceAccountTransactions({ code: finCode, from: txnFrom || undefined, to: txnTo || undefined, limit: 200 })
       setTxnRows(res?.entries || [])
     } catch (e: any) {
-      alert(e?.message || 'Failed to load transactions')
+      showToast('error', e?.message || 'Failed to load transactions')
     } finally {
       setTxnLoading(false)
     }
@@ -67,19 +73,31 @@ export default function Finance_BankAccounts(){
   useEffect(()=>{ reload(); reloadUsers() }, [])
 
   async function create(){
-    if (!bankName || !accountTitle || !accountNumber || !status) return alert('Please fill required fields')
+    if (!bankName || !accountTitle || !accountNumber || !status) {
+      showToast('error', 'Please fill required fields')
+      return
+    }
     setLoading(true)
     try {
       await hospitalApi.createBankAccount({ bankName, accountTitle, accountNumber, branchName: branchName||undefined, branchCode: branchCode||undefined, swift: swift||undefined, responsibleStaff: responsibleStaff||undefined, status })
       setBankName(''); setAccountTitle(''); setAccountNumber(''); setBranchName(''); setBranchCode(''); setSwift(''); setResponsibleStaff(''); setStatus('Active')
       await reload()
-      alert('Bank account created')
-    } catch(e: any){ alert(e?.message || 'Failed') }
+      showToast('success', 'Bank account created')
+    } catch(e: any){
+      showToast('error', e?.message || 'Failed')
+    }
     finally { setLoading(false) }
   }
 
   return (
     <div className="w-full px-3 sm:px-6 py-5 sm:py-6 space-y-4">
+      {toast && (
+        <div className="fixed bottom-4 right-4 z-50">
+          <div className={`${toast.type === 'success' ? 'bg-emerald-600' : 'bg-rose-600'} rounded-lg px-4 py-2 text-sm font-medium text-white shadow-lg`}>
+            {toast.message}
+          </div>
+        </div>
+      )}
       <div>
         <div className="text-2xl font-bold text-slate-800">Bank Accounts</div>
         <div className="text-sm text-slate-500">Add bank accounts</div>

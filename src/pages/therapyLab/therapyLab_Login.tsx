@@ -129,7 +129,7 @@ export default function TherapyLab_Login() {
                 style={{ animation: 'rotate3d 20s linear infinite' }}
               >
                 <div className="h-full w-full overflow-hidden rounded-[1.3rem] bg-white/10 ring-1 ring-white/20">
-                  <img src={logoSrc} alt="Healthspire" className="h-full w-full object-cover" />
+                  <img src={logoSrc} alt="Men's Care Clinic" className="h-full w-full object-contain" />
                 </div>
               </div>
               <h1 className="text-3xl font-black bg-gradient-to-r from-sky-200 via-blue-200 to-indigo-200 bg-clip-text text-transparent mb-2">
@@ -225,7 +225,7 @@ export default function TherapyLab_Login() {
             </div>
 
             <div className="border-t border-white/10 px-8 py-4 text-center">
-              <p className="text-xs text-white/40">©Developed by HealthSpire. All rights reserved.</p>
+              <p className="text-xs text-white/40">©Developed by Men's Care Clinic. All rights reserved.</p>
             </div>
           </div>
         </div>

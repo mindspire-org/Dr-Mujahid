@@ -92,7 +92,7 @@ export default function Home() {
               className="h-16 w-16 overflow-hidden rounded-3xl bg-gradient-to-br from-sky-400/20 to-blue-600/20 p-1 backdrop-blur-sm"
             >
               <div className="h-full w-full overflow-hidden rounded-[1.3rem] bg-white/50 ring-1 ring-white/40">
-                <img src={logoSrc} alt="Healthspire" className="h-full w-full object-cover" />
+                <img src={logoSrc} alt="Men's Care Clinic" className="h-full w-full object-contain" />
               </div>
             </div>
             <h1
@@ -122,7 +122,7 @@ export default function Home() {
       </main>
 
       <footer className="relative z-10 mx-auto max-w-6xl px-6 pb-10 text-center">
-        <p className="text-xs text-black">©Developed by HealthSpire. All rights reserved.</p>
+        <p className="text-xs text-black">©Developed by Men's Care Clinic. All rights reserved.</p>
       </footer>
     </div>
   )

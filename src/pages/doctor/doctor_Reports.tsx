@@ -346,35 +346,35 @@ export default function Doctor_Reports() {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between flex-wrap gap-2">
-        <div className="text-xl font-semibold text-slate-800">Doctor Reports</div>
+        <div className="text-xl font-semibold text-slate-800 dark:text-slate-100">Doctor Reports</div>
       </div>
 
-      <div className="rounded-xl border border-slate-200 bg-white p-3 sm:p-4 shadow-sm">
+      <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-3 sm:p-4 shadow-sm">
         <div className="grid gap-3 sm:gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 items-end">
           <div className="space-y-3 sm:space-y-0 sm:grid sm:grid-cols-2 sm:gap-3">
             <div>
-              <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-slate-500">Search</label>
-              <input value={q} onChange={e => { setQ(e.target.value); setDiagPage(1); setLabPage(1) }} placeholder="Name, Token, Test..." className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-100" />
+              <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">Search</label>
+              <input value={q} onChange={e => { setQ(e.target.value); setDiagPage(1); setLabPage(1) }} placeholder="Name, Token, Test..." className="w-full rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2 text-sm outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-100 dark:text-slate-200" />
             </div>
             <div>
-              <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-slate-500">Patient MRN</label>
-              <input value={mrnFilter} onChange={e => { setMrnFilter(e.target.value); setDiagPage(1); setLabPage(1) }} placeholder="MRN" className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-100" />
-            </div>
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-slate-500">From</label>
-              <input type="date" value={from} onChange={e => { setFrom(e.target.value); setDiagPage(1); setLabPage(1) }} className="w-full rounded-md border border-slate-300 px-2 py-2 text-sm outline-none focus:border-sky-500" />
-            </div>
-            <div>
-              <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-slate-500">To</label>
-              <input type="date" value={to} onChange={e => { setTo(e.target.value); setDiagPage(1); setLabPage(1) }} className="w-full rounded-md border border-slate-300 px-2 py-2 text-sm outline-none focus:border-sky-500" />
+              <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">Patient MRN</label>
+              <input value={mrnFilter} onChange={e => { setMrnFilter(e.target.value); setDiagPage(1); setLabPage(1) }} placeholder="MRN" className="w-full rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2 text-sm outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-100 dark:text-slate-200" />
             </div>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-slate-500">Type</label>
-              <select value={type} onChange={e => setType(e.target.value as any)} className="w-full rounded-md border border-slate-300 px-2 py-2 text-sm outline-none focus:border-sky-500">
+              <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">From</label>
+              <input type="date" value={from} onChange={e => { setFrom(e.target.value); setDiagPage(1); setLabPage(1) }} className="w-full rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-2 py-2 text-sm outline-none focus:border-sky-500 dark:text-slate-200" />
+            </div>
+            <div>
+              <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">To</label>
+              <input type="date" value={to} onChange={e => { setTo(e.target.value); setDiagPage(1); setLabPage(1) }} className="w-full rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-2 py-2 text-sm outline-none focus:border-sky-500 dark:text-slate-200" />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">Type</label>
+              <select value={type} onChange={e => setType(e.target.value as any)} className="w-full rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-2 py-2 text-sm outline-none focus:border-sky-500 dark:text-slate-200">
                 <option value="all">All Types</option>
                 <option value="diagnostic">Diagnostic</option>
                 <option value="lab">Lab</option>
@@ -382,8 +382,8 @@ export default function Doctor_Reports() {
               </select>
             </div>
             <div>
-              <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-slate-500">Rows</label>
-              <select value={rows} onChange={e => { setRows(parseInt(e.target.value) || 20); setDiagPage(1); setLabPage(1) }} className="w-full rounded-md border border-slate-300 px-2 py-2 text-sm outline-none focus:border-sky-500">
+              <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">Rows</label>
+              <select value={rows} onChange={e => { setRows(parseInt(e.target.value) || 20); setDiagPage(1); setLabPage(1) }} className="w-full rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-2 py-2 text-sm outline-none focus:border-sky-500 dark:text-slate-200">
                 <option value={10}>10 Rows</option>
                 <option value={20}>20 Rows</option>
                 <option value={50}>50 Rows</option>
@@ -392,13 +392,13 @@ export default function Doctor_Reports() {
           </div>
           <div className="grid gap-3 sm:grid-cols-2">
             <div className="flex items-center gap-2 h-9 sm:h-10">
-              <input id="myref" type="checkbox" checked={myOnly} onChange={e => { setMyOnly(e.target.checked); setDiagPage(1); setLabPage(1) }} className="h-4 w-4 rounded border-slate-300 text-sky-600 focus:ring-sky-500" />
-              <label htmlFor="myref" className="text-sm font-medium text-slate-700 select-none">My Referrals</label>
+              <input id="myref" type="checkbox" checked={myOnly} onChange={e => { setMyOnly(e.target.checked); setDiagPage(1); setLabPage(1) }} className="h-4 w-4 rounded border-slate-300 dark:border-slate-600 text-sky-600 focus:ring-sky-500" />
+              <label htmlFor="myref" className="text-sm font-medium text-slate-700 dark:text-slate-300 select-none">My Referrals</label>
             </div>
             {type !== 'lab' && (
               <div>
-                <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-slate-500">Diag Status</label>
-                <select value={diagStatus} onChange={e => { setDiagStatus(e.target.value as any); setDiagPage(1) }} className="w-full rounded-md border border-slate-300 px-2 py-2 text-sm outline-none focus:border-sky-500">
+                <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">Diag Status</label>
+                <select value={diagStatus} onChange={e => { setDiagStatus(e.target.value as any); setDiagPage(1) }} className="w-full rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-2 py-2 text-sm outline-none focus:border-sky-500 dark:text-slate-200">
                   <option value="all">All Status</option>
                   <option value="final">Final Only</option>
                   <option value="draft">Drafts</option>
@@ -410,14 +410,14 @@ export default function Doctor_Reports() {
       </div>
 
       {(type === 'diagnostic' || type === 'all') && (
-        <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
-          <div className="flex items-center justify-between border-b border-slate-200 bg-slate-50/50 px-4 py-3 text-sm">
-            <div className="font-semibold text-slate-800">Diagnostic Results</div>
-            <div className="text-[11px] font-medium text-slate-500 uppercase tracking-wider">{diagTotal ? `${diagStart}-${diagEnd} of ${diagTotal}` : ''}</div>
+        <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-sm overflow-hidden">
+          <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/50 px-4 py-3 text-sm">
+            <div className="font-semibold text-slate-800 dark:text-slate-100">Diagnostic Results</div>
+            <div className="text-[11px] font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider">{diagTotal ? `${diagStart}-${diagEnd} of ${diagTotal}` : ''}</div>
           </div>
           <div className="overflow-x-auto hospital-sidebar-scroll">
             <table className="w-full text-sm">
-              <thead className="border-b border-slate-200 bg-slate-50/50 text-left text-slate-600">
+              <thead className="border-b border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/50 text-left text-slate-600 dark:text-slate-400">
                 <tr>
                   <th className="px-4 py-3 font-semibold">Date</th>
                   <th className="px-4 py-3 font-semibold">Patient</th>
@@ -430,43 +430,43 @@ export default function Doctor_Reports() {
               </thead>
               <tbody>
                 {diagFiltered.map(r => (
-                  <tr key={r.id} className="border-b border-slate-100">
-                    <td className="px-4 py-2 whitespace-nowrap">{new Date(r.createdAt || '').toLocaleString()}</td>
-                    <td className="px-4 py-2 whitespace-nowrap">{r.patient?.fullName || '-'}</td>
-                    <td className="px-4 py-2 whitespace-nowrap">{r.patient?.mrn || '-'}</td>
-                    <td className="px-4 py-2 whitespace-nowrap">{r.tokenNo || '-'}</td>
-                    <td className="px-4 py-2 whitespace-nowrap">{r.testName || '-'}</td>
-                    <td className="px-4 py-2 whitespace-nowrap">
+                  <tr key={r.id} className="border-b border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/50">
+                    <td className="px-4 py-2 whitespace-nowrap text-slate-700 dark:text-slate-300">{new Date(r.createdAt || '').toLocaleString()}</td>
+                    <td className="px-4 py-2 whitespace-nowrap text-slate-700 dark:text-slate-300">{r.patient?.fullName || '-'}</td>
+                    <td className="px-4 py-2 whitespace-nowrap text-slate-700 dark:text-slate-300">{r.patient?.mrn || '-'}</td>
+                    <td className="px-4 py-2 whitespace-nowrap text-slate-700 dark:text-slate-300">{r.tokenNo || '-'}</td>
+                    <td className="px-4 py-2 whitespace-nowrap text-slate-700 dark:text-slate-300">{r.testName || '-'}</td>
+                    <td className="px-4 py-2 whitespace-nowrap text-slate-700 dark:text-slate-300">
                       <span className={`rounded-full px-2 py-0.5 text-xs ${r.status === 'final' ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-700'}`}>{r.status}</span>
                     </td>
-                    <td className="px-4 py-2 whitespace-nowrap">
+                    <td className="px-4 py-2 whitespace-nowrap text-slate-700 dark:text-slate-300">
                       <div className="flex items-center gap-2">
-                        <button onClick={() => onPrintDiag(r)} className="inline-flex items-center gap-1 rounded-md border border-slate-300 px-2 py-1 text-slate-700 hover:bg-slate-50">PDF</button>
+                        <button onClick={() => onPrintDiag(r)} className="inline-flex items-center gap-1 rounded-md border border-slate-300 dark:border-slate-600 px-2 py-1 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700">PDF</button>
                       </div>
                     </td>
                   </tr>
                 ))}
               </tbody>
             </table>
-            {diagFiltered.length === 0 && <div className="p-6 text-sm text-slate-500">No diagnostic results</div>}
+            {diagFiltered.length === 0 && <div className="p-6 text-sm text-slate-500 dark:text-slate-400">No diagnostic results</div>}
           </div>
           <div className="flex items-center justify-between px-4 py-3 text-sm">
-            <button className="rounded-md border border-slate-300 px-3 py-1 disabled:opacity-50" disabled={diagCurPage <= 1} onClick={() => setDiagPage(p => Math.max(1, p - 1))}>Prev</button>
-            <div className="text-slate-600">Page {diagCurPage} / {diagPageCount}</div>
-            <button className="rounded-md border border-slate-300 px-3 py-1 disabled:opacity-50" disabled={diagCurPage >= diagPageCount} onClick={() => setDiagPage(p => p + 1)}>Next</button>
+            <button className="rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-1 disabled:opacity-50 dark:text-slate-300" disabled={diagCurPage <= 1} onClick={() => setDiagPage(p => Math.max(1, p - 1))}>Prev</button>
+            <div className="text-slate-600 dark:text-slate-400">Page {diagCurPage} / {diagPageCount}</div>
+            <button className="rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-1 disabled:opacity-50 dark:text-slate-300" disabled={diagCurPage >= diagPageCount} onClick={() => setDiagPage(p => p + 1)}>Next</button>
           </div>
         </div>
       )}
 
       {(type === 'lab' || type === 'all') && (
-        <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
-          <div className="flex items-center justify-between border-b border-slate-200 bg-slate-50/50 px-4 py-3 text-sm">
-            <div className="font-semibold text-slate-800">Lab Results</div>
-            <div className="text-[11px] font-medium text-slate-500 uppercase tracking-wider">{labTotal ? `${labStart}-${labEnd} of ${labTotal}` : ''}</div>
+        <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-sm overflow-hidden">
+          <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/50 px-4 py-3 text-sm">
+            <div className="font-semibold text-slate-800 dark:text-slate-100">Lab Results</div>
+            <div className="text-[11px] font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider">{labTotal ? `${labStart}-${labEnd} of ${labTotal}` : ''}</div>
           </div>
           <div className="overflow-x-auto hospital-sidebar-scroll">
             <table className="w-full text-sm">
-              <thead className="border-b border-slate-200 bg-slate-50/50 text-left text-slate-600">
+              <thead className="border-b border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/50 text-left text-slate-600 dark:text-slate-400">
                 <tr>
                   <th className="px-4 py-3 font-semibold">Date</th>
                   <th className="px-4 py-3 font-semibold">Patient</th>
@@ -479,14 +479,14 @@ export default function Doctor_Reports() {
                 {labFiltered.map(r => {
                   const o = ordersMap[r.orderId]
                   return (
-                    <tr key={r.id} className="border-b border-slate-100">
-                      <td className="px-4 py-2 whitespace-nowrap">{new Date(r.createdAt || o?.createdAt || '').toLocaleString()}</td>
-                      <td className="px-4 py-2 whitespace-nowrap">{o?.patient?.fullName || '-'}</td>
-                      <td className="px-4 py-2 whitespace-nowrap">{o?.patient?.mrn || '-'}</td>
-                      <td className="px-4 py-2 whitespace-nowrap">{o?.tokenNo || '-'}</td>
-                      <td className="px-4 py-2 whitespace-nowrap">
+                    <tr key={r.id} className="border-b border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/50">
+                      <td className="px-4 py-2 whitespace-nowrap text-slate-700 dark:text-slate-300">{new Date(r.createdAt || o?.createdAt || '').toLocaleString()}</td>
+                      <td className="px-4 py-2 whitespace-nowrap text-slate-700 dark:text-slate-300">{o?.patient?.fullName || '-'}</td>
+                      <td className="px-4 py-2 whitespace-nowrap text-slate-700 dark:text-slate-300">{o?.patient?.mrn || '-'}</td>
+                      <td className="px-4 py-2 whitespace-nowrap text-slate-700 dark:text-slate-300">{o?.tokenNo || '-'}</td>
+                      <td className="px-4 py-2 whitespace-nowrap text-slate-700 dark:text-slate-300">
                         <div className="flex items-center gap-2">
-                          <button onClick={() => onPrintLab(r)} className="inline-flex items-center gap-1 rounded-md border border-slate-300 px-2 py-1 text-slate-700 hover:bg-slate-50">PDF</button>
+                          <button onClick={() => onPrintLab(r)} className="inline-flex items-center gap-1 rounded-md border border-slate-300 dark:border-slate-600 px-2 py-1 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700">PDF</button>
                         </div>
                       </td>
                     </tr>
@@ -494,25 +494,25 @@ export default function Doctor_Reports() {
                 })}
               </tbody>
             </table>
-            {labFiltered.length === 0 && <div className="p-6 text-sm text-slate-500">No lab results</div>}
+            {labFiltered.length === 0 && <div className="p-6 text-sm text-slate-500 dark:text-slate-400">No lab results</div>}
           </div>
           <div className="flex items-center justify-between px-4 py-3 text-sm">
-            <button className="rounded-md border border-slate-300 px-3 py-1 disabled:opacity-50" disabled={labCurPage <= 1} onClick={() => setLabPage(p => Math.max(1, p - 1))}>Prev</button>
-            <div className="text-slate-600">Page {labCurPage} / {labPageCount}</div>
-            <button className="rounded-md border border-slate-300 px-3 py-1 disabled:opacity-50" disabled={labCurPage >= labPageCount} onClick={() => setLabPage(p => p + 1)}>Next</button>
+            <button className="rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-1 disabled:opacity-50 dark:text-slate-300" disabled={labCurPage <= 1} onClick={() => setLabPage(p => Math.max(1, p - 1))}>Prev</button>
+            <div className="text-slate-600 dark:text-slate-400">Page {labCurPage} / {labPageCount}</div>
+            <button className="rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-1 disabled:opacity-50 dark:text-slate-300" disabled={labCurPage >= labPageCount} onClick={() => setLabPage(p => p + 1)}>Next</button>
           </div>
         </div>
       )}
 
       {(type === 'prescription' || type === 'all') && (
-        <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
-          <div className="flex items-center justify-between border-b border-slate-200 bg-slate-50/50 px-4 py-3 text-sm">
-            <div className="font-semibold text-slate-800">Prescriptions</div>
-            <div className="text-[11px] font-medium text-slate-500 uppercase tracking-wider">{presTotal ? `${presStart}-${presEnd} of ${presTotal}` : ''}</div>
+        <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-sm overflow-hidden">
+          <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/50 px-4 py-3 text-sm">
+            <div className="font-semibold text-slate-800 dark:text-slate-100">Prescriptions</div>
+            <div className="text-[11px] font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider">{presTotal ? `${presStart}-${presEnd} of ${presTotal}` : ''}</div>
           </div>
           <div className="overflow-x-auto hospital-sidebar-scroll">
             <table className="w-full text-sm">
-              <thead className="border-b border-slate-200 bg-slate-50/50 text-left text-slate-600">
+              <thead className="border-b border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/50 text-left text-slate-600 dark:text-slate-400">
                 <tr>
                   <th className="px-4 py-3 font-semibold">Date</th>
                   <th className="px-4 py-3 font-semibold">Patient</th>
@@ -533,23 +533,23 @@ export default function Doctor_Reports() {
                     .map(m => `${m?.name || '-'}${m?.frequency ? ` • ${m.frequency}` : ''}${m?.duration ? ` • ${m.duration}` : ''}${m?.dose ? ` • ${m.dose}` : ''}`)
                     .join(' | ')
                   return (
-                    <tr key={p.id} className="border-b border-slate-100">
-                      <td className="px-4 py-2 whitespace-nowrap">{new Date(p.createdAt || '').toLocaleString()}</td>
-                      <td className="px-4 py-2 whitespace-nowrap">{patientName}</td>
-                      <td className="px-4 py-2 whitespace-nowrap">{patientMrn}</td>
-                      <td className="px-4 py-2">{therapyText || '-'}</td>
-                      <td className="px-4 py-2">{medsText || '-'}</td>
+                    <tr key={p.id} className="border-b border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/50">
+                      <td className="px-4 py-2 whitespace-nowrap text-slate-700 dark:text-slate-300">{new Date(p.createdAt || '').toLocaleString()}</td>
+                      <td className="px-4 py-2 whitespace-nowrap text-slate-700 dark:text-slate-300">{patientName}</td>
+                      <td className="px-4 py-2 whitespace-nowrap text-slate-700 dark:text-slate-300">{patientMrn}</td>
+                      <td className="px-4 py-2 text-slate-700 dark:text-slate-300">{therapyText || '-'}</td>
+                      <td className="px-4 py-2 text-slate-700 dark:text-slate-300">{medsText || '-'}</td>
                     </tr>
                   )
                 })}
               </tbody>
             </table>
-            {presFiltered.length === 0 && <div className="p-6 text-sm text-slate-500">No prescriptions</div>}
+            {presFiltered.length === 0 && <div className="p-6 text-sm text-slate-500 dark:text-slate-400">No prescriptions</div>}
           </div>
           <div className="flex items-center justify-between px-4 py-3 text-sm">
-            <button className="rounded-md border border-slate-300 px-3 py-1 disabled:opacity-50" disabled={presCurPage <= 1} onClick={() => setPresPage(p => Math.max(1, p - 1))}>Prev</button>
-            <div className="text-slate-600">Page {presCurPage} / {presPageCount}</div>
-            <button className="rounded-md border border-slate-300 px-3 py-1 disabled:opacity-50" disabled={presCurPage >= presPageCount} onClick={() => setPresPage(p => p + 1)}>Next</button>
+            <button className="rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-1 disabled:opacity-50 dark:text-slate-300" disabled={presCurPage <= 1} onClick={() => setPresPage(p => Math.max(1, p - 1))}>Prev</button>
+            <div className="text-slate-600 dark:text-slate-400">Page {presCurPage} / {presPageCount}</div>
+            <button className="rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-1 disabled:opacity-50 dark:text-slate-300" disabled={presCurPage >= presPageCount} onClick={() => setPresPage(p => p + 1)}>Next</button>
           </div>
         </div>
       )}

@@ -262,7 +262,15 @@ export default function Doctor_Prescription() {
   const [prefillTokenId, setPrefillTokenId] = useState<string>('')
   const [prefillEncounterId, setPrefillEncounterId] = useState<string>('')
 
-  const [hxBy, setHxBy] = useState<string>('')
+  const doctorNameFromSession = (() => {
+    try {
+      const raw = localStorage.getItem('doctor.session')
+      const sess = raw ? JSON.parse(raw) : null
+      return String(sess?.name || '')
+    } catch { return '' }
+  })()
+  
+  const [hxBy, setHxBy] = useState<string>(doctorNameFromSession)
   const [hxDate, setHxDate] = useState<string>(today)
   const [historyTakingId, setHistoryTakingId] = useState<string>('')
   const [labReportsEntryId, setLabReportsEntryId] = useState<string>('')
@@ -277,7 +285,7 @@ export default function Doctor_Prescription() {
   const [previousVisitLoading, setPreviousVisitLoading] = useState(false)
   const [previousVisitError, setPreviousVisitError] = useState<string>('')
   const [previousVisits, setPreviousVisits] = useState<PreviousVisit[]>([])
-  const [labReportsHxBy, setLabReportsHxBy] = useState<string>('')
+  const [labReportsHxBy, setLabReportsHxBy] = useState<string>(doctorNameFromSession)
   const [labReportsHxDate, setLabReportsHxDate] = useState<string>(today)
   const [labReportsTests, setLabReportsTests] = useState<LabTestRow[]>([
     { testName: '', normalValue: '', result: '', status: '' },
@@ -404,7 +412,9 @@ export default function Doctor_Prescription() {
       other: '',
     },
     pSize: {
-      status: '' as '' | 'Small' | 'Shrink' | 'Bent',
+      bent: false,
+      small: false,
+      shrink: false,
       bentSide: '' as '' | 'Left' | 'Right',
       boeing: '' as '' | 'Yes' | 'No',
     },
@@ -761,6 +771,13 @@ export default function Doctor_Prescription() {
       const raw = localStorage.getItem('doctor.session')
       const sess = raw ? JSON.parse(raw) : null
       setDoc(sess)
+      
+      // Auto-fill Hx by and Reports Entered by with logged-in doctor's name
+      if (sess?.name) {
+        setHxBy(String(sess.name || ''))
+        setLabReportsHxBy(String(sess.name || ''))
+      }
+      
       // Compat: upgrade legacy id to backend id if needed
       const hex24 = /^[a-f\d]{24}$/i
       if (sess && !hex24.test(String(sess.id || ''))) {
@@ -1176,9 +1193,11 @@ export default function Doctor_Prescription() {
   useEffect(() => {
     const encounterId = String(prefillEncounterId || '')
     if (!encounterId) return
+    console.log('Edit mode hydration started for encounterId:', encounterId)
     let cancelled = false
       ; (async () => {
         try {
+          console.log('Fetching data for encounterId:', encounterId)
           const [presRes, htRes, labRes] = await Promise.all([
             hospitalApi.getPrescriptionByEncounter(encounterId) as any,
             hospitalApi.getHistoryTaking(encounterId).catch(() => null) as any,
@@ -1186,9 +1205,13 @@ export default function Doctor_Prescription() {
           ])
           if (cancelled) return
 
+          console.log('API responses:', { presRes, htRes, labRes })
+
           const p = presRes?.prescription || null
           const htData = htRes?.historyTaking?.data || null
           const lr = labRes?.labReportsEntry || null
+
+          console.log('Parsed data:', { p, htData, lr })
 
           try {
             const patientName = p?.encounterId?.patientId?.fullName || 'Patient'
@@ -1326,8 +1349,10 @@ export default function Doctor_Prescription() {
             } catch { }
           }
 
+          console.log('Data loading completed successfully for encounterId:', encounterId)
           showToast('success', 'Prescription loaded for editing')
         } catch (e: any) {
+          console.error('Error in edit mode hydration:', e)
           if (cancelled) return
           showToast('error', String(e?.message || 'Failed to load prescription'))
         }
@@ -1763,7 +1788,9 @@ export default function Doctor_Prescription() {
       other: '',
     },
     pSize: {
-      status: '' as '' | 'Small' | 'Shrink' | 'Bent',
+      bent: false,
+      small: false,
+      shrink: false,
       bentSide: '' as '' | 'Left' | 'Right',
       boeing: '' as '' | 'Yes' | 'No',
     },
@@ -1889,12 +1916,25 @@ export default function Doctor_Prescription() {
   })
 
   const resetAllTabs = (opts?: { keepPatientKey?: string | number }) => {
-    const keepPatientKey = opts?.keepPatientKey == null ? '' : String(opts.keepPatientKey)
-    setHxBy('')
+    const keepPatientKey = opts?.keepPatientKey == null ? '' : String(opts?.keepPatientKey)
+    
+    // Get doctor name from localStorage or current state
+    const getDoctorName = () => {
+      try {
+        const raw = localStorage.getItem('doctor.session')
+        const sess = raw ? JSON.parse(raw) : null
+        return String(sess?.name || hxBy || labReportsHxBy || '')
+      } catch { return hxBy || labReportsHxBy || '' }
+    }
+    const doctorName = getDoctorName()
+    
+    // Always set doctor name (preserve existing or get from session)
+    setHxBy(doctorName)
+    setLabReportsHxBy(doctorName)
+    
     setHxDate(today)
     setHistoryTakingId('')
     historyTakingBaselineRef.current = ''
-    setLabReportsHxBy('')
     setLabReportsHxDate(today)
     setLabReportsEntryId('')
     labReportsBaselineRef.current = ''
@@ -1963,7 +2003,13 @@ export default function Doctor_Prescription() {
     setPrevLabEntryId('')
     setPrevPrescriptionId('')
     resetAllTabs({ keepPatientKey: nextId })
-  }, [sel?.id, sel?.patientName, sel?.mrNo, pat?.age])
+    
+    // Re-fill doctor's name after reset
+    if (doc?.name) {
+      setHxBy(String(doc.name || ''))
+      setLabReportsHxBy(String(doc.name || ''))
+    }
+  }, [sel?.id, sel?.patientName, sel?.mrNo, pat?.age, doc?.name])
 
   useEffect(() => {
     if (!sel?.encounterId) return
@@ -1978,6 +2024,15 @@ export default function Doctor_Prescription() {
         }
       })()
   }, [sel?.encounterId])
+
+  // Auto-fill doctor's name whenever doc is available and fields are empty
+  useEffect(() => {
+    if (doc?.name) {
+      const doctorName = String(doc.name || '')
+      setHxBy(prev => prev || doctorName)
+      setLabReportsHxBy(prev => prev || doctorName)
+    }
+  }, [doc?.name])
 
 
   const [saving, setSaving] = useState(false)
@@ -2023,10 +2078,20 @@ export default function Doctor_Prescription() {
       }
       const htSnapshot = stableStringify(htSnapshotObj)
       const htDirty = htSnapshot !== historyTakingBaselineRef.current
-      let htId = historyTakingId
-      if (!htId || htDirty) {
+      // Only validate and save history taking if there's actual data
+      const hasHistoryTakingData = !!(
+        personalInfo.name || personalInfo.age || personalInfo.pt || personalInfo.contact1 ||
+        maritalStatus.status || coitus.intercourse || health.conditions.ihd || health.conditions.epiL ||
+        sexualHistory.erection.percentage || previousMedicalHistory.exConsultation || arrivalReference.referredBy.status
+      )
+      
+      if (hasHistoryTakingData) {
         if (!hxBy.trim()) { showToast('error', 'Hx by is required'); return }
         if (!hxDate.trim()) { showToast('error', 'Hx date is required'); return }
+      }
+      
+      let htId = historyTakingId
+      if (hasHistoryTakingData && (!htId || htDirty)) {
         const r: any = await hospitalApi.upsertHistoryTaking(encounterId, htPayload)
         htId = String(r?.historyTaking?._id || '')
         if (!htId) { showToast('error', 'Failed to save History Taking'); return }
@@ -2047,10 +2112,19 @@ export default function Doctor_Prescription() {
       }
       const labSnapshot = stableStringify(labSnapshotObj)
       const labDirty = labSnapshot !== labReportsBaselineRef.current
-      let lrId = labReportsEntryId
-      if (!lrId || labDirty) {
-        if (!labReportsHxBy.trim()) { showToast('error', 'Reports Entered by is required'); return }
+      // Only validate and save lab reports entry if there's actual data
+      const hasLabReportsData = !!(
+        labReportsLabInformation.labName || labReportsLabInformation.mrNo || labReportsLabInformation.date ||
+        labReportsSemenAnalysis.vol || labReportsSemenAnalysis.ph || labReportsSemenAnalysis.abs ||
+        labReportsTests.some(t => t.testName || t.result || t.status)
+      )
+      
+      if (hasLabReportsData) {
         if (!labReportsHxDate.trim()) { showToast('error', 'Reports Entered on is required'); return }
+      }
+      
+      let lrId = labReportsEntryId
+      if (hasLabReportsData && (!lrId || labDirty)) {
         const r: any = await hospitalApi.upsertLabReportsEntry(encounterId, labPayload)
         lrId = String(r?.labReportsEntry?._id || '')
         if (!lrId) { showToast('error', 'Failed to save Lab Reports Entry'); return }
@@ -2430,21 +2504,21 @@ export default function Doctor_Prescription() {
   return (
     <div className="w-full px-2 sm:px-4">
       <div className="no-print">
-        <div className="text-xl font-semibold text-slate-800">Prescription</div>
+        <div className="text-xl font-semibold text-slate-800 dark:text-slate-100">Prescription</div>
         <div className="mt-3 flex flex-col gap-2 text-sm sm:flex-row sm:items-center">
           <div className="flex flex-wrap items-center gap-2">
-            <input type="date" value={from} onChange={e => setFrom(e.target.value)} className="rounded-md border border-slate-300 px-3 py-2" />
+            <input type="date" value={from} onChange={e => setFrom(e.target.value)} className="rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2 dark:text-slate-200" />
             <span className="text-slate-500">to</span>
-            <input type="date" value={to} onChange={e => setTo(e.target.value)} className="rounded-md border border-slate-300 px-3 py-2" />
-            <button type="button" onClick={() => { const t = new Date().toISOString().slice(0, 10); setFrom(t); setTo(t) }} className="rounded-md border border-slate-300 px-2 py-1 text-xs hover:bg-slate-50">Today</button>
-            <button type="button" onClick={() => { setFrom(''); setTo('') }} className="rounded-md border border-slate-300 px-2 py-1 text-xs hover:bg-slate-50">Reset</button>
+            <input type="date" value={to} onChange={e => setTo(e.target.value)} className="rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2 dark:text-slate-200" />
+            <button type="button" onClick={() => { const t = new Date().toISOString().slice(0, 10); setFrom(t); setTo(t) }} className="rounded-md border border-slate-300 dark:border-slate-600 px-2 py-1 text-xs hover:bg-slate-50 dark:hover:bg-slate-700 dark:text-slate-300">Today</button>
+            <button type="button" onClick={() => { setFrom(''); setTo('') }} className="rounded-md border border-slate-300 dark:border-slate-600 px-2 py-1 text-xs hover:bg-slate-50 dark:hover:bg-slate-700 dark:text-slate-300">Reset</button>
           </div>
         </div>
 
-        <div className="mt-3 rounded-xl border border-slate-200 bg-white p-4">
+        <div className="mt-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-4">
           <div className="grid gap-3 sm:grid-cols-3">
             <div>
-              <label className="mb-1 block text-xs text-slate-600">Select Previous Histories</label>
+              <label className="mb-1 block text-xs text-slate-600 dark:text-slate-400">Select Previous Histories</label>
               <select
                 value={prevHistoryId}
                 onChange={e => {
@@ -2479,7 +2553,7 @@ export default function Doctor_Prescription() {
                   setPreviousMedicalHistory(nextPreviousMedicalHistory)
                   setArrivalReference(nextArrivalReference)
                 }}
-                className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+                className="w-full rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2 text-sm dark:text-slate-200"
                 disabled={!sel?.patientId || prevHistories.length === 0}
               >
                 <option value="">Previous Histories</option>
@@ -2507,7 +2581,7 @@ export default function Doctor_Prescription() {
             </div>
 
             <div>
-              <label className="mb-1 block text-xs text-slate-600">Select Previous Lab Entries</label>
+              <label className="mb-1 block text-xs text-slate-600 dark:text-slate-400">Select Previous Lab Entries</label>
               <select
                 value={prevLabEntryId}
                 onChange={e => {
@@ -2522,7 +2596,7 @@ export default function Doctor_Prescription() {
                   const list = Array.isArray(r.tests) ? r.tests : []
                   setLabReportsTests(list.length ? (list as any) : [{ testName: '', normalValue: '', result: '', status: '' }])
                 }}
-                className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+                className="w-full rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2 text-sm dark:text-slate-200"
                 disabled={!sel?.patientId || prevLabEntries.length === 0}
               >
                 <option value="">Previous Lab Entries</option>
@@ -2550,14 +2624,14 @@ export default function Doctor_Prescription() {
             </div>
 
             <div>
-              <label className="mb-1 block text-xs text-slate-600">Select Previous Prescription</label>
+              <label className="mb-1 block text-xs text-slate-600 dark:text-slate-400">Select Previous Prescription</label>
               <select
                 value={prevPrescriptionId}
                 onChange={e => {
                   const id = String(e.target.value || '')
                   setPrevPrescriptionId(id)
                 }}
-                className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+                className="w-full rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2 text-sm dark:text-slate-200"
                 disabled={!sel?.mrNo || prevPrescriptions.length === 0}
               >
                 <option value="">Previous Prescriptions</option>
@@ -2695,10 +2769,10 @@ export default function Doctor_Prescription() {
                           const when = h.submittedAt || h.createdAt || ''
                           const dateTxt = when ? new Date(when).toLocaleString() : ''
                           return (
-                            <div key={h._id || idx} className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-white p-4 sm:flex-row sm:items-center sm:justify-between">
+                            <div key={h._id || idx} className="flex flex-col gap-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-4 sm:flex-row sm:items-center sm:justify-between">
                               <div className="min-w-0">
-                                <div className="text-sm font-semibold text-slate-900">{sel?.patientName || '-'} <span className="text-xs font-normal text-slate-500">(MR: {sel?.mrNo || '-'})</span></div>
-                                <div className="mt-1 text-xs text-slate-600">Visit#{idx + 1}{dateTxt ? ` • ${dateTxt}` : ''}</div>
+                                <div className="text-sm font-semibold text-slate-900 dark:text-slate-100">{sel?.patientName || '-'} <span className="text-xs font-normal text-slate-500 dark:text-slate-400">(MR: {sel?.mrNo || '-'})</span></div>
+                                <div className="mt-1 text-xs text-slate-600 dark:text-slate-400">Visit#{idx + 1}{dateTxt ? ` • ${dateTxt}` : ''}</div>
                               </div>
                               <button
                                 type="button"
@@ -2711,7 +2785,7 @@ export default function Doctor_Prescription() {
                           )
                         })}
                         {prevHistories.length === 0 && (
-                          <div className="rounded-lg border border-slate-200 bg-white p-4 text-sm text-slate-700">No previous histories found.</div>
+                          <div className="rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-4 text-sm text-slate-700 dark:text-slate-400">No previous histories found.</div>
                         )}
                       </div>
                     )
@@ -2721,8 +2795,8 @@ export default function Doctor_Prescription() {
                     <div>
                       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                         <div>
-                          <div className="text-sm font-semibold text-slate-900">{sel?.patientName || '-'} <span className="text-xs font-normal text-slate-500">(MR: {sel?.mrNo || '-'})</span></div>
-                          <div className="mt-1 text-xs text-slate-600">Hx By: {String((selected as any)?.hxBy || data?.hxBy || '-')} • Hx Date: {String((selected as any)?.hxDate || data?.hxDate || '-')}</div>
+                          <div className="text-sm font-semibold text-slate-900 dark:text-slate-100">{sel?.patientName || '-'} <span className="text-xs font-normal text-slate-500 dark:text-slate-400">(MR: {sel?.mrNo || '-'})</span></div>
+                          <div className="mt-1 text-xs text-slate-600 dark:text-slate-400">Hx By: {String((selected as any)?.hxBy || data?.hxBy || '-')} • Hx Date: {String((selected as any)?.hxDate || data?.hxDate || '-')}</div>
                         </div>
                         <button type="button" className="rounded-md border border-blue-800 px-3 py-2 text-sm font-semibold text-blue-800 hover:bg-blue-50" onClick={() => setPrevHistoryViewId('')}>Back</button>
                       </div>
@@ -2764,13 +2838,13 @@ export default function Doctor_Prescription() {
                             const restContent = renderPairs(rest)
                             if (!merged && !restContent) return null
                             return (
-                              <div key={s.title} className="rounded-xl border border-slate-200 bg-white p-4">
-                                <div className="text-sm font-semibold text-slate-800">{s.title}</div>
+                              <div key={s.title} className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-4">
+                                <div className="text-sm font-semibold text-slate-800 dark:text-slate-100">{s.title}</div>
                                 {merged && (
                                   <div className="mt-2 grid gap-2 sm:grid-cols-2">
-                                    <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
-                                      <div className="text-xs text-slate-500">Arrival Reference</div>
-                                      <div className="mt-0.5 text-sm font-semibold text-slate-900">{merged}</div>
+                                    <div className="rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 p-3">
+                                      <div className="text-xs text-slate-500 dark:text-slate-400">Arrival Reference</div>
+                                      <div className="mt-0.5 text-sm font-semibold text-slate-900 dark:text-slate-100">{merged}</div>
                                     </div>
                                   </div>
                                 )}
@@ -2782,8 +2856,8 @@ export default function Doctor_Prescription() {
                           const content = renderPairs(s.value)
                           if (!content) return null
                           return (
-                            <div key={s.title} className="rounded-xl border border-slate-200 bg-white p-4">
-                              <div className="text-sm font-semibold text-slate-800">{s.title}</div>
+                            <div key={s.title} className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-4">
+                              <div className="text-sm font-semibold text-slate-800 dark:text-slate-100">{s.title}</div>
                               {content}
                             </div>
                           )
@@ -2799,10 +2873,10 @@ export default function Doctor_Prescription() {
 
         {showPrevLabEntriesDlg && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-3 sm:p-6" onClick={() => setShowPrevLabEntriesDlg(false)}>
-            <div className="w-full max-w-4xl overflow-hidden rounded-2xl bg-white shadow-2xl" onClick={(e) => e.stopPropagation()}>
-              <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3 sm:px-6">
-                <div className="text-base font-semibold text-slate-900">Previous Lab Entries</div>
-                <button type="button" className="rounded-md p-2 text-slate-600 hover:bg-slate-100" onClick={() => setShowPrevLabEntriesDlg(false)} aria-label="Close">
+            <div className="w-full max-w-4xl overflow-hidden rounded-2xl bg-white dark:bg-slate-900 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+              <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-700 px-4 py-3 sm:px-6">
+                <div className="text-base font-semibold text-slate-900 dark:text-slate-100">Previous Lab Entries</div>
+                <button type="button" className="rounded-md p-2 text-slate-600 dark:text-slate-400 hover:bg-slate-100" onClick={() => setShowPrevLabEntriesDlg(false)} aria-label="Close">
                   <X className="h-5 w-5" />
                 </button>
               </div>
@@ -2879,9 +2953,9 @@ export default function Doctor_Prescription() {
                     return (
                       <div className="mt-2 grid gap-2 sm:grid-cols-2">
                         {rows.map(({ k, txt }) => (
-                          <div key={k} className="rounded-lg border border-slate-200 bg-slate-50 p-3">
-                            <div className="text-xs text-slate-500">{toLabel(k)}</div>
-                            <div className="mt-0.5 text-sm font-semibold text-slate-900">{txt}</div>
+                          <div key={k} className="rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 p-3">
+                            <div className="text-xs text-slate-500 dark:text-slate-400">{toLabel(k)}</div>
+                            <div className="mt-0.5 text-sm font-semibold text-slate-900 dark:text-slate-100">{txt}</div>
                           </div>
                         ))}
                       </div>
@@ -2895,10 +2969,10 @@ export default function Doctor_Prescription() {
                           const when = h.submittedAt || h.createdAt || ''
                           const dateTxt = when ? new Date(when).toLocaleString() : ''
                           return (
-                            <div key={h._id || idx} className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-white p-4 sm:flex-row sm:items-center sm:justify-between">
+                            <div key={h._id || idx} className="flex flex-col gap-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-4 sm:flex-row sm:items-center sm:justify-between">
                               <div className="min-w-0">
-                                <div className="text-sm font-semibold text-slate-900">{sel?.patientName || '-'} <span className="text-xs font-normal text-slate-500">(MR: {sel?.mrNo || '-'})</span></div>
-                                <div className="mt-1 text-xs text-slate-600">Visit#{idx + 1}{dateTxt ? ` • ${dateTxt}` : ''}</div>
+                                <div className="text-sm font-semibold text-slate-900 dark:text-slate-100">{sel?.patientName || '-'} <span className="text-xs font-normal text-slate-500 dark:text-slate-400">(MR: {sel?.mrNo || '-'})</span></div>
+                                <div className="mt-1 text-xs text-slate-600 dark:text-slate-400">Visit#{idx + 1}{dateTxt ? ` • ${dateTxt}` : ''}</div>
                               </div>
                               <button
                                 type="button"
@@ -2911,7 +2985,7 @@ export default function Doctor_Prescription() {
                           )
                         })}
                         {prevLabEntries.length === 0 && (
-                          <div className="rounded-lg border border-slate-200 bg-white p-4 text-sm text-slate-700">No previous lab entries found.</div>
+                          <div className="rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-4 text-sm text-slate-700 dark:text-slate-400">No previous lab entries found.</div>
                         )}
                       </div>
                     )
@@ -2925,49 +2999,49 @@ export default function Doctor_Prescription() {
                     <div>
                       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                         <div>
-                          <div className="text-sm font-semibold text-slate-900">{sel?.patientName || '-'} <span className="text-xs font-normal text-slate-500">(MR: {sel?.mrNo || '-'})</span></div>
-                          <div className="mt-1 text-xs text-slate-600">Entered By: {String(selected?.hxBy || '-')} • Entered On: {String(selected?.hxDate || '-')}</div>
+                          <div className="text-sm font-semibold text-slate-900 dark:text-slate-100">{sel?.patientName || '-'} <span className="text-xs font-normal text-slate-500 dark:text-slate-400">(MR: {sel?.mrNo || '-'})</span></div>
+                          <div className="mt-1 text-xs text-slate-600 dark:text-slate-400">Entered By: {String(selected?.hxBy || '-')} • Entered On: {String(selected?.hxDate || '-')}</div>
                         </div>
                         <button type="button" className="rounded-md border border-blue-800 px-3 py-2 text-sm font-semibold text-blue-800 hover:bg-blue-50" onClick={() => setPrevLabEntryViewId('')}>Back</button>
                       </div>
 
                       <div className="mt-4 space-y-3">
                         {renderPairs(labInformation) && (
-                          <div className="rounded-xl border border-slate-200 bg-white p-4">
-                            <div className="text-sm font-semibold text-slate-800">Lab Information</div>
+                          <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-4">
+                            <div className="text-sm font-semibold text-slate-800 dark:text-slate-100">Lab Information</div>
                             {renderPairs(labInformation)}
                           </div>
                         )}
 
                         {renderPairs(semenAnalysis) && (
-                          <div className="rounded-xl border border-slate-200 bg-white p-4">
-                            <div className="text-sm font-semibold text-slate-800">Semen Analysis</div>
+                          <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-4">
+                            <div className="text-sm font-semibold text-slate-800 dark:text-slate-100">Semen Analysis</div>
                             {renderPairs(semenAnalysis)}
                           </div>
                         )}
 
-                        <div className="rounded-xl border border-slate-200 bg-white p-4">
-                          <div className="text-sm font-semibold text-slate-800">Tests</div>
+                        <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-4">
+                          <div className="text-sm font-semibold text-slate-800 dark:text-slate-100">Tests</div>
                           {tests.length === 0 ? (
-                            <div className="mt-2 text-sm text-slate-600">No tests</div>
+                            <div className="mt-2 text-sm text-slate-600 dark:text-slate-400">No tests</div>
                           ) : (
                             <div className="mt-3 overflow-x-auto">
                               <table className="min-w-full border-collapse text-sm">
                                 <thead>
-                                  <tr className="bg-slate-50 text-left text-xs text-slate-600">
-                                    <th className="border border-slate-200 px-3 py-2">Test</th>
-                                    <th className="border border-slate-200 px-3 py-2">Normal</th>
-                                    <th className="border border-slate-200 px-3 py-2">Result</th>
-                                    <th className="border border-slate-200 px-3 py-2">Status</th>
+                                  <tr className="bg-slate-50 dark:bg-slate-800 text-left text-xs text-slate-600 dark:text-slate-400">
+                                    <th className="border border-slate-200 dark:border-slate-700 px-3 py-2">Test</th>
+                                    <th className="border border-slate-200 dark:border-slate-700 px-3 py-2">Normal</th>
+                                    <th className="border border-slate-200 dark:border-slate-700 px-3 py-2">Result</th>
+                                    <th className="border border-slate-200 dark:border-slate-700 px-3 py-2">Status</th>
                                   </tr>
                                 </thead>
                                 <tbody>
                                   {tests.map((t: any, i: number) => (
-                                    <tr key={i} className="text-slate-800">
-                                      <td className="border border-slate-200 px-3 py-2">{String(t?.testName || '')}</td>
-                                      <td className="border border-slate-200 px-3 py-2">{String(t?.normalValue || '')}</td>
-                                      <td className="border border-slate-200 px-3 py-2">{String(t?.result || '')}</td>
-                                      <td className="border border-slate-200 px-3 py-2">{String(t?.status || '')}</td>
+                                    <tr key={i} className="text-slate-800 dark:text-slate-100">
+                                      <td className="border border-slate-200 dark:border-slate-700 px-3 py-2">{String(t?.testName || '')}</td>
+                                      <td className="border border-slate-200 dark:border-slate-700 px-3 py-2">{String(t?.normalValue || '')}</td>
+                                      <td className="border border-slate-200 dark:border-slate-700 px-3 py-2">{String(t?.result || '')}</td>
+                                      <td className="border border-slate-200 dark:border-slate-700 px-3 py-2">{String(t?.status || '')}</td>
                                     </tr>
                                   ))}
                                 </tbody>
@@ -2986,12 +3060,12 @@ export default function Doctor_Prescription() {
 
         {showPrevPrescriptionsDlg && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-2 py-4 sm:px-4" onClick={() => setShowPrevPrescriptionsDlg(false)}>
-            <div className="w-full max-w-4xl max-h-[96dvh] flex flex-col overflow-hidden rounded-2xl bg-white shadow-2xl" onClick={(e) => e.stopPropagation()}>
-              <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3 sm:px-6">
-                <div className="text-base font-semibold text-slate-900">Previous Prescriptions</div>
+            <div className="w-full max-w-4xl max-h-[96dvh] flex flex-col overflow-hidden rounded-2xl bg-white dark:bg-slate-900 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+              <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-700 px-4 py-3 sm:px-6">
+                <div className="text-base font-semibold text-slate-900 dark:text-slate-100">Previous Prescriptions</div>
                 <button
                   type="button"
-                  className="rounded-md p-2 text-slate-600 hover:bg-slate-100"
+                  className="rounded-md p-2 text-slate-600 dark:text-slate-400 hover:bg-slate-100"
                   onClick={() => {
                     setShowPrevPrescriptionsDlg(false)
                   }}
@@ -3001,16 +3075,16 @@ export default function Doctor_Prescription() {
                 </button>
               </div>
               <div className="flex-1 overflow-y-auto p-4 sm:p-6">
-                <div className="mb-2 text-sm font-semibold text-slate-800">Visits</div>
+                <div className="mb-2 text-sm font-semibold text-slate-800 dark:text-slate-100">Visits</div>
                 <div className="space-y-3">
                   {prevPrescriptions.map((p, idx) => {
                     const when = p.createdAt || ''
                     const dateTxt = when ? new Date(when).toLocaleString() : ''
                     return (
-                      <div key={p.id || idx} className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-white p-4 sm:flex-row sm:items-center sm:justify-between">
+                      <div key={p.id || idx} className="flex flex-col gap-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-4 sm:flex-row sm:items-center sm:justify-between">
                         <div className="min-w-0">
-                          <div className="text-sm font-semibold text-slate-900">{sel?.patientName || '-'} <span className="text-xs font-normal text-slate-500">(MR: {sel?.mrNo || '-'})</span></div>
-                          <div className="mt-1 text-xs text-slate-600">Visit#{idx + 1}{dateTxt ? ` • ${dateTxt}` : ''}</div>
+                          <div className="text-sm font-semibold text-slate-900 dark:text-slate-100">{sel?.patientName || '-'} <span className="text-xs font-normal text-slate-500 dark:text-slate-400">(MR: {sel?.mrNo || '-'})</span></div>
+                          <div className="mt-1 text-xs text-slate-600 dark:text-slate-400">Visit#{idx + 1}{dateTxt ? ` • ${dateTxt}` : ''}</div>
                         </div>
                         <button
                           type="button"
@@ -3153,10 +3227,10 @@ export default function Doctor_Prescription() {
             </div>
           </div>
         )}
-        <form onSubmit={save} className="mt-4 space-y-4 rounded-xl border border-slate-200 bg-white p-5">
+        <form onSubmit={save} className="mt-4 space-y-4 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-5">
           <div className="grid gap-4 sm:grid-cols-2">
             <div>
-              <label className="mb-1 block text-sm text-slate-700">Patient</label>
+              <label className="mb-1 block text-sm text-slate-700 dark:text-slate-300">Patient</label>
               <select
                 value={form.patientKey}
                 onChange={e => {
@@ -3166,8 +3240,13 @@ export default function Doctor_Prescription() {
                     return
                   }
                   resetAllTabs({ keepPatientKey: nextKey })
+                  // Re-fill doctor's name after reset
+                  if (doc?.name) {
+                    setHxBy(String(doc.name || ''))
+                    setLabReportsHxBy(String(doc.name || ''))
+                  }
                 }}
-                className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+                className="w-full rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2 text-sm dark:text-slate-200"
               >
                 <option value="">Select patient</option>
                 {allPatients.map(p => (
@@ -3178,24 +3257,24 @@ export default function Doctor_Prescription() {
             <div>
               <div className="flex items-end gap-2">
                 <div className="flex-1">
-                  <label className="mb-1 block text-sm text-slate-700">Hx by (History Taker)</label>
-                  <input value={hxBy} onChange={e => setHxBy(e.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
+                  <label className="mb-1 block text-sm text-slate-700 dark:text-slate-300">Hx by (History Taker)</label>
+                  <input value={hxBy} onChange={e => setHxBy(e.target.value)} className="w-full rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2 text-sm dark:text-slate-200" />
                 </div>
                 <div className="w-[170px]">
-                  <label className="mb-1 block text-sm text-slate-700">Date</label>
-                  <input type="date" value={hxDate} onChange={e => setHxDate(e.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
+                  <label className="mb-1 block text-sm text-slate-700 dark:text-slate-300">Date</label>
+                  <input type="date" value={hxDate} onChange={e => setHxDate(e.target.value)} className="w-full rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2 text-sm dark:text-slate-200" />
                 </div>
               </div>
             </div>
           </div>
-          <div className="mt-2 border-b border-slate-200">
+          <div className="mt-2 border-b border-slate-200 dark:border-slate-700">
             <nav className="-mb-px flex flex-wrap gap-2">
               {htTabs.map(t => (
                 <button
                   key={t}
                   type="button"
                   onClick={() => goTab(t)}
-                  className={`px-3 py-2 text-sm ${activeTab === t ? 'border-b-2 border-sky-600 text-slate-900' : 'text-slate-600 hover:text-slate-900'}`}
+                  className={`px-3 py-2 text-sm ${activeTab === t ? 'border-b-2 border-sky-600 text-slate-900 dark:text-slate-100' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'}`}
                 >
                   {t}
                 </button>
@@ -3211,89 +3290,89 @@ export default function Doctor_Prescription() {
           {activeTab === 'Personal Information' && (
             <div className="grid gap-4 sm:grid-cols-2">
               <div>
-                <label className="mb-1 block text-sm text-slate-700">Name</label>
-                <input value={personalInfo.name} onChange={e => setPersonalInfo(p => ({ ...p, name: e.target.value }))} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
+                <label className="mb-1 block text-sm text-slate-700 dark:text-slate-300">Name</label>
+                <input value={personalInfo.name} onChange={e => setPersonalInfo(p => ({ ...p, name: e.target.value }))} className="w-full rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2 text-sm dark:text-slate-200" />
               </div>
               <div>
-                <label className="mb-1 block text-sm text-slate-700">MR#</label>
-                <input value={personalInfo.mrNo} onChange={e => setPersonalInfo(p => ({ ...p, mrNo: e.target.value }))} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
-              </div>
-
-              <div>
-                <label className="mb-1 block text-sm text-slate-700">Age</label>
-                <input value={personalInfo.age} onChange={e => setPersonalInfo(p => ({ ...p, age: e.target.value }))} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
-              </div>
-              <div>
-                <label className="mb-1 block text-sm text-slate-700">PT</label>
-                <input value={personalInfo.pt} onChange={e => setPersonalInfo(p => ({ ...p, pt: e.target.value }))} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
+                <label className="mb-1 block text-sm text-slate-700 dark:text-slate-300">MR#</label>
+                <input value={personalInfo.mrNo} onChange={e => setPersonalInfo(p => ({ ...p, mrNo: e.target.value }))} className="w-full rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2 text-sm dark:text-slate-200" />
               </div>
 
               <div>
-                <label className="mb-1 block text-sm text-slate-700">MAM</label>
+                <label className="mb-1 block text-sm text-slate-700 dark:text-slate-300">Age</label>
+                <input value={personalInfo.age} onChange={e => setPersonalInfo(p => ({ ...p, age: e.target.value }))} className="w-full rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2 text-sm dark:text-slate-200" />
+              </div>
+              <div>
+                <label className="mb-1 block text-sm text-slate-700 dark:text-slate-300">PT</label>
+                <input value={personalInfo.pt} onChange={e => setPersonalInfo(p => ({ ...p, pt: e.target.value }))} className="w-full rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2 text-sm dark:text-slate-200" />
+              </div>
+
+              <div>
+                <label className="mb-1 block text-sm text-slate-700 dark:text-slate-300">MAM</label>
                 <div className="flex flex-wrap items-center gap-2">
                   <div className="text-sm text-slate-600">Upto:</div>
-                  <input value={personalInfo.mamUpto} onChange={e => setPersonalInfo(p => ({ ...p, mamUpto: e.target.value }))} className="w-28 rounded-md border border-slate-300 px-3 py-2 text-sm" />
+                  <input value={personalInfo.mamUpto} onChange={e => setPersonalInfo(p => ({ ...p, mamUpto: e.target.value }))} className="w-28 rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2 text-sm dark:text-slate-200" />
                   <div className="text-sm text-slate-600">Pn:</div>
-                  <input value={personalInfo.mamPn} onChange={e => setPersonalInfo(p => ({ ...p, mamPn: e.target.value }))} className="w-28 rounded-md border border-slate-300 px-3 py-2 text-sm" />
+                  <input value={personalInfo.mamPn} onChange={e => setPersonalInfo(p => ({ ...p, mamPn: e.target.value }))} className="w-28 rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2 text-sm dark:text-slate-200" />
                 </div>
               </div>
               <div>
-                <label className="mb-1 block text-sm text-slate-700">Visit/Stay</label>
-                <input value={personalInfo.visitStay} onChange={e => setPersonalInfo(p => ({ ...p, visitStay: e.target.value }))} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
+                <label className="mb-1 block text-sm text-slate-700 dark:text-slate-300">Visit/Stay</label>
+                <input value={personalInfo.visitStay} onChange={e => setPersonalInfo(p => ({ ...p, visitStay: e.target.value }))} className="w-full rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2 text-sm dark:text-slate-200" />
               </div>
 
               <div>
-                <label className="mb-1 block text-sm text-slate-700">Height</label>
-                <input value={personalInfo.height} onChange={e => setPersonalInfo(p => ({ ...p, height: e.target.value }))} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
+                <label className="mb-1 block text-sm text-slate-700 dark:text-slate-300">Height</label>
+                <input value={personalInfo.height} onChange={e => setPersonalInfo(p => ({ ...p, height: e.target.value }))} className="w-full rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2 text-sm dark:text-slate-200" />
               </div>
               <div>
-                <label className="mb-1 block text-sm text-slate-700">Weight</label>
-                <input value={personalInfo.weight} onChange={e => setPersonalInfo(p => ({ ...p, weight: e.target.value }))} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
-              </div>
-
-              <div>
-                <label className="mb-1 block text-sm text-slate-700">Blood Pressure (BP)</label>
-                <input value={personalInfo.bp} onChange={e => setPersonalInfo(p => ({ ...p, bp: e.target.value }))} placeholder="e.g., 120/80" className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
-              </div>
-              <div>
-                <label className="mb-1 block text-sm text-slate-700">Sleep (hrs)</label>
-                <input value={personalInfo.sleepHrs} onChange={e => setPersonalInfo(p => ({ ...p, sleepHrs: e.target.value }))} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
+                <label className="mb-1 block text-sm text-slate-700 dark:text-slate-300">Weight</label>
+                <input value={personalInfo.weight} onChange={e => setPersonalInfo(p => ({ ...p, weight: e.target.value }))} className="w-full rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2 text-sm dark:text-slate-200" />
               </div>
 
               <div>
-                <label className="mb-1 block text-sm text-slate-700">Contact#1</label>
-                <input value={personalInfo.contact1} onChange={e => setPersonalInfo(p => ({ ...p, contact1: e.target.value }))} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
+                <label className="mb-1 block text-sm text-slate-700 dark:text-slate-300">Blood Pressure (BP)</label>
+                <input value={personalInfo.bp} onChange={e => setPersonalInfo(p => ({ ...p, bp: e.target.value }))} placeholder="e.g., 120/80" className="w-full rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2 text-sm dark:text-slate-200" />
               </div>
               <div>
-                <label className="mb-1 block text-sm text-slate-700">Contact#2</label>
-                <input value={personalInfo.contact2} onChange={e => setPersonalInfo(p => ({ ...p, contact2: e.target.value }))} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
-              </div>
-
-              <div>
-                <label className="mb-1 block text-sm text-slate-700">Walk/Exercise</label>
-                <input value={personalInfo.walkExercise} onChange={e => setPersonalInfo(p => ({ ...p, walkExercise: e.target.value }))} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
-              </div>
-              <div>
-                <label className="mb-1 block text-sm text-slate-700">Education</label>
-                <input value={personalInfo.education} onChange={e => setPersonalInfo(p => ({ ...p, education: e.target.value }))} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
+                <label className="mb-1 block text-sm text-slate-700 dark:text-slate-300">Sleep (hrs)</label>
+                <input value={personalInfo.sleepHrs} onChange={e => setPersonalInfo(p => ({ ...p, sleepHrs: e.target.value }))} className="w-full rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2 text-sm dark:text-slate-200" />
               </div>
 
               <div>
-                <label className="mb-1 block text-sm text-slate-700">Job Hours</label>
-                <input value={personalInfo.jobHours} onChange={e => setPersonalInfo(p => ({ ...p, jobHours: e.target.value }))} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
+                <label className="mb-1 block text-sm text-slate-700 dark:text-slate-300">Contact#1</label>
+                <input value={personalInfo.contact1} onChange={e => setPersonalInfo(p => ({ ...p, contact1: e.target.value }))} className="w-full rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2 text-sm dark:text-slate-200" />
+              </div>
+              <div>
+                <label className="mb-1 block text-sm text-slate-700 dark:text-slate-300">Contact#2</label>
+                <input value={personalInfo.contact2} onChange={e => setPersonalInfo(p => ({ ...p, contact2: e.target.value }))} className="w-full rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2 text-sm dark:text-slate-200" />
+              </div>
+
+              <div>
+                <label className="mb-1 block text-sm text-slate-700 dark:text-slate-300">Walk/Exercise</label>
+                <input value={personalInfo.walkExercise} onChange={e => setPersonalInfo(p => ({ ...p, walkExercise: e.target.value }))} className="w-full rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2 text-sm dark:text-slate-200" />
+              </div>
+              <div>
+                <label className="mb-1 block text-sm text-slate-700 dark:text-slate-300">Education</label>
+                <input value={personalInfo.education} onChange={e => setPersonalInfo(p => ({ ...p, education: e.target.value }))} className="w-full rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2 text-sm dark:text-slate-200" />
+              </div>
+
+              <div>
+                <label className="mb-1 block text-sm text-slate-700 dark:text-slate-300">Job Hours</label>
+                <input value={personalInfo.jobHours} onChange={e => setPersonalInfo(p => ({ ...p, jobHours: e.target.value }))} className="w-full rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2 text-sm dark:text-slate-200" />
               </div>
 
               <div className="sm:col-span-2">
-                <label className="mb-1 block text-sm text-slate-700">Current Address</label>
-                <textarea value={personalInfo.currentAddress} onChange={e => setPersonalInfo(p => ({ ...p, currentAddress: e.target.value }))} rows={2} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
+                <label className="mb-1 block text-sm text-slate-700 dark:text-slate-300">Current Address</label>
+                <textarea value={personalInfo.currentAddress} onChange={e => setPersonalInfo(p => ({ ...p, currentAddress: e.target.value }))} rows={2} className="w-full rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2 text-sm dark:text-slate-200" />
               </div>
               <div className="sm:col-span-2">
-                <label className="mb-1 block text-sm text-slate-700">Permanent Address</label>
-                <textarea value={personalInfo.permanentAddress} onChange={e => setPersonalInfo(p => ({ ...p, permanentAddress: e.target.value }))} rows={2} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
+                <label className="mb-1 block text-sm text-slate-700 dark:text-slate-300">Permanent Address</label>
+                <textarea value={personalInfo.permanentAddress} onChange={e => setPersonalInfo(p => ({ ...p, permanentAddress: e.target.value }))} rows={2} className="w-full rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2 text-sm dark:text-slate-200" />
               </div>
               <div className="sm:col-span-2">
-                <label className="mb-1 block text-sm text-slate-700">Nature of Work</label>
-                <textarea value={personalInfo.natureOfWork} onChange={e => setPersonalInfo(p => ({ ...p, natureOfWork: e.target.value }))} rows={2} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
+                <label className="mb-1 block text-sm text-slate-700 dark:text-slate-300">Nature of Work</label>
+                <textarea value={personalInfo.natureOfWork} onChange={e => setPersonalInfo(p => ({ ...p, natureOfWork: e.target.value }))} rows={2} className="w-full rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2 text-sm dark:text-slate-200" />
               </div>
 
               <div className="sm:col-span-2">
@@ -3303,7 +3382,7 @@ export default function Doctor_Prescription() {
                       type="checkbox"
                       checked={personalInfo.relax}
                       onChange={e => setPersonalInfo(p => ({ ...p, relax: e.target.checked, stressful: e.target.checked ? false : p.stressful }))}
-                      className="h-4 w-4 rounded border-slate-300"
+                      className="h-4 w-4 rounded border-slate-300 dark:border-slate-600"
                     />
                     Relax
                   </label>
@@ -3312,7 +3391,7 @@ export default function Doctor_Prescription() {
                       type="checkbox"
                       checked={personalInfo.stressful}
                       onChange={e => setPersonalInfo(p => ({ ...p, stressful: e.target.checked, relax: e.target.checked ? false : p.relax }))}
-                      className="h-4 w-4 rounded border-slate-300"
+                      className="h-4 w-4 rounded border-slate-300 dark:border-slate-600"
                     />
                     Stressful
                   </label>
@@ -3333,7 +3412,7 @@ export default function Doctor_Prescription() {
                         ...s,
                         status: e.target.checked ? 'Married' : '',
                       }))}
-                      className="h-4 w-4 rounded border-slate-300"
+                      className="h-4 w-4 rounded border-slate-300 dark:border-slate-600"
                     />
                     Married
                   </label>
@@ -3345,7 +3424,7 @@ export default function Doctor_Prescription() {
                         ...s,
                         status: e.target.checked ? 'To Go' : '',
                       }))}
-                      className="h-4 w-4 rounded border-slate-300"
+                      className="h-4 w-4 rounded border-slate-300 dark:border-slate-600"
                     />
                     To Go
                   </label>
@@ -3357,7 +3436,7 @@ export default function Doctor_Prescription() {
                         ...s,
                         status: e.target.checked ? 'Single' : '',
                       }))}
-                      className="h-4 w-4 rounded border-slate-300"
+                      className="h-4 w-4 rounded border-slate-300 dark:border-slate-600"
                     />
                     Single
                   </label>
@@ -3416,7 +3495,7 @@ export default function Doctor_Prescription() {
 
                       <div className="mt-3 grid gap-4 sm:grid-cols-2">
                         <div>
-                          <label className="mb-1 block text-sm text-slate-700">Years/Months</label>
+                          <label className="mb-1 block text-sm text-slate-700 dark:text-slate-300">Years/Months</label>
                           <div className="flex flex-wrap items-center gap-2">
                             <div className="text-sm text-slate-600">Year:</div>
                             <input
@@ -3442,7 +3521,7 @@ export default function Doctor_Prescription() {
                         </div>
 
                         <div>
-                          <label className="mb-1 block text-sm text-slate-700">Divorce</label>
+                          <label className="mb-1 block text-sm text-slate-700 dark:text-slate-300">Divorce</label>
                           <input
                             value={m.divorce}
                             onChange={e => setMaritalStatus(s => {
@@ -3450,12 +3529,12 @@ export default function Doctor_Prescription() {
                               next[idx] = { ...next[idx], divorce: e.target.value }
                               return { ...s, marriages: next }
                             })}
-                            className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+                            className="w-full rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2 text-sm dark:text-slate-200"
                           />
                         </div>
 
                         <div>
-                          <label className="mb-1 block text-sm text-slate-700">Separation</label>
+                          <label className="mb-1 block text-sm text-slate-700 dark:text-slate-300">Separation</label>
                           <input
                             value={m.separation}
                             onChange={e => setMaritalStatus(s => {
@@ -3463,12 +3542,12 @@ export default function Doctor_Prescription() {
                               next[idx] = { ...next[idx], separation: e.target.value }
                               return { ...s, marriages: next }
                             })}
-                            className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+                            className="w-full rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2 text-sm dark:text-slate-200"
                           />
                         </div>
 
                         <div>
-                          <label className="mb-1 block text-sm text-slate-700">Age of Wife</label>
+                          <label className="mb-1 block text-sm text-slate-700 dark:text-slate-300">Age of Wife</label>
                           <input
                             value={m.ageOfWife}
                             onChange={e => setMaritalStatus(s => {
@@ -3476,12 +3555,12 @@ export default function Doctor_Prescription() {
                               next[idx] = { ...next[idx], ageOfWife: e.target.value }
                               return { ...s, marriages: next }
                             })}
-                            className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+                            className="w-full rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2 text-sm dark:text-slate-200"
                           />
                         </div>
 
                         <div>
-                          <label className="mb-1 block text-sm text-slate-700">Education of Wife</label>
+                          <label className="mb-1 block text-sm text-slate-700 dark:text-slate-300">Education of Wife</label>
                           <input
                             value={m.educationOfWife}
                             onChange={e => setMaritalStatus(s => {
@@ -3489,12 +3568,12 @@ export default function Doctor_Prescription() {
                               next[idx] = { ...next[idx], educationOfWife: e.target.value }
                               return { ...s, marriages: next }
                             })}
-                            className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+                            className="w-full rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2 text-sm dark:text-slate-200"
                           />
                         </div>
 
                         <div className="sm:col-span-2">
-                          <label className="mb-1 block text-sm text-slate-700">Reas</label>
+                          <label className="mb-1 block text-sm text-slate-700 dark:text-slate-300">Reas</label>
                           <textarea
                             value={m.reas}
                             onChange={e => setMaritalStatus(s => {
@@ -3503,7 +3582,7 @@ export default function Doctor_Prescription() {
                               return { ...s, marriages: next }
                             })}
                             rows={2}
-                            className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+                            className="w-full rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2 text-sm dark:text-slate-200"
                           />
                         </div>
 
@@ -3519,7 +3598,7 @@ export default function Doctor_Prescription() {
                                   next[idx] = { ...next[idx], marriageType: { ...(next[idx] as any).marriageType, loveMarriage: e.target.checked, arrangeMarriage: e.target.checked ? false : (next[idx] as any).marriageType?.arrangeMarriage } }
                                   return { ...s, marriages: next }
                                 })}
-                                className="h-4 w-4 rounded border-slate-300"
+                                className="h-4 w-4 rounded border-slate-300 dark:border-slate-600"
                               />
                               Love Marriage
                             </label>
@@ -3532,7 +3611,7 @@ export default function Doctor_Prescription() {
                                   next[idx] = { ...next[idx], marriageType: { ...(next[idx] as any).marriageType, arrangeMarriage: e.target.checked, loveMarriage: e.target.checked ? false : (next[idx] as any).marriageType?.loveMarriage } }
                                   return { ...s, marriages: next }
                                 })}
-                                className="h-4 w-4 rounded border-slate-300"
+                                className="h-4 w-4 rounded border-slate-300 dark:border-slate-600"
                               />
                               Arrange Marriage
                             </label>
@@ -3545,7 +3624,7 @@ export default function Doctor_Prescription() {
                                   next[idx] = { ...next[idx], marriageType: { ...(next[idx] as any).marriageType, like: e.target.checked } }
                                   return { ...s, marriages: next }
                                 })}
-                                className="h-4 w-4 rounded border-slate-300"
+                                className="h-4 w-4 rounded border-slate-300 dark:border-slate-600"
                               />
                               LIKE
                             </label>
@@ -3565,7 +3644,7 @@ export default function Doctor_Prescription() {
                                     next[idx] = { ...next[idx], mutualSatisfaction: e.target.checked ? opt : '' }
                                     return { ...s, marriages: next }
                                   })}
-                                  className="h-4 w-4 rounded border-slate-300"
+                                  className="h-4 w-4 rounded border-slate-300 dark:border-slate-600"
                                 />
                                 {opt}
                               </label>
@@ -3580,7 +3659,7 @@ export default function Doctor_Prescription() {
                                     next[idx] = { ...next[idx], mutualCooperation: e.target.checked ? opt : '' }
                                     return { ...s, marriages: next }
                                   })}
-                                  className="h-4 w-4 rounded border-slate-300"
+                                  className="h-4 w-4 rounded border-slate-300 dark:border-slate-600"
                                 />
                                 {opt}
                               </label>
@@ -3601,7 +3680,7 @@ export default function Doctor_Prescription() {
                                     next[idx] = { ...next[idx], childStatus: e.target.checked ? opt : '' }
                                     return { ...s, marriages: next }
                                   })}
-                                  className="h-4 w-4 rounded border-slate-300"
+                                  className="h-4 w-4 rounded border-slate-300 dark:border-slate-600"
                                 />
                                 {opt}
                               </label>
@@ -3623,7 +3702,7 @@ export default function Doctor_Prescription() {
                                   next[idx] = { ...next[idx], childStatus2: cs2 }
                                   return { ...s, marriages: next }
                                 })}
-                                className="h-4 w-4 rounded border-slate-300"
+                                className="h-4 w-4 rounded border-slate-300 dark:border-slate-600"
                               />
                               Minors
                             </label>
@@ -3636,7 +3715,7 @@ export default function Doctor_Prescription() {
                                   next[idx] = { ...next[idx], childStatus2: { ...(next[idx] as any).childStatus2, pregnant: e.target.checked } }
                                   return { ...s, marriages: next }
                                 })}
-                                className="h-4 w-4 rounded border-slate-300"
+                                className="h-4 w-4 rounded border-slate-300 dark:border-slate-600"
                               />
                               Pregnant
                             </label>
@@ -3649,7 +3728,7 @@ export default function Doctor_Prescription() {
                                   next[idx] = { ...next[idx], childStatus2: { ...(next[idx] as any).childStatus2, abortion: e.target.checked } }
                                   return { ...s, marriages: next }
                                 })}
-                                className="h-4 w-4 rounded border-slate-300"
+                                className="h-4 w-4 rounded border-slate-300 dark:border-slate-600"
                               />
                               Abortion
                             </label>
@@ -3800,7 +3879,7 @@ export default function Doctor_Prescription() {
                         type="checkbox"
                         checked={coitus.intercourse === opt}
                         onChange={(e) => setCoitus(s => ({ ...s, intercourse: e.target.checked ? opt : '' }))}
-                        className="h-4 w-4 rounded border-slate-300"
+                        className="h-4 w-4 rounded border-slate-300 dark:border-slate-600"
                       />
                       {opt === 'Faild' ? 'Failed' : opt}
                     </label>
@@ -3824,7 +3903,7 @@ export default function Doctor_Prescription() {
                             visitHomeDays: (e.target.checked && opt === 'Out of Town') ? s.visitHomeDays : '',
                           }
                         ))}
-                        className="h-4 w-4 rounded border-slate-300"
+                        className="h-4 w-4 rounded border-slate-300 dark:border-slate-600"
                       />
                       {opt}
                     </label>
@@ -3853,7 +3932,7 @@ export default function Doctor_Prescription() {
                         type="checkbox"
                         checked={coitus.frequencyType === opt}
                         onChange={(e) => setCoitus(s => ({ ...s, frequencyType: e.target.checked ? opt : '' }))}
-                        className="h-4 w-4 rounded border-slate-300"
+                        className="h-4 w-4 rounded border-slate-300 dark:border-slate-600"
                       />
                       {opt}
                     </label>
@@ -3862,19 +3941,19 @@ export default function Doctor_Prescription() {
 
                 <div className="mt-3 grid gap-4 sm:grid-cols-2">
                   <div>
-                    <label className="mb-1 block text-sm text-slate-700">Frequency (number)</label>
-                    <input value={coitus.frequencyNumber} onChange={e => setCoitus(s => ({ ...s, frequencyNumber: e.target.value }))} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
+                    <label className="mb-1 block text-sm text-slate-700 dark:text-slate-300">Frequency (number)</label>
+                    <input value={coitus.frequencyNumber} onChange={e => setCoitus(s => ({ ...s, frequencyNumber: e.target.value }))} className="w-full rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2 text-sm dark:text-slate-200" />
                   </div>
                   <div>
-                    <label className="mb-1 block text-sm text-slate-700">Since</label>
-                    <input value={coitus.since} onChange={e => setCoitus(s => ({ ...s, since: e.target.value }))} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
+                    <label className="mb-1 block text-sm text-slate-700 dark:text-slate-300">Since</label>
+                    <input value={coitus.since} onChange={e => setCoitus(s => ({ ...s, since: e.target.value }))} className="w-full rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2 text-sm dark:text-slate-200" />
                   </div>
                 </div>
               </div>
 
               <div>
                 <label className="mb-1 block text-sm font-semibold text-slate-800">Previous Coitus Frequency</label>
-                <input value={coitus.previousFrequency} onChange={e => setCoitus(s => ({ ...s, previousFrequency: e.target.value }))} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
+                <input value={coitus.previousFrequency} onChange={e => setCoitus(s => ({ ...s, previousFrequency: e.target.value }))} className="w-full rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2 text-sm dark:text-slate-200" />
               </div>
             </div>
           )}
@@ -3885,47 +3964,47 @@ export default function Doctor_Prescription() {
                 <div className="mb-2 text-sm font-semibold text-slate-800">Health</div>
                 <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
                   <label className={checkboxCardLabelCls(health.conditions.ihd)}>
-                    <input type="checkbox" checked={health.conditions.ihd} onChange={e => setHealth(s => ({ ...s, conditions: { ...s.conditions, ihd: e.target.checked } }))} className="h-4 w-4 rounded border-slate-300" />
+                    <input type="checkbox" checked={health.conditions.ihd} onChange={e => setHealth(s => ({ ...s, conditions: { ...s.conditions, ihd: e.target.checked } }))} className="h-4 w-4 rounded border-slate-300 dark:border-slate-600" />
                     IHD
                   </label>
                   <label className={checkboxCardLabelCls(health.conditions.epiL)}>
-                    <input type="checkbox" checked={health.conditions.epiL} onChange={e => setHealth(s => ({ ...s, conditions: { ...s.conditions, epiL: e.target.checked } }))} className="h-4 w-4 rounded border-slate-300" />
+                    <input type="checkbox" checked={health.conditions.epiL} onChange={e => setHealth(s => ({ ...s, conditions: { ...s.conditions, epiL: e.target.checked } }))} className="h-4 w-4 rounded border-slate-300 dark:border-slate-600" />
                     Epi.L
                   </label>
                   <label className={checkboxCardLabelCls(health.conditions.giPu)}>
-                    <input type="checkbox" checked={health.conditions.giPu} onChange={e => setHealth(s => ({ ...s, conditions: { ...s.conditions, giPu: e.target.checked } }))} className="h-4 w-4 rounded border-slate-300" />
+                    <input type="checkbox" checked={health.conditions.giPu} onChange={e => setHealth(s => ({ ...s, conditions: { ...s.conditions, giPu: e.target.checked } }))} className="h-4 w-4 rounded border-slate-300 dark:border-slate-600" />
                     GI/PU
                   </label>
                   <label className={checkboxCardLabelCls(health.conditions.ky)}>
-                    <input type="checkbox" checked={health.conditions.ky} onChange={e => setHealth(s => ({ ...s, conditions: { ...s.conditions, ky: e.target.checked } }))} className="h-4 w-4 rounded border-slate-300" />
+                    <input type="checkbox" checked={health.conditions.ky} onChange={e => setHealth(s => ({ ...s, conditions: { ...s.conditions, ky: e.target.checked } }))} className="h-4 w-4 rounded border-slate-300 dark:border-slate-600" />
                     KY
                   </label>
                   <label className={checkboxCardLabelCls(health.conditions.liv)}>
-                    <input type="checkbox" checked={health.conditions.liv} onChange={e => setHealth(s => ({ ...s, conditions: { ...s.conditions, liv: e.target.checked } }))} className="h-4 w-4 rounded border-slate-300" />
+                    <input type="checkbox" checked={health.conditions.liv} onChange={e => setHealth(s => ({ ...s, conditions: { ...s.conditions, liv: e.target.checked } }))} className="h-4 w-4 rounded border-slate-300 dark:border-slate-600" />
                     LIV
                   </label>
                   <label className={checkboxCardLabelCls(health.conditions.hrd)}>
-                    <input type="checkbox" checked={health.conditions.hrd} onChange={e => setHealth(s => ({ ...s, conditions: { ...s.conditions, hrd: e.target.checked } }))} className="h-4 w-4 rounded border-slate-300" />
+                    <input type="checkbox" checked={health.conditions.hrd} onChange={e => setHealth(s => ({ ...s, conditions: { ...s.conditions, hrd: e.target.checked } }))} className="h-4 w-4 rounded border-slate-300 dark:border-slate-600" />
                     HrD
                   </label>
                   <label className={checkboxCardLabelCls(health.conditions.thy)}>
-                    <input type="checkbox" checked={health.conditions.thy} onChange={e => setHealth(s => ({ ...s, conditions: { ...s.conditions, thy: e.target.checked } }))} className="h-4 w-4 rounded border-slate-300" />
+                    <input type="checkbox" checked={health.conditions.thy} onChange={e => setHealth(s => ({ ...s, conditions: { ...s.conditions, thy: e.target.checked } }))} className="h-4 w-4 rounded border-slate-300 dark:border-slate-600" />
                     Thy
                   </label>
                   <label className={checkboxCardLabelCls(health.conditions.accident)}>
-                    <input type="checkbox" checked={health.conditions.accident} onChange={e => setHealth(s => ({ ...s, conditions: { ...s.conditions, accident: e.target.checked } }))} className="h-4 w-4 rounded border-slate-300" />
+                    <input type="checkbox" checked={health.conditions.accident} onChange={e => setHealth(s => ({ ...s, conditions: { ...s.conditions, accident: e.target.checked } }))} className="h-4 w-4 rounded border-slate-300 dark:border-slate-600" />
                     Accident
                   </label>
                   <label className={checkboxCardLabelCls(health.conditions.surgery)}>
-                    <input type="checkbox" checked={health.conditions.surgery} onChange={e => setHealth(s => ({ ...s, conditions: { ...s.conditions, surgery: e.target.checked } }))} className="h-4 w-4 rounded border-slate-300" />
+                    <input type="checkbox" checked={health.conditions.surgery} onChange={e => setHealth(s => ({ ...s, conditions: { ...s.conditions, surgery: e.target.checked } }))} className="h-4 w-4 rounded border-slate-300 dark:border-slate-600" />
                     Surgery
                   </label>
                   <label className={checkboxCardLabelCls(health.conditions.obesity)}>
-                    <input type="checkbox" checked={health.conditions.obesity} onChange={e => setHealth(s => ({ ...s, conditions: { ...s.conditions, obesity: e.target.checked } }))} className="h-4 w-4 rounded border-slate-300" />
+                    <input type="checkbox" checked={health.conditions.obesity} onChange={e => setHealth(s => ({ ...s, conditions: { ...s.conditions, obesity: e.target.checked } }))} className="h-4 w-4 rounded border-slate-300 dark:border-slate-600" />
                     Obesity
                   </label>
                   <label className={checkboxCardLabelCls(health.conditions.penileTruma)}>
-                    <input type="checkbox" checked={health.conditions.penileTruma} onChange={e => setHealth(s => ({ ...s, conditions: { ...s.conditions, penileTruma: e.target.checked } }))} className="h-4 w-4 rounded border-slate-300" />
+                    <input type="checkbox" checked={health.conditions.penileTruma} onChange={e => setHealth(s => ({ ...s, conditions: { ...s.conditions, penileTruma: e.target.checked } }))} className="h-4 w-4 rounded border-slate-300 dark:border-slate-600" />
                     Penile Truma
                   </label>
                   <label className={checkboxCardLabelCls(health.conditions.otherChecked)}>
@@ -3942,7 +4021,7 @@ export default function Doctor_Prescription() {
                           },
                         }
                       ))}
-                      className="h-4 w-4 rounded border-slate-300"
+                      className="h-4 w-4 rounded border-slate-300 dark:border-slate-600"
                     />
                     Other
                   </label>
@@ -3950,11 +4029,11 @@ export default function Doctor_Prescription() {
 
                 {health.conditions.otherChecked && (
                   <div className="mt-3">
-                    <label className="mb-1 block text-sm text-slate-700">Other</label>
+                    <label className="mb-1 block text-sm text-slate-700 dark:text-slate-300">Other</label>
                     <input
                       value={health.conditions.otherText}
                       onChange={e => setHealth(s => ({ ...s, conditions: { ...s.conditions, otherText: e.target.value } }))}
-                      className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+                      className="w-full rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2 text-sm dark:text-slate-200"
                       placeholder="Enter other"
                     />
                   </div>
@@ -3970,7 +4049,7 @@ export default function Doctor_Prescription() {
                         type="checkbox"
                         checked={health.diabetes[k] as boolean}
                         onChange={e => setHealth(s => ({ ...s, diabetes: { ...s.diabetes, [k]: e.target.checked } }))}
-                        className="h-4 w-4 rounded border-slate-300"
+                        className="h-4 w-4 rounded border-slate-300 dark:border-slate-600"
                       />
                       {k === 'me' ? 'Me' : k === 'father' ? 'Father' : 'Mother'}
                     </label>
@@ -3978,12 +4057,12 @@ export default function Doctor_Prescription() {
                 </div>
                 <div className="mt-3 grid gap-4 sm:grid-cols-2">
                   <div>
-                    <label className="mb-1 block text-sm text-slate-700">Since</label>
-                    <input value={health.diabetes.since} onChange={e => setHealth(s => ({ ...s, diabetes: { ...s.diabetes, since: e.target.value } }))} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
+                    <label className="mb-1 block text-sm text-slate-700 dark:text-slate-300">Since</label>
+                    <input value={health.diabetes.since} onChange={e => setHealth(s => ({ ...s, diabetes: { ...s.diabetes, since: e.target.value } }))} className="w-full rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2 text-sm dark:text-slate-200" />
                   </div>
                   <div>
-                    <label className="mb-1 block text-sm text-slate-700">Medicine Taking</label>
-                    <input value={health.diabetes.medicineTaking} onChange={e => setHealth(s => ({ ...s, diabetes: { ...s.diabetes, medicineTaking: e.target.value } }))} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
+                    <label className="mb-1 block text-sm text-slate-700 dark:text-slate-300">Medicine Taking</label>
+                    <input value={health.diabetes.medicineTaking} onChange={e => setHealth(s => ({ ...s, diabetes: { ...s.diabetes, medicineTaking: e.target.value } }))} className="w-full rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2 text-sm dark:text-slate-200" />
                   </div>
                 </div>
               </div>
@@ -3997,7 +4076,7 @@ export default function Doctor_Prescription() {
                         type="checkbox"
                         checked={health.hypertension[k] as boolean}
                         onChange={e => setHealth(s => ({ ...s, hypertension: { ...s.hypertension, [k]: e.target.checked } }))}
-                        className="h-4 w-4 rounded border-slate-300"
+                        className="h-4 w-4 rounded border-slate-300 dark:border-slate-600"
                       />
                       {k === 'me' ? 'Me' : k === 'father' ? 'Father' : 'Mother'}
                     </label>
@@ -4005,12 +4084,12 @@ export default function Doctor_Prescription() {
                 </div>
                 <div className="mt-3 grid gap-4 sm:grid-cols-2">
                   <div>
-                    <label className="mb-1 block text-sm text-slate-700">Since</label>
-                    <input value={health.hypertension.since} onChange={e => setHealth(s => ({ ...s, hypertension: { ...s.hypertension, since: e.target.value } }))} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
+                    <label className="mb-1 block text-sm text-slate-700 dark:text-slate-300">Since</label>
+                    <input value={health.hypertension.since} onChange={e => setHealth(s => ({ ...s, hypertension: { ...s.hypertension, since: e.target.value } }))} className="w-full rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2 text-sm dark:text-slate-200" />
                   </div>
                   <div>
-                    <label className="mb-1 block text-sm text-slate-700">Medicine Taking</label>
-                    <input value={health.hypertension.medicineTaking} onChange={e => setHealth(s => ({ ...s, hypertension: { ...s.hypertension, medicineTaking: e.target.value } }))} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
+                    <label className="mb-1 block text-sm text-slate-700 dark:text-slate-300">Medicine Taking</label>
+                    <input value={health.hypertension.medicineTaking} onChange={e => setHealth(s => ({ ...s, hypertension: { ...s.hypertension, medicineTaking: e.target.value } }))} className="w-full rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2 text-sm dark:text-slate-200" />
                   </div>
                 </div>
               </div>
@@ -4019,38 +4098,38 @@ export default function Doctor_Prescription() {
                 <div className="text-sm font-semibold text-slate-800">Drug History</div>
                 <div className="mt-2 flex flex-wrap items-center gap-6">
                   <label className="flex items-center gap-2 text-sm text-slate-700">
-                    <input type="checkbox" checked={health.drugHistory.wine} onChange={e => setHealth(s => ({ ...s, drugHistory: { ...s.drugHistory, wine: e.target.checked } }))} className="h-4 w-4 rounded border-slate-300" />
+                    <input type="checkbox" checked={health.drugHistory.wine} onChange={e => setHealth(s => ({ ...s, drugHistory: { ...s.drugHistory, wine: e.target.checked } }))} className="h-4 w-4 rounded border-slate-300 dark:border-slate-600" />
                     Wine
                   </label>
                   <label className="flex items-center gap-2 text-sm text-slate-700">
-                    <input type="checkbox" checked={health.drugHistory.weed} onChange={e => setHealth(s => ({ ...s, drugHistory: { ...s.drugHistory, weed: e.target.checked } }))} className="h-4 w-4 rounded border-slate-300" />
+                    <input type="checkbox" checked={health.drugHistory.weed} onChange={e => setHealth(s => ({ ...s, drugHistory: { ...s.drugHistory, weed: e.target.checked } }))} className="h-4 w-4 rounded border-slate-300 dark:border-slate-600" />
                     Weed
                   </label>
                   <label className="flex items-center gap-2 text-sm text-slate-700">
-                    <input type="checkbox" checked={health.drugHistory.tobacco} onChange={e => setHealth(s => ({ ...s, drugHistory: { ...s.drugHistory, tobacco: e.target.checked } }))} className="h-4 w-4 rounded border-slate-300" />
+                    <input type="checkbox" checked={health.drugHistory.tobacco} onChange={e => setHealth(s => ({ ...s, drugHistory: { ...s.drugHistory, tobacco: e.target.checked } }))} className="h-4 w-4 rounded border-slate-300 dark:border-slate-600" />
                     Tobacco
                   </label>
                   <label className="flex items-center gap-2 text-sm text-slate-700">
-                    <input type="checkbox" checked={health.drugHistory.gutka} onChange={e => setHealth(s => ({ ...s, drugHistory: { ...s.drugHistory, gutka: e.target.checked } }))} className="h-4 w-4 rounded border-slate-300" />
+                    <input type="checkbox" checked={health.drugHistory.gutka} onChange={e => setHealth(s => ({ ...s, drugHistory: { ...s.drugHistory, gutka: e.target.checked } }))} className="h-4 w-4 rounded border-slate-300 dark:border-slate-600" />
                     Gutka
                   </label>
                   <label className="flex items-center gap-2 text-sm text-slate-700">
-                    <input type="checkbox" checked={health.drugHistory.naswar} onChange={e => setHealth(s => ({ ...s, drugHistory: { ...s.drugHistory, naswar: e.target.checked } }))} className="h-4 w-4 rounded border-slate-300" />
+                    <input type="checkbox" checked={health.drugHistory.naswar} onChange={e => setHealth(s => ({ ...s, drugHistory: { ...s.drugHistory, naswar: e.target.checked } }))} className="h-4 w-4 rounded border-slate-300 dark:border-slate-600" />
                     Naswar
                   </label>
                   <label className="flex items-center gap-2 text-sm text-slate-700">
-                    <input type="checkbox" checked={health.drugHistory.pan} onChange={e => setHealth(s => ({ ...s, drugHistory: { ...s.drugHistory, pan: e.target.checked } }))} className="h-4 w-4 rounded border-slate-300" />
+                    <input type="checkbox" checked={health.drugHistory.pan} onChange={e => setHealth(s => ({ ...s, drugHistory: { ...s.drugHistory, pan: e.target.checked } }))} className="h-4 w-4 rounded border-slate-300 dark:border-slate-600" />
                     Pan
                   </label>
                 </div>
                 <div className="mt-3 grid gap-4 sm:grid-cols-2">
                   <div>
-                    <label className="mb-1 block text-sm text-slate-700">Other</label>
-                    <input value={health.drugHistory.other} onChange={e => setHealth(s => ({ ...s, drugHistory: { ...s.drugHistory, other: e.target.value } }))} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
+                    <label className="mb-1 block text-sm text-slate-700 dark:text-slate-300">Other</label>
+                    <input value={health.drugHistory.other} onChange={e => setHealth(s => ({ ...s, drugHistory: { ...s.drugHistory, other: e.target.value } }))} className="w-full rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2 text-sm dark:text-slate-200" />
                   </div>
                   <div>
-                    <label className="mb-1 block text-sm text-slate-700">Quit</label>
-                    <input value={health.drugHistory.quit} onChange={e => setHealth(s => ({ ...s, drugHistory: { ...s.drugHistory, quit: e.target.value } }))} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
+                    <label className="mb-1 block text-sm text-slate-700 dark:text-slate-300">Quit</label>
+                    <input value={health.drugHistory.quit} onChange={e => setHealth(s => ({ ...s, drugHistory: { ...s.drugHistory, quit: e.target.value } }))} className="w-full rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2 text-sm dark:text-slate-200" />
                   </div>
                 </div>
               </div>
@@ -4076,7 +4155,7 @@ export default function Doctor_Prescription() {
                             },
                           }
                         ))}
-                        className="h-4 w-4 rounded border-slate-300"
+                        className="h-4 w-4 rounded border-slate-300 dark:border-slate-600"
                       />
                       {opt}
                     </label>
@@ -4087,12 +4166,12 @@ export default function Doctor_Prescription() {
                   <div className="mt-3 space-y-3">
                     <div className="grid gap-4 sm:grid-cols-2">
                       <div>
-                        <label className="mb-1 block text-sm text-slate-700">Since</label>
-                        <input value={health.smoking.since} onChange={e => setHealth(s => ({ ...s, smoking: { ...s.smoking, since: e.target.value } }))} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
+                        <label className="mb-1 block text-sm text-slate-700 dark:text-slate-300">Since</label>
+                        <input value={health.smoking.since} onChange={e => setHealth(s => ({ ...s, smoking: { ...s.smoking, since: e.target.value } }))} className="w-full rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2 text-sm dark:text-slate-200" />
                       </div>
                       <div>
-                        <label className="mb-1 block text-sm text-slate-700">Quit</label>
-                        <input value={health.smoking.quit} onChange={e => setHealth(s => ({ ...s, smoking: { ...s.smoking, quit: e.target.value } }))} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
+                        <label className="mb-1 block text-sm text-slate-700 dark:text-slate-300">Quit</label>
+                        <input value={health.smoking.quit} onChange={e => setHealth(s => ({ ...s, smoking: { ...s.smoking, quit: e.target.value } }))} className="w-full rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2 text-sm dark:text-slate-200" />
                       </div>
                     </div>
 
@@ -4105,7 +4184,7 @@ export default function Doctor_Prescription() {
                               type="checkbox"
                               checked={health.smoking.quantityUnit === opt}
                               onChange={(e) => setHealth(s => ({ ...s, smoking: { ...s.smoking, quantityUnit: e.target.checked ? opt : '' } }))}
-                              className="h-4 w-4 rounded border-slate-300"
+                              className="h-4 w-4 rounded border-slate-300 dark:border-slate-600"
                             />
                             {opt}
                           </label>
@@ -4130,16 +4209,16 @@ export default function Doctor_Prescription() {
                 <div className="text-sm font-semibold text-slate-800">Erection</div>
                 <div className="mt-3 grid gap-4 sm:grid-cols-2">
                   <div>
-                    <label className="mb-1 block text-sm text-slate-700">Percentage</label>
-                    <input value={sexualHistory.erection.percentage} onChange={e => setSexualHistory(s => ({ ...s, erection: { ...s.erection, percentage: e.target.value } }))} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
+                    <label className="mb-1 block text-sm text-slate-700 dark:text-slate-300">Percentage</label>
+                    <input value={sexualHistory.erection.percentage} onChange={e => setSexualHistory(s => ({ ...s, erection: { ...s.erection, percentage: e.target.value } }))} className="w-full rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2 text-sm dark:text-slate-200" />
                   </div>
                   <div>
-                    <label className="mb-1 block text-sm text-slate-700">Since</label>
+                    <label className="mb-1 block text-sm text-slate-700 dark:text-slate-300">Since</label>
                     <div className="flex flex-wrap items-center gap-3">
-                      <input value={sexualHistory.erection.sinceValue} onChange={e => setSexualHistory(s => ({ ...s, erection: { ...s.erection, sinceValue: e.target.value } }))} className="w-28 rounded-md border border-slate-300 px-3 py-2 text-sm" placeholder="#" />
+                      <input value={sexualHistory.erection.sinceValue} onChange={e => setSexualHistory(s => ({ ...s, erection: { ...s.erection, sinceValue: e.target.value } }))} className="w-28 rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2 text-sm dark:text-slate-200" placeholder="#" />
                       {(['Year', 'Month', 'Week', 'Day'] as const).map(opt => (
                         <label key={opt} className="flex items-center gap-2 text-sm text-slate-700">
-                          <input type="checkbox" checked={sexualHistory.erection.sinceUnit === opt} onChange={(e) => setSexualHistory(s => ({ ...s, erection: { ...s.erection, sinceUnit: e.target.checked ? opt : '' } }))} className="h-4 w-4 rounded border-slate-300" />
+                          <input type="checkbox" checked={sexualHistory.erection.sinceUnit === opt} onChange={(e) => setSexualHistory(s => ({ ...s, erection: { ...s.erection, sinceUnit: e.target.checked ? opt : '' } }))} className="h-4 w-4 rounded border-slate-300 dark:border-slate-600" />
                           {opt}
                         </label>
                       ))}
@@ -4149,11 +4228,11 @@ export default function Doctor_Prescription() {
 
                 <div className="mt-4 grid gap-2 sm:grid-cols-2">
                   <label className={checkboxCardLabelCls(sexualHistory.erection.prePeni)}>
-                    <input type="checkbox" checked={sexualHistory.erection.prePeni} onChange={e => setSexualHistory(s => ({ ...s, erection: { ...s.erection, prePeni: e.target.checked } }))} className="h-4 w-4 rounded border-slate-300" />
+                    <input type="checkbox" checked={sexualHistory.erection.prePeni} onChange={e => setSexualHistory(s => ({ ...s, erection: { ...s.erection, prePeni: e.target.checked } }))} className="h-4 w-4 rounded border-slate-300 dark:border-slate-600" />
                     Pre peni
                   </label>
                   <label className={checkboxCardLabelCls(sexualHistory.erection.postPeni)}>
-                    <input type="checkbox" checked={sexualHistory.erection.postPeni} onChange={e => setSexualHistory(s => ({ ...s, erection: { ...s.erection, postPeni: e.target.checked } }))} className="h-4 w-4 rounded border-slate-300" />
+                    <input type="checkbox" checked={sexualHistory.erection.postPeni} onChange={e => setSexualHistory(s => ({ ...s, erection: { ...s.erection, postPeni: e.target.checked } }))} className="h-4 w-4 rounded border-slate-300 dark:border-slate-600" />
                     Post peni
                   </label>
                 </div>
@@ -4164,7 +4243,7 @@ export default function Doctor_Prescription() {
                     <div className="flex flex-wrap items-center gap-6">
                       {(['Yes', 'No'] as const).map(opt => (
                         <label key={opt} className="flex items-center gap-2 text-sm text-slate-700">
-                          <input type="checkbox" checked={sexualHistory.erection.ej === opt} onChange={(e) => setSexualHistory(s => ({ ...s, erection: { ...s.erection, ej: e.target.checked ? opt : '' } }))} className="h-4 w-4 rounded border-slate-300" />
+                          <input type="checkbox" checked={sexualHistory.erection.ej === opt} onChange={(e) => setSexualHistory(s => ({ ...s, erection: { ...s.erection, ej: e.target.checked ? opt : '' } }))} className="h-4 w-4 rounded border-slate-300 dark:border-slate-600" />
                           {opt}
                         </label>
                       ))}
@@ -4175,7 +4254,7 @@ export default function Doctor_Prescription() {
                     <div className="flex flex-wrap items-center gap-6">
                       {(['Yes', 'No'] as const).map(opt => (
                         <label key={opt} className="flex items-center gap-2 text-sm text-slate-700">
-                          <input type="checkbox" checked={sexualHistory.erection.med === opt} onChange={(e) => setSexualHistory(s => ({ ...s, erection: { ...s.erection, med: e.target.checked ? opt : '' } }))} className="h-4 w-4 rounded border-slate-300" />
+                          <input type="checkbox" checked={sexualHistory.erection.med === opt} onChange={(e) => setSexualHistory(s => ({ ...s, erection: { ...s.erection, med: e.target.checked ? opt : '' } }))} className="h-4 w-4 rounded border-slate-300 dark:border-slate-600" />
                           {opt}
                         </label>
                       ))}
@@ -4184,8 +4263,8 @@ export default function Doctor_Prescription() {
                 </div>
 
                 <div className="mt-4">
-                  <label className="mb-1 block text-sm text-slate-700">Other</label>
-                  <input value={sexualHistory.erection.other} onChange={e => setSexualHistory(s => ({ ...s, erection: { ...s.erection, other: e.target.value } }))} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
+                  <label className="mb-1 block text-sm text-slate-700 dark:text-slate-300">Other</label>
+                  <input value={sexualHistory.erection.other} onChange={e => setSexualHistory(s => ({ ...s, erection: { ...s.erection, other: e.target.value } }))} className="w-full rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2 text-sm dark:text-slate-200" />
                 </div>
               </div>
 
@@ -4197,23 +4276,23 @@ export default function Doctor_Prescription() {
                     <div className="text-sm font-semibold text-slate-800">Pre-Marriage</div>
                     <div className="mt-3 flex flex-wrap items-center gap-6">
                       <label className="flex items-center gap-2 text-sm text-slate-700">
-                        <input type="checkbox" checked={sexualHistory.experiences.preMarriage.gf} onChange={e => setSexualHistory(s => ({ ...s, experiences: { ...s.experiences, preMarriage: { ...s.experiences.preMarriage, gf: e.target.checked } } }))} className="h-4 w-4 rounded border-slate-300" />
+                        <input type="checkbox" checked={sexualHistory.experiences.preMarriage.gf} onChange={e => setSexualHistory(s => ({ ...s, experiences: { ...s.experiences, preMarriage: { ...s.experiences.preMarriage, gf: e.target.checked } } }))} className="h-4 w-4 rounded border-slate-300 dark:border-slate-600" />
                         GF
                       </label>
                       <label className="flex items-center gap-2 text-sm text-slate-700">
-                        <input type="checkbox" checked={sexualHistory.experiences.preMarriage.male} onChange={e => setSexualHistory(s => ({ ...s, experiences: { ...s.experiences, preMarriage: { ...s.experiences.preMarriage, male: e.target.checked } } }))} className="h-4 w-4 rounded border-slate-300" />
+                        <input type="checkbox" checked={sexualHistory.experiences.preMarriage.male} onChange={e => setSexualHistory(s => ({ ...s, experiences: { ...s.experiences, preMarriage: { ...s.experiences.preMarriage, male: e.target.checked } } }))} className="h-4 w-4 rounded border-slate-300 dark:border-slate-600" />
                         Male
                       </label>
                       <label className="flex items-center gap-2 text-sm text-slate-700">
-                        <input type="checkbox" checked={sexualHistory.experiences.preMarriage.pros} onChange={e => setSexualHistory(s => ({ ...s, experiences: { ...s.experiences, preMarriage: { ...s.experiences.preMarriage, pros: e.target.checked } } }))} className="h-4 w-4 rounded border-slate-300" />
+                        <input type="checkbox" checked={sexualHistory.experiences.preMarriage.pros} onChange={e => setSexualHistory(s => ({ ...s, experiences: { ...s.experiences, preMarriage: { ...s.experiences.preMarriage, pros: e.target.checked } } }))} className="h-4 w-4 rounded border-slate-300 dark:border-slate-600" />
                         Pros
                       </label>
                       <label className="flex items-center gap-2 text-sm text-slate-700">
-                        <input type="checkbox" checked={sexualHistory.experiences.preMarriage.mb} onChange={e => setSexualHistory(s => ({ ...s, experiences: { ...s.experiences, preMarriage: { ...s.experiences.preMarriage, mb: e.target.checked } } }))} className="h-4 w-4 rounded border-slate-300" />
+                        <input type="checkbox" checked={sexualHistory.experiences.preMarriage.mb} onChange={e => setSexualHistory(s => ({ ...s, experiences: { ...s.experiences, preMarriage: { ...s.experiences.preMarriage, mb: e.target.checked } } }))} className="h-4 w-4 rounded border-slate-300 dark:border-slate-600" />
                         MB
                       </label>
                       <label className="flex items-center gap-2 text-sm text-slate-700">
-                        <input type="checkbox" checked={!!sexualHistory.experiences.preMarriage.multipleP} onChange={e => setSexualHistory(s => ({ ...s, experiences: { ...s.experiences, preMarriage: { ...s.experiences.preMarriage, multipleP: e.target.checked } } }))} className="h-4 w-4 rounded border-slate-300" />
+                        <input type="checkbox" checked={!!sexualHistory.experiences.preMarriage.multipleP} onChange={e => setSexualHistory(s => ({ ...s, experiences: { ...s.experiences, preMarriage: { ...s.experiences.preMarriage, multipleP: e.target.checked } } }))} className="h-4 w-4 rounded border-slate-300 dark:border-slate-600" />
                         Multiple.P
                       </label>
                     </div>
@@ -4223,7 +4302,7 @@ export default function Doctor_Prescription() {
                       <div className="flex flex-wrap items-center gap-6">
                         {(['Once', 'Multiple'] as const).map(opt => (
                           <label key={opt} className="flex items-center gap-2 text-sm text-slate-700">
-                            <input type="checkbox" checked={sexualHistory.experiences.preMarriage.multipleOrOnce === opt} onChange={(e) => setSexualHistory(s => ({ ...s, experiences: { ...s.experiences, preMarriage: { ...s.experiences.preMarriage, multipleOrOnce: e.target.checked ? opt : '' } } }))} className="h-4 w-4 rounded border-slate-300" />
+                            <input type="checkbox" checked={sexualHistory.experiences.preMarriage.multipleOrOnce === opt} onChange={(e) => setSexualHistory(s => ({ ...s, experiences: { ...s.experiences, preMarriage: { ...s.experiences.preMarriage, multipleOrOnce: e.target.checked ? opt : '' } } }))} className="h-4 w-4 rounded border-slate-300 dark:border-slate-600" />
                             {opt}
                           </label>
                         ))}
@@ -4231,8 +4310,8 @@ export default function Doctor_Prescription() {
                     </div>
 
                     <div className="mt-4">
-                      <label className="mb-1 block text-sm text-slate-700">Others</label>
-                      <input value={sexualHistory.experiences.preMarriage.other} onChange={e => setSexualHistory(s => ({ ...s, experiences: { ...s.experiences, preMarriage: { ...s.experiences.preMarriage, other: e.target.value } } }))} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
+                      <label className="mb-1 block text-sm text-slate-700 dark:text-slate-300">Others</label>
+                      <input value={sexualHistory.experiences.preMarriage.other} onChange={e => setSexualHistory(s => ({ ...s, experiences: { ...s.experiences, preMarriage: { ...s.experiences.preMarriage, other: e.target.value } } }))} className="w-full rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2 text-sm dark:text-slate-200" />
                     </div>
                   </div>
 
@@ -4240,23 +4319,23 @@ export default function Doctor_Prescription() {
                     <div className="text-sm font-semibold text-slate-800">Post Marriage</div>
                     <div className="mt-3 flex flex-wrap items-center gap-6">
                       <label className="flex items-center gap-2 text-sm text-slate-700">
-                        <input type="checkbox" checked={sexualHistory.experiences.postMarriage.gf} onChange={e => setSexualHistory(s => ({ ...s, experiences: { ...s.experiences, postMarriage: { ...s.experiences.postMarriage, gf: e.target.checked } } }))} className="h-4 w-4 rounded border-slate-300" />
+                        <input type="checkbox" checked={sexualHistory.experiences.postMarriage.gf} onChange={e => setSexualHistory(s => ({ ...s, experiences: { ...s.experiences, postMarriage: { ...s.experiences.postMarriage, gf: e.target.checked } } }))} className="h-4 w-4 rounded border-slate-300 dark:border-slate-600" />
                         GF
                       </label>
                       <label className="flex items-center gap-2 text-sm text-slate-700">
-                        <input type="checkbox" checked={sexualHistory.experiences.postMarriage.male} onChange={e => setSexualHistory(s => ({ ...s, experiences: { ...s.experiences, postMarriage: { ...s.experiences.postMarriage, male: e.target.checked } } }))} className="h-4 w-4 rounded border-slate-300" />
+                        <input type="checkbox" checked={sexualHistory.experiences.postMarriage.male} onChange={e => setSexualHistory(s => ({ ...s, experiences: { ...s.experiences, postMarriage: { ...s.experiences.postMarriage, male: e.target.checked } } }))} className="h-4 w-4 rounded border-slate-300 dark:border-slate-600" />
                         Male
                       </label>
                       <label className="flex items-center gap-2 text-sm text-slate-700">
-                        <input type="checkbox" checked={sexualHistory.experiences.postMarriage.pros} onChange={e => setSexualHistory(s => ({ ...s, experiences: { ...s.experiences, postMarriage: { ...s.experiences.postMarriage, pros: e.target.checked } } }))} className="h-4 w-4 rounded border-slate-300" />
+                        <input type="checkbox" checked={sexualHistory.experiences.postMarriage.pros} onChange={e => setSexualHistory(s => ({ ...s, experiences: { ...s.experiences, postMarriage: { ...s.experiences.postMarriage, pros: e.target.checked } } }))} className="h-4 w-4 rounded border-slate-300 dark:border-slate-600" />
                         Pros
                       </label>
                       <label className="flex items-center gap-2 text-sm text-slate-700">
-                        <input type="checkbox" checked={sexualHistory.experiences.postMarriage.mb} onChange={e => setSexualHistory(s => ({ ...s, experiences: { ...s.experiences, postMarriage: { ...s.experiences.postMarriage, mb: e.target.checked } } }))} className="h-4 w-4 rounded border-slate-300" />
+                        <input type="checkbox" checked={sexualHistory.experiences.postMarriage.mb} onChange={e => setSexualHistory(s => ({ ...s, experiences: { ...s.experiences, postMarriage: { ...s.experiences.postMarriage, mb: e.target.checked } } }))} className="h-4 w-4 rounded border-slate-300 dark:border-slate-600" />
                         MB
                       </label>
                       <label className="flex items-center gap-2 text-sm text-slate-700">
-                        <input type="checkbox" checked={!!sexualHistory.experiences.postMarriage.multipleP} onChange={e => setSexualHistory(s => ({ ...s, experiences: { ...s.experiences, postMarriage: { ...s.experiences.postMarriage, multipleP: e.target.checked } } }))} className="h-4 w-4 rounded border-slate-300" />
+                        <input type="checkbox" checked={!!sexualHistory.experiences.postMarriage.multipleP} onChange={e => setSexualHistory(s => ({ ...s, experiences: { ...s.experiences, postMarriage: { ...s.experiences.postMarriage, multipleP: e.target.checked } } }))} className="h-4 w-4 rounded border-slate-300 dark:border-slate-600" />
                         Multiple.P
                       </label>
                     </div>
@@ -4266,7 +4345,7 @@ export default function Doctor_Prescription() {
                       <div className="flex flex-wrap items-center gap-6">
                         {(['Once', 'Multiple'] as const).map(opt => (
                           <label key={opt} className="flex items-center gap-2 text-sm text-slate-700">
-                            <input type="checkbox" checked={sexualHistory.experiences.postMarriage.multipleOrOnce === opt} onChange={(e) => setSexualHistory(s => ({ ...s, experiences: { ...s.experiences, postMarriage: { ...s.experiences.postMarriage, multipleOrOnce: e.target.checked ? opt : '' } } }))} className="h-4 w-4 rounded border-slate-300" />
+                            <input type="checkbox" checked={sexualHistory.experiences.postMarriage.multipleOrOnce === opt} onChange={(e) => setSexualHistory(s => ({ ...s, experiences: { ...s.experiences, postMarriage: { ...s.experiences.postMarriage, multipleOrOnce: e.target.checked ? opt : '' } } }))} className="h-4 w-4 rounded border-slate-300 dark:border-slate-600" />
                             {opt}
                           </label>
                         ))}
@@ -4274,8 +4353,8 @@ export default function Doctor_Prescription() {
                     </div>
 
                     <div className="mt-4">
-                      <label className="mb-1 block text-sm text-slate-700">Others</label>
-                      <input value={sexualHistory.experiences.postMarriage.other} onChange={e => setSexualHistory(s => ({ ...s, experiences: { ...s.experiences, postMarriage: { ...s.experiences.postMarriage, other: e.target.value } } }))} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
+                      <label className="mb-1 block text-sm text-slate-700 dark:text-slate-300">Others</label>
+                      <input value={sexualHistory.experiences.postMarriage.other} onChange={e => setSexualHistory(s => ({ ...s, experiences: { ...s.experiences, postMarriage: { ...s.experiences.postMarriage, other: e.target.value } } }))} className="w-full rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2 text-sm dark:text-slate-200" />
                     </div>
                   </div>
                 </div>
@@ -4286,7 +4365,7 @@ export default function Doctor_Prescription() {
                 <div className="mt-3 flex flex-wrap items-center gap-6">
                   {(['OK', 'NIL', 'RARE'] as const).map(opt => (
                     <label key={opt} className="flex items-center gap-2 text-sm text-slate-700">
-                      <input type="checkbox" checked={sexualHistory.npt.status === opt} onChange={(e) => setSexualHistory(s => ({ ...s, npt: { ...s.npt, status: e.target.checked ? opt : '' } }))} className="h-4 w-4 rounded border-slate-300" />
+                      <input type="checkbox" checked={sexualHistory.npt.status === opt} onChange={(e) => setSexualHistory(s => ({ ...s, npt: { ...s.npt, status: e.target.checked ? opt : '' } }))} className="h-4 w-4 rounded border-slate-300 dark:border-slate-600" />
                       {opt}
                     </label>
                   ))}
@@ -4294,27 +4373,27 @@ export default function Doctor_Prescription() {
 
                 <div className="mt-4 grid gap-4 sm:grid-cols-2">
                   <div>
-                    <label className="mb-1 block text-sm text-slate-700">Erection(%)</label>
-                    <input value={sexualHistory.npt.erectionPercentage} onChange={e => setSexualHistory(s => ({ ...s, npt: { ...s.npt, erectionPercentage: e.target.value } }))} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
+                    <label className="mb-1 block text-sm text-slate-700 dark:text-slate-300">Erection(%)</label>
+                    <input value={sexualHistory.npt.erectionPercentage} onChange={e => setSexualHistory(s => ({ ...s, npt: { ...s.npt, erectionPercentage: e.target.value } }))} className="w-full rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2 text-sm dark:text-slate-200" />
                   </div>
                   <div>
-                    <label className="mb-1 block text-sm text-slate-700">Since</label>
+                    <label className="mb-1 block text-sm text-slate-700 dark:text-slate-300">Since</label>
                     <div className="flex flex-wrap items-center gap-3">
-                      <input value={sexualHistory.npt.sinceValue} onChange={e => setSexualHistory(s => ({ ...s, npt: { ...s.npt, sinceValue: e.target.value } }))} className="w-28 rounded-md border border-slate-300 px-3 py-2 text-sm" placeholder="#" />
+                      <input value={sexualHistory.npt.sinceValue} onChange={e => setSexualHistory(s => ({ ...s, npt: { ...s.npt, sinceValue: e.target.value } }))} className="w-28 rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2 text-sm dark:text-slate-200" placeholder="#" />
                       <label className="flex items-center gap-2 text-sm text-slate-700">
-                        <input type="checkbox" checked={sexualHistory.npt.sinceUnit === 'Year'} onChange={(e) => setSexualHistory(s => ({ ...s, npt: { ...s.npt, sinceUnit: e.target.checked ? 'Year' : '' } }))} className="h-4 w-4 rounded border-slate-300" />
+                        <input type="checkbox" checked={sexualHistory.npt.sinceUnit === 'Year'} onChange={(e) => setSexualHistory(s => ({ ...s, npt: { ...s.npt, sinceUnit: e.target.checked ? 'Year' : '' } }))} className="h-4 w-4 rounded border-slate-300 dark:border-slate-600" />
                         Year
                       </label>
                       <label className="flex items-center gap-2 text-sm text-slate-700">
-                        <input type="checkbox" checked={sexualHistory.npt.sinceUnit === 'Month'} onChange={(e) => setSexualHistory(s => ({ ...s, npt: { ...s.npt, sinceUnit: e.target.checked ? 'Month' : '' } }))} className="h-4 w-4 rounded border-slate-300" />
+                        <input type="checkbox" checked={sexualHistory.npt.sinceUnit === 'Month'} onChange={(e) => setSexualHistory(s => ({ ...s, npt: { ...s.npt, sinceUnit: e.target.checked ? 'Month' : '' } }))} className="h-4 w-4 rounded border-slate-300 dark:border-slate-600" />
                         Month
                       </label>
                       <label className="flex items-center gap-2 text-sm text-slate-700">
-                        <input type="checkbox" checked={sexualHistory.npt.sinceUnit === 'Week'} onChange={(e) => setSexualHistory(s => ({ ...s, npt: { ...s.npt, sinceUnit: e.target.checked ? 'Week' : '' } }))} className="h-4 w-4 rounded border-slate-300" />
+                        <input type="checkbox" checked={sexualHistory.npt.sinceUnit === 'Week'} onChange={(e) => setSexualHistory(s => ({ ...s, npt: { ...s.npt, sinceUnit: e.target.checked ? 'Week' : '' } }))} className="h-4 w-4 rounded border-slate-300 dark:border-slate-600" />
                         Week
                       </label>
                       <label className="flex items-center gap-2 text-sm text-slate-700">
-                        <input type="checkbox" checked={sexualHistory.npt.sinceUnit === 'Day'} onChange={(e) => setSexualHistory(s => ({ ...s, npt: { ...s.npt, sinceUnit: e.target.checked ? 'Day' : '' } }))} className="h-4 w-4 rounded border-slate-300" />
+                        <input type="checkbox" checked={sexualHistory.npt.sinceUnit === 'Day'} onChange={(e) => setSexualHistory(s => ({ ...s, npt: { ...s.npt, sinceUnit: e.target.checked ? 'Day' : '' } }))} className="h-4 w-4 rounded border-slate-300 dark:border-slate-600" />
                         Day
                       </label>
                     </div>
@@ -4322,8 +4401,8 @@ export default function Doctor_Prescription() {
                 </div>
 
                 <div className="mt-4">
-                  <label className="mb-1 block text-sm text-slate-700">Other</label>
-                  <input value={sexualHistory.npt.other} onChange={e => setSexualHistory(s => ({ ...s, npt: { ...s.npt, other: e.target.value } }))} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
+                  <label className="mb-1 block text-sm text-slate-700 dark:text-slate-300">Other</label>
+                  <input value={sexualHistory.npt.other} onChange={e => setSexualHistory(s => ({ ...s, npt: { ...s.npt, other: e.target.value } }))} className="w-full rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2 text-sm dark:text-slate-200" />
                 </div>
               </div>
 
@@ -4333,14 +4412,14 @@ export default function Doctor_Prescription() {
                   <div className="mt-3 flex flex-wrap items-center gap-6">
                     {(['Yes', 'No'] as const).map(opt => (
                       <label key={opt} className="flex items-center gap-2 text-sm text-slate-700">
-                        <input type="checkbox" checked={sexualHistory.desire.status === opt} onChange={(e) => setSexualHistory(s => ({ ...s, desire: { ...s.desire, status: e.target.checked ? opt : '' } }))} className="h-4 w-4 rounded border-slate-300" />
+                        <input type="checkbox" checked={sexualHistory.desire.status === opt} onChange={(e) => setSexualHistory(s => ({ ...s, desire: { ...s.desire, status: e.target.checked ? opt : '' } }))} className="h-4 w-4 rounded border-slate-300 dark:border-slate-600" />
                         {opt}
                       </label>
                     ))}
                   </div>
                   <div className="mt-4">
-                    <label className="mb-1 block text-sm text-slate-700">Other</label>
-                    <input value={sexualHistory.desire.other} onChange={e => setSexualHistory(s => ({ ...s, desire: { ...s.desire, other: e.target.value } }))} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
+                    <label className="mb-1 block text-sm text-slate-700 dark:text-slate-300">Other</label>
+                    <input value={sexualHistory.desire.other} onChange={e => setSexualHistory(s => ({ ...s, desire: { ...s.desire, other: e.target.value } }))} className="w-full rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2 text-sm dark:text-slate-200" />
                   </div>
                 </div>
 
@@ -4349,14 +4428,14 @@ export default function Doctor_Prescription() {
                   <div className="mt-3 flex flex-wrap items-center gap-6">
                     {(['Yes', 'No'] as const).map(opt => (
                       <label key={opt} className="flex items-center gap-2 text-sm text-slate-700">
-                        <input type="checkbox" checked={sexualHistory.nightfall.status === opt} onChange={(e) => setSexualHistory(s => ({ ...s, nightfall: { ...s.nightfall, status: e.target.checked ? opt : '' } }))} className="h-4 w-4 rounded border-slate-300" />
+                        <input type="checkbox" checked={sexualHistory.nightfall.status === opt} onChange={(e) => setSexualHistory(s => ({ ...s, nightfall: { ...s.nightfall, status: e.target.checked ? opt : '' } }))} className="h-4 w-4 rounded border-slate-300 dark:border-slate-600" />
                         {opt}
                       </label>
                     ))}
                   </div>
                   <div className="mt-4">
-                    <label className="mb-1 block text-sm text-slate-700">Other</label>
-                    <input value={sexualHistory.nightfall.other} onChange={e => setSexualHistory(s => ({ ...s, nightfall: { ...s.nightfall, other: e.target.value } }))} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
+                    <label className="mb-1 block text-sm text-slate-700 dark:text-slate-300">Other</label>
+                    <input value={sexualHistory.nightfall.other} onChange={e => setSexualHistory(s => ({ ...s, nightfall: { ...s.nightfall, other: e.target.value } }))} className="w-full rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2 text-sm dark:text-slate-200" />
                   </div>
                 </div>
               </div>
@@ -4380,7 +4459,7 @@ export default function Doctor_Prescription() {
                                 preJustUnit: e.target.checked ? s.pe.preJustUnit : '',
                               },
                             }))}
-                            className="h-4 w-4 rounded border-slate-300"
+                            className="h-4 w-4 rounded border-slate-300 dark:border-slate-600"
                           />
                           {opt}
                         </label>
@@ -4389,14 +4468,14 @@ export default function Doctor_Prescription() {
 
                     {!!sexualHistory.pe.preJustType && (
                       <div className="mt-3 flex flex-wrap items-center gap-3">
-                        <input value={sexualHistory.pe.preJustValue} onChange={e => setSexualHistory(s => ({ ...s, pe: { ...s.pe, preJustValue: e.target.value } }))} className="w-28 rounded-md border border-slate-300 px-3 py-2 text-sm" placeholder="#" />
+                        <input value={sexualHistory.pe.preJustValue} onChange={e => setSexualHistory(s => ({ ...s, pe: { ...s.pe, preJustValue: e.target.value } }))} className="w-28 rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2 text-sm dark:text-slate-200" placeholder="#" />
                         {(['Sec', 'JK', 'Min'] as const).map(opt => (
                           <label key={opt} className="flex items-center gap-2 text-sm text-slate-700">
                             <input
                               type="checkbox"
                               checked={sexualHistory.pe.preJustUnit === opt}
                               onChange={(e) => setSexualHistory(s => ({ ...s, pe: { ...s.pe, preJustUnit: e.target.checked ? opt : '' } }))}
-                              className="h-4 w-4 rounded border-slate-300"
+                              className="h-4 w-4 rounded border-slate-300 dark:border-slate-600"
                             />
                             {opt}
                           </label>
@@ -4406,16 +4485,16 @@ export default function Doctor_Prescription() {
                   </div>
 
                   <div>
-                    <label className="mb-1 block text-sm text-slate-700">Since</label>
+                    <label className="mb-1 block text-sm text-slate-700 dark:text-slate-300">Since</label>
                     <div className="flex flex-wrap items-center gap-3">
-                      <input value={sexualHistory.pe.sinceValue} onChange={e => setSexualHistory(s => ({ ...s, pe: { ...s.pe, sinceValue: e.target.value } }))} className="w-28 rounded-md border border-slate-300 px-3 py-2 text-sm" placeholder="#" />
+                      <input value={sexualHistory.pe.sinceValue} onChange={e => setSexualHistory(s => ({ ...s, pe: { ...s.pe, sinceValue: e.target.value } }))} className="w-28 rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2 text-sm dark:text-slate-200" placeholder="#" />
                       {(['Year', 'Month', 'Week', 'Day'] as const).map(opt => (
                         <label key={opt} className="flex items-center gap-2 text-sm text-slate-700">
                           <input
                             type="checkbox"
                             checked={sexualHistory.pe.sinceUnit === opt}
                             onChange={(e) => setSexualHistory(s => ({ ...s, pe: { ...s.pe, sinceUnit: e.target.checked ? opt : '' } }))}
-                            className="h-4 w-4 rounded border-slate-300"
+                            className="h-4 w-4 rounded border-slate-300 dark:border-slate-600"
                           />
                           {opt}
                         </label>
@@ -4425,8 +4504,8 @@ export default function Doctor_Prescription() {
                 </div>
 
                 <div className="mt-4">
-                  <label className="mb-1 block text-sm text-slate-700">Other</label>
-                  <input value={sexualHistory.pe.other} onChange={e => setSexualHistory(s => ({ ...s, pe: { ...s.pe, other: e.target.value } }))} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
+                  <label className="mb-1 block text-sm text-slate-700 dark:text-slate-300">Other</label>
+                  <input value={sexualHistory.pe.other} onChange={e => setSexualHistory(s => ({ ...s, pe: { ...s.pe, other: e.target.value } }))} className="w-full rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2 text-sm dark:text-slate-200" />
                 </div>
               </div>
 
@@ -4434,26 +4513,26 @@ export default function Doctor_Prescription() {
                 <div className="text-sm font-semibold text-slate-800">P.Fluid</div>
                 <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
                   <label className={checkboxCardLabelCls(sexualHistory.pFluid.foreplay)}>
-                    <input type="checkbox" checked={sexualHistory.pFluid.foreplay} onChange={e => setSexualHistory(s => ({ ...s, pFluid: { ...s.pFluid, foreplay: e.target.checked } }))} className="h-4 w-4 rounded border-slate-300" />
+                    <input type="checkbox" checked={sexualHistory.pFluid.foreplay} onChange={e => setSexualHistory(s => ({ ...s, pFluid: { ...s.pFluid, foreplay: e.target.checked } }))} className="h-4 w-4 rounded border-slate-300 dark:border-slate-600" />
                     Foreplay
                   </label>
                   <label className={checkboxCardLabelCls(sexualHistory.pFluid.phonixSex)}>
-                    <input type="checkbox" checked={sexualHistory.pFluid.phonixSex} onChange={e => setSexualHistory(s => ({ ...s, pFluid: { ...s.pFluid, phonixSex: e.target.checked } }))} className="h-4 w-4 rounded border-slate-300" />
+                    <input type="checkbox" checked={sexualHistory.pFluid.phonixSex} onChange={e => setSexualHistory(s => ({ ...s, pFluid: { ...s.pFluid, phonixSex: e.target.checked } }))} className="h-4 w-4 rounded border-slate-300 dark:border-slate-600" />
                     Phonix Sex
                   </label>
                   <label className={checkboxCardLabelCls(sexualHistory.pFluid.onThoughts)}>
-                    <input type="checkbox" checked={sexualHistory.pFluid.onThoughts} onChange={e => setSexualHistory(s => ({ ...s, pFluid: { ...s.pFluid, onThoughts: e.target.checked } }))} className="h-4 w-4 rounded border-slate-300" />
+                    <input type="checkbox" checked={sexualHistory.pFluid.onThoughts} onChange={e => setSexualHistory(s => ({ ...s, pFluid: { ...s.pFluid, onThoughts: e.target.checked } }))} className="h-4 w-4 rounded border-slate-300 dark:border-slate-600" />
                     On Thoughts
                   </label>
                   <label className={checkboxCardLabelCls(sexualHistory.pFluid.pornAddiction)}>
-                    <input type="checkbox" checked={sexualHistory.pFluid.pornAddiction} onChange={e => setSexualHistory(s => ({ ...s, pFluid: { ...s.pFluid, pornAddiction: e.target.checked } }))} className="h-4 w-4 rounded border-slate-300" />
+                    <input type="checkbox" checked={sexualHistory.pFluid.pornAddiction} onChange={e => setSexualHistory(s => ({ ...s, pFluid: { ...s.pFluid, pornAddiction: e.target.checked } }))} className="h-4 w-4 rounded border-slate-300 dark:border-slate-600" />
                     Porn Addiction
                   </label>
                 </div>
 
                 <div className="mt-4">
-                  <label className="mb-1 block text-sm text-slate-700">Other</label>
-                  <input value={sexualHistory.pFluid.other} onChange={e => setSexualHistory(s => ({ ...s, pFluid: { ...s.pFluid, other: e.target.value } }))} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
+                  <label className="mb-1 block text-sm text-slate-700 dark:text-slate-300">Other</label>
+                  <input value={sexualHistory.pFluid.other} onChange={e => setSexualHistory(s => ({ ...s, pFluid: { ...s.pFluid, other: e.target.value } }))} className="w-full rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2 text-sm dark:text-slate-200" />
                 </div>
 
                 <div className="mt-4">
@@ -4465,7 +4544,7 @@ export default function Doctor_Prescription() {
                           type="checkbox"
                           checked={sexualHistory.pFluid.status === opt}
                           onChange={(e) => setSexualHistory(s => ({ ...s, pFluid: { ...s.pFluid, status: e.target.checked ? opt : '' } }))}
-                          className="h-4 w-4 rounded border-slate-300"
+                          className="h-4 w-4 rounded border-slate-300 dark:border-slate-600"
                         />
                         {opt}
                       </label>
@@ -4483,44 +4562,60 @@ export default function Doctor_Prescription() {
                         type="checkbox"
                         checked={sexualHistory.ud.status === opt}
                         onChange={(e) => setSexualHistory(s => ({ ...s, ud: { ...s.ud, status: e.target.checked ? opt : '' } }))}
-                        className="h-4 w-4 rounded border-slate-300"
+                        className="h-4 w-4 rounded border-slate-300 dark:border-slate-600"
                       />
                       {opt}
                     </label>
                   ))}
                 </div>
                 <div className="mt-4">
-                  <label className="mb-1 block text-sm text-slate-700">Other</label>
-                  <input value={sexualHistory.ud.other} onChange={e => setSexualHistory(s => ({ ...s, ud: { ...s.ud, other: e.target.value } }))} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
+                  <label className="mb-1 block text-sm text-slate-700 dark:text-slate-300">Other</label>
+                  <input value={sexualHistory.ud.other} onChange={e => setSexualHistory(s => ({ ...s, ud: { ...s.ud, other: e.target.value } }))} className="w-full rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2 text-sm dark:text-slate-200" />
                 </div>
               </div>
 
               <div className="rounded-lg border border-slate-200 bg-white p-4">
                 <div className="text-sm font-semibold text-slate-800">P.Size</div>
                 <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-                  {(['Bent', 'Small', 'Shrink'] as const).map(opt => (
-                    <label key={opt} className={checkboxCardLabelCls(sexualHistory.pSize.status === opt)}>
-                      <input
-                        type="checkbox"
-                        checked={sexualHistory.pSize.status === opt}
-                        onChange={(e) => setSexualHistory(s => (
-                          {
-                            ...s,
-                            pSize: {
-                              ...s.pSize,
-                              status: e.target.checked ? opt : '',
-                              bentSide: (e.target.checked && opt === 'Bent') ? s.pSize.bentSide : '',
-                            },
-                          }
-                        ))}
-                        className="h-4 w-4 rounded border-slate-300"
-                      />
-                      {opt}
-                    </label>
-                  ))}
+                  <label className={checkboxCardLabelCls(sexualHistory.pSize.bent)}>
+                    <input
+                      type="checkbox"
+                      checked={sexualHistory.pSize.bent}
+                      onChange={(e) => setSexualHistory(s => (
+                        {
+                          ...s,
+                          pSize: {
+                            ...s.pSize,
+                            bent: e.target.checked,
+                            bentSide: e.target.checked ? s.pSize.bentSide : '',
+                          },
+                        }
+                      ))}
+                      className="h-4 w-4 rounded border-slate-300 dark:border-slate-600"
+                    />
+                    Bent
+                  </label>
+                  <label className={checkboxCardLabelCls(sexualHistory.pSize.small)}>
+                    <input
+                      type="checkbox"
+                      checked={sexualHistory.pSize.small}
+                      onChange={(e) => setSexualHistory(s => ({ ...s, pSize: { ...s.pSize, small: e.target.checked } }))}
+                      className="h-4 w-4 rounded border-slate-300 dark:border-slate-600"
+                    />
+                    Small
+                  </label>
+                  <label className={checkboxCardLabelCls(sexualHistory.pSize.shrink)}>
+                    <input
+                      type="checkbox"
+                      checked={sexualHistory.pSize.shrink}
+                      onChange={(e) => setSexualHistory(s => ({ ...s, pSize: { ...s.pSize, shrink: e.target.checked } }))}
+                      className="h-4 w-4 rounded border-slate-300 dark:border-slate-600"
+                    />
+                    Shrink
+                  </label>
                 </div>
 
-                {sexualHistory.pSize.status === 'Bent' && (
+                {sexualHistory.pSize.bent && (
                   <div className="mt-3">
                     <div className="grid gap-2 sm:grid-cols-2">
                       <label className={checkboxCardLabelCls(sexualHistory.pSize.bentSide === 'Left')}>
@@ -4528,7 +4623,7 @@ export default function Doctor_Prescription() {
                           type="checkbox"
                           checked={sexualHistory.pSize.bentSide === 'Left'}
                           onChange={(e) => setSexualHistory(s => ({ ...s, pSize: { ...s.pSize, bentSide: e.target.checked ? 'Left' : '' } }))}
-                          className="h-4 w-4 rounded border-slate-300"
+                          className="h-4 w-4 rounded border-slate-300 dark:border-slate-600"
                         />
                         Left
                       </label>
@@ -4537,7 +4632,7 @@ export default function Doctor_Prescription() {
                           type="checkbox"
                           checked={sexualHistory.pSize.bentSide === 'Right'}
                           onChange={(e) => setSexualHistory(s => ({ ...s, pSize: { ...s.pSize, bentSide: e.target.checked ? 'Right' : '' } }))}
-                          className="h-4 w-4 rounded border-slate-300"
+                          className="h-4 w-4 rounded border-slate-300 dark:border-slate-600"
                         />
                         Right
                       </label>
@@ -4554,7 +4649,7 @@ export default function Doctor_Prescription() {
                           type="checkbox"
                           checked={sexualHistory.pSize.boeing === opt}
                           onChange={(e) => setSexualHistory(s => ({ ...s, pSize: { ...s.pSize, boeing: e.target.checked ? opt : '' } }))}
-                          className="h-4 w-4 rounded border-slate-300"
+                          className="h-4 w-4 rounded border-slate-300 dark:border-slate-600"
                         />
                         {opt}
                       </label>
@@ -4574,7 +4669,7 @@ export default function Doctor_Prescription() {
                             type="checkbox"
                             checked={sexualHistory.inf.sexuality.status === opt}
                             onChange={(e) => setSexualHistory(s => ({ ...s, inf: { ...s.inf, sexuality: { ...s.inf.sexuality, status: e.target.checked ? opt : '' } } }))}
-                            className="h-4 w-4 rounded border-slate-300"
+                            className="h-4 w-4 rounded border-slate-300 dark:border-slate-600"
                           />
                           {opt}
                         </label>
@@ -4586,19 +4681,19 @@ export default function Doctor_Prescription() {
                     <div className="mb-2 text-sm text-slate-700">Diagnosis</div>
                     <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
                       <label className={checkboxCardLabelCls(sexualHistory.inf.diagnosis.azos)}>
-                        <input type="checkbox" checked={sexualHistory.inf.diagnosis.azos} onChange={(e) => setSexualHistory(s => ({ ...s, inf: { ...s.inf, diagnosis: { ...s.inf.diagnosis, azos: e.target.checked } } }))} className="h-4 w-4 rounded border-slate-300" />
+                        <input type="checkbox" checked={sexualHistory.inf.diagnosis.azos} onChange={(e) => setSexualHistory(s => ({ ...s, inf: { ...s.inf, diagnosis: { ...s.inf.diagnosis, azos: e.target.checked } } }))} className="h-4 w-4 rounded border-slate-300 dark:border-slate-600" />
                         Azos
                       </label>
                       <label className={checkboxCardLabelCls(sexualHistory.inf.diagnosis.oligo)}>
-                        <input type="checkbox" checked={sexualHistory.inf.diagnosis.oligo} onChange={(e) => setSexualHistory(s => ({ ...s, inf: { ...s.inf, diagnosis: { ...s.inf.diagnosis, oligo: e.target.checked } } }))} className="h-4 w-4 rounded border-slate-300" />
+                        <input type="checkbox" checked={sexualHistory.inf.diagnosis.oligo} onChange={(e) => setSexualHistory(s => ({ ...s, inf: { ...s.inf, diagnosis: { ...s.inf.diagnosis, oligo: e.target.checked } } }))} className="h-4 w-4 rounded border-slate-300 dark:border-slate-600" />
                         Oligo
                       </label>
                       <label className={checkboxCardLabelCls(sexualHistory.inf.diagnosis.terato)}>
-                        <input type="checkbox" checked={sexualHistory.inf.diagnosis.terato} onChange={(e) => setSexualHistory(s => ({ ...s, inf: { ...s.inf, diagnosis: { ...s.inf.diagnosis, terato: e.target.checked } } }))} className="h-4 w-4 rounded border-slate-300" />
+                        <input type="checkbox" checked={sexualHistory.inf.diagnosis.terato} onChange={(e) => setSexualHistory(s => ({ ...s, inf: { ...s.inf, diagnosis: { ...s.inf.diagnosis, terato: e.target.checked } } }))} className="h-4 w-4 rounded border-slate-300 dark:border-slate-600" />
                         Terato
                       </label>
                       <label className={checkboxCardLabelCls(sexualHistory.inf.diagnosis.astheno)}>
-                        <input type="checkbox" checked={sexualHistory.inf.diagnosis.astheno} onChange={(e) => setSexualHistory(s => ({ ...s, inf: { ...s.inf, diagnosis: { ...s.inf.diagnosis, astheno: e.target.checked } } }))} className="h-4 w-4 rounded border-slate-300" />
+                        <input type="checkbox" checked={sexualHistory.inf.diagnosis.astheno} onChange={(e) => setSexualHistory(s => ({ ...s, inf: { ...s.inf, diagnosis: { ...s.inf.diagnosis, astheno: e.target.checked } } }))} className="h-4 w-4 rounded border-slate-300 dark:border-slate-600" />
                         Astheno
                       </label>
                     </div>
@@ -4608,23 +4703,23 @@ export default function Doctor_Prescription() {
                     <div className="mb-2 text-sm text-slate-700">Problems</div>
                     <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
                       <label className={checkboxCardLabelCls(sexualHistory.inf.problems.magi)}>
-                        <input type="checkbox" checked={sexualHistory.inf.problems.magi} onChange={(e) => setSexualHistory(s => ({ ...s, inf: { ...s.inf, problems: { ...s.inf.problems, magi: e.target.checked } } }))} className="h-4 w-4 rounded border-slate-300" />
+                        <input type="checkbox" checked={sexualHistory.inf.problems.magi} onChange={(e) => setSexualHistory(s => ({ ...s, inf: { ...s.inf, problems: { ...s.inf.problems, magi: e.target.checked } } }))} className="h-4 w-4 rounded border-slate-300 dark:border-slate-600" />
                         MAGI
                       </label>
                       <label className={checkboxCardLabelCls(sexualHistory.inf.problems.cystitis)}>
-                        <input type="checkbox" checked={sexualHistory.inf.problems.cystitis} onChange={(e) => setSexualHistory(s => ({ ...s, inf: { ...s.inf, problems: { ...s.inf.problems, cystitis: e.target.checked } } }))} className="h-4 w-4 rounded border-slate-300" />
+                        <input type="checkbox" checked={sexualHistory.inf.problems.cystitis} onChange={(e) => setSexualHistory(s => ({ ...s, inf: { ...s.inf, problems: { ...s.inf.problems, cystitis: e.target.checked } } }))} className="h-4 w-4 rounded border-slate-300 dark:border-slate-600" />
                         Cystitis
                       </label>
                       <label className={checkboxCardLabelCls(sexualHistory.inf.problems.balanitis)}>
-                        <input type="checkbox" checked={sexualHistory.inf.problems.balanitis} onChange={(e) => setSexualHistory(s => ({ ...s, inf: { ...s.inf, problems: { ...s.inf.problems, balanitis: e.target.checked } } }))} className="h-4 w-4 rounded border-slate-300" />
+                        <input type="checkbox" checked={sexualHistory.inf.problems.balanitis} onChange={(e) => setSexualHistory(s => ({ ...s, inf: { ...s.inf, problems: { ...s.inf.problems, balanitis: e.target.checked } } }))} className="h-4 w-4 rounded border-slate-300 dark:border-slate-600" />
                         Balanitis
                       </label>
                     </div>
                   </div>
 
                   <div className="mt-4">
-                    <label className="mb-1 block text-sm text-slate-700">Others</label>
-                    <textarea value={sexualHistory.inf.others} onChange={e => setSexualHistory(s => ({ ...s, inf: { ...s.inf, others: e.target.value } }))} rows={2} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
+                    <label className="mb-1 block text-sm text-slate-700 dark:text-slate-300">Others</label>
+                    <textarea value={sexualHistory.inf.others} onChange={e => setSexualHistory(s => ({ ...s, inf: { ...s.inf, others: e.target.value } }))} rows={2} className="w-full rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2 text-sm dark:text-slate-200" />
                   </div>
                 </div>
 
@@ -4640,7 +4735,7 @@ export default function Doctor_Prescription() {
                             type="checkbox"
                             checked={sexualHistory.oeMuscle.status === opt}
                             onChange={(e) => setSexualHistory(s => ({ ...s, oeMuscle: { ...s.oeMuscle, status: e.target.checked ? opt : '' } }))}
-                            className="h-4 w-4 rounded border-slate-300"
+                            className="h-4 w-4 rounded border-slate-300 dark:border-slate-600"
                           />
                           {opt}
                         </label>
@@ -4656,7 +4751,7 @@ export default function Doctor_Prescription() {
                           type="checkbox"
                           checked={sexualHistory.oe.disease.peyronie}
                           onChange={(e) => setSexualHistory(s => ({ ...s, oe: { ...s.oe, disease: { ...s.oe.disease, peyronie: e.target.checked } } }))}
-                          className="h-4 w-4 rounded border-slate-300"
+                          className="h-4 w-4 rounded border-slate-300 dark:border-slate-600"
                         />
                         Peyronie
                       </label>
@@ -4665,7 +4760,7 @@ export default function Doctor_Prescription() {
                           type="checkbox"
                           checked={sexualHistory.oe.disease.calcification}
                           onChange={(e) => setSexualHistory(s => ({ ...s, oe: { ...s.oe, disease: { ...s.oe.disease, calcification: e.target.checked } } }))}
-                          className="h-4 w-4 rounded border-slate-300"
+                          className="h-4 w-4 rounded border-slate-300 dark:border-slate-600"
                         />
                         Calcification
                       </label>
@@ -4681,7 +4776,7 @@ export default function Doctor_Prescription() {
                             type="checkbox"
                             checked={sexualHistory.oe.testes.status === opt}
                             onChange={(e) => setSexualHistory(s => ({ ...s, oe: { ...s.oe, testes: { ...s.oe.testes, status: e.target.checked ? opt : '' } } }))}
-                            className="h-4 w-4 rounded border-slate-300"
+                            className="h-4 w-4 rounded border-slate-300 dark:border-slate-600"
                           />
                           {opt}
                         </label>
@@ -4697,7 +4792,7 @@ export default function Doctor_Prescription() {
                           type="checkbox"
                           checked={!!sexualHistory.oe.epidCst.right}
                           onChange={(e) => setSexualHistory(s => ({ ...s, oe: { ...s.oe, epidCst: { ...s.oe.epidCst, right: e.target.checked } } }))}
-                          className="h-4 w-4 rounded border-slate-300"
+                          className="h-4 w-4 rounded border-slate-300 dark:border-slate-600"
                         />
                         Right
                       </label>
@@ -4706,7 +4801,7 @@ export default function Doctor_Prescription() {
                           type="checkbox"
                           checked={!!sexualHistory.oe.epidCst.left}
                           onChange={(e) => setSexualHistory(s => ({ ...s, oe: { ...s.oe, epidCst: { ...s.oe.epidCst, left: e.target.checked } } }))}
-                          className="h-4 w-4 rounded border-slate-300"
+                          className="h-4 w-4 rounded border-slate-300 dark:border-slate-600"
                         />
                         Left
                       </label>
@@ -4721,7 +4816,7 @@ export default function Doctor_Prescription() {
                           type="checkbox"
                           checked={!!sexualHistory.oe.varicocele.right}
                           onChange={(e) => setSexualHistory(s => ({ ...s, oe: { ...s.oe, varicocele: { ...s.oe.varicocele, right: e.target.checked } } }))}
-                          className="h-4 w-4 rounded border-slate-300"
+                          className="h-4 w-4 rounded border-slate-300 dark:border-slate-600"
                         />
                         Right
                       </label>
@@ -4730,7 +4825,7 @@ export default function Doctor_Prescription() {
                           type="checkbox"
                           checked={!!sexualHistory.oe.varicocele.left}
                           onChange={(e) => setSexualHistory(s => ({ ...s, oe: { ...s.oe, varicocele: { ...s.oe.varicocele, left: e.target.checked } } }))}
-                          className="h-4 w-4 rounded border-slate-300"
+                          className="h-4 w-4 rounded border-slate-300 dark:border-slate-600"
                         />
                         Left
                       </label>
@@ -4756,7 +4851,7 @@ export default function Doctor_Prescription() {
                                   },
                                 },
                               }))}
-                              className="h-4 w-4 rounded border-slate-300"
+                              className="h-4 w-4 rounded border-slate-300 dark:border-slate-600"
                             />
                             {g}
                           </label>
@@ -4782,7 +4877,7 @@ export default function Doctor_Prescription() {
                                   },
                                 },
                               }))}
-                              className="h-4 w-4 rounded border-slate-300"
+                              className="h-4 w-4 rounded border-slate-300 dark:border-slate-600"
                             />
                             {g}
                           </label>
@@ -4800,15 +4895,15 @@ export default function Doctor_Prescription() {
                             type="checkbox"
                             checked={sexualHistory.uss.status === opt}
                             onChange={(e) => setSexualHistory(s => ({ ...s, uss: { ...s.uss, status: e.target.checked ? opt : '' } }))}
-                            className="h-4 w-4 rounded border-slate-300"
+                            className="h-4 w-4 rounded border-slate-300 dark:border-slate-600"
                           />
                           {opt}
                         </label>
                       ))}
                     </div>
                     <div className="mt-4">
-                      <label className="mb-1 block text-sm text-slate-700">Other</label>
-                      <input value={sexualHistory.uss.other} onChange={e => setSexualHistory(s => ({ ...s, uss: { ...s.uss, other: e.target.value } }))} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
+                      <label className="mb-1 block text-sm text-slate-700 dark:text-slate-300">Other</label>
+                      <input value={sexualHistory.uss.other} onChange={e => setSexualHistory(s => ({ ...s, uss: { ...s.uss, other: e.target.value } }))} className="w-full rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2 text-sm dark:text-slate-200" />
                     </div>
                   </div>
                 </div>
@@ -4822,18 +4917,18 @@ export default function Doctor_Prescription() {
                 <div className="text-sm font-semibold text-slate-800">Previous Medical History</div>
                 <div className="mt-3 grid gap-4 sm:grid-cols-2">
                   <div className="sm:col-span-2">
-                    <label className="mb-1 block text-sm text-slate-700">Ex-Consultation</label>
-                    <textarea value={previousMedicalHistory.exConsultation} onChange={e => setPreviousMedicalHistory(s => ({ ...s, exConsultation: e.target.value }))} rows={2} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
+                    <label className="mb-1 block text-sm text-slate-700 dark:text-slate-300">Ex-Consultation</label>
+                    <textarea value={previousMedicalHistory.exConsultation} onChange={e => setPreviousMedicalHistory(s => ({ ...s, exConsultation: e.target.value }))} rows={2} className="w-full rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2 text-sm dark:text-slate-200" />
                   </div>
                   <div className="sm:col-span-2">
-                    <label className="mb-1 block text-sm text-slate-700">Ex Rx. (Ex-Treatment)</label>
-                    <textarea value={previousMedicalHistory.exRx} onChange={e => setPreviousMedicalHistory(s => ({ ...s, exRx: e.target.value }))} rows={2} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
+                    <label className="mb-1 block text-sm text-slate-700 dark:text-slate-300">Ex Rx. (Ex-Treatment)</label>
+                    <textarea value={previousMedicalHistory.exRx} onChange={e => setPreviousMedicalHistory(s => ({ ...s, exRx: e.target.value }))} rows={2} className="w-full rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2 text-sm dark:text-slate-200" />
                   </div>
                 </div>
 
                 <div className="mt-4">
-                  <label className="mb-1 block text-sm text-slate-700">Cause</label>
-                  <textarea value={previousMedicalHistory.cause} onChange={e => setPreviousMedicalHistory(s => ({ ...s, cause: e.target.value }))} rows={2} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
+                  <label className="mb-1 block text-sm text-slate-700 dark:text-slate-300">Cause</label>
+                  <textarea value={previousMedicalHistory.cause} onChange={e => setPreviousMedicalHistory(s => ({ ...s, cause: e.target.value }))} rows={2} className="w-full rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2 text-sm dark:text-slate-200" />
                 </div>
               </div>
             </div>
@@ -4850,15 +4945,15 @@ export default function Doctor_Prescription() {
                         type="checkbox"
                         checked={arrivalReference.referredBy.status === opt}
                         onChange={(e) => setArrivalReference(s => ({ ...s, referredBy: { ...s.referredBy, status: e.target.checked ? opt : '' } }))}
-                        className="h-4 w-4 rounded border-slate-300"
+                        className="h-4 w-4 rounded border-slate-300 dark:border-slate-600"
                       />
                       {opt}
                     </label>
                   ))}
                 </div>
                 <div className="mt-4">
-                  <label className="mb-1 block text-sm text-slate-700">Other</label>
-                  <input value={arrivalReference.referredBy.other} onChange={e => setArrivalReference(s => ({ ...s, referredBy: { ...s.referredBy, other: e.target.value } }))} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
+                  <label className="mb-1 block text-sm text-slate-700 dark:text-slate-300">Other</label>
+                  <input value={arrivalReference.referredBy.other} onChange={e => setArrivalReference(s => ({ ...s, referredBy: { ...s.referredBy, other: e.target.value } }))} className="w-full rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2 text-sm dark:text-slate-200" />
                 </div>
               </div>
 
@@ -4866,25 +4961,25 @@ export default function Doctor_Prescription() {
                 <div className="text-sm font-semibold text-slate-800">Ads. (Social Media)</div>
                 <div className="mt-3 flex flex-wrap items-center gap-6">
                   <label className="flex items-center gap-2 text-sm text-slate-700">
-                    <input type="checkbox" checked={arrivalReference.adsSocialMedia.youtube} onChange={e => setArrivalReference(s => ({ ...s, adsSocialMedia: { ...s.adsSocialMedia, youtube: e.target.checked } }))} className="h-4 w-4 rounded border-slate-300" />
+                    <input type="checkbox" checked={arrivalReference.adsSocialMedia.youtube} onChange={e => setArrivalReference(s => ({ ...s, adsSocialMedia: { ...s.adsSocialMedia, youtube: e.target.checked } }))} className="h-4 w-4 rounded border-slate-300 dark:border-slate-600" />
                     Youtube
                   </label>
                   <label className="flex items-center gap-2 text-sm text-slate-700">
-                    <input type="checkbox" checked={arrivalReference.adsSocialMedia.google} onChange={e => setArrivalReference(s => ({ ...s, adsSocialMedia: { ...s.adsSocialMedia, google: e.target.checked } }))} className="h-4 w-4 rounded border-slate-300" />
+                    <input type="checkbox" checked={arrivalReference.adsSocialMedia.google} onChange={e => setArrivalReference(s => ({ ...s, adsSocialMedia: { ...s.adsSocialMedia, google: e.target.checked } }))} className="h-4 w-4 rounded border-slate-300 dark:border-slate-600" />
                     Google
                   </label>
                   <label className="flex items-center gap-2 text-sm text-slate-700">
-                    <input type="checkbox" checked={arrivalReference.adsSocialMedia.facebook} onChange={e => setArrivalReference(s => ({ ...s, adsSocialMedia: { ...s.adsSocialMedia, facebook: e.target.checked } }))} className="h-4 w-4 rounded border-slate-300" />
+                    <input type="checkbox" checked={arrivalReference.adsSocialMedia.facebook} onChange={e => setArrivalReference(s => ({ ...s, adsSocialMedia: { ...s.adsSocialMedia, facebook: e.target.checked } }))} className="h-4 w-4 rounded border-slate-300 dark:border-slate-600" />
                     Facebook
                   </label>
                   <label className="flex items-center gap-2 text-sm text-slate-700">
-                    <input type="checkbox" checked={arrivalReference.adsSocialMedia.instagram} onChange={e => setArrivalReference(s => ({ ...s, adsSocialMedia: { ...s.adsSocialMedia, instagram: e.target.checked } }))} className="h-4 w-4 rounded border-slate-300" />
+                    <input type="checkbox" checked={arrivalReference.adsSocialMedia.instagram} onChange={e => setArrivalReference(s => ({ ...s, adsSocialMedia: { ...s.adsSocialMedia, instagram: e.target.checked } }))} className="h-4 w-4 rounded border-slate-300 dark:border-slate-600" />
                     Instagram
                   </label>
                 </div>
                 <div className="mt-4">
-                  <label className="mb-1 block text-sm text-slate-700">Other</label>
-                  <input value={arrivalReference.adsSocialMedia.other} onChange={e => setArrivalReference(s => ({ ...s, adsSocialMedia: { ...s.adsSocialMedia, other: e.target.value } }))} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
+                  <label className="mb-1 block text-sm text-slate-700 dark:text-slate-300">Other</label>
+                  <input value={arrivalReference.adsSocialMedia.other} onChange={e => setArrivalReference(s => ({ ...s, adsSocialMedia: { ...s.adsSocialMedia, other: e.target.value } }))} className="w-full rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2 text-sm dark:text-slate-200" />
                 </div>
               </div>
 
@@ -4935,23 +5030,23 @@ export default function Doctor_Prescription() {
                 <div className="text-sm font-semibold text-slate-800">Appear(on keyword)</div>
                 <div className="mt-3 flex flex-wrap items-center gap-6">
                   <label className="flex items-center gap-2 text-sm text-slate-700">
-                    <input type="checkbox" checked={arrivalReference.appearOnKeyword.drAslamNaveed} onChange={e => setArrivalReference(s => ({ ...s, appearOnKeyword: { ...s.appearOnKeyword, drAslamNaveed: e.target.checked } }))} className="h-4 w-4 rounded border-slate-300" />
+                    <input type="checkbox" checked={arrivalReference.appearOnKeyword.drAslamNaveed} onChange={e => setArrivalReference(s => ({ ...s, appearOnKeyword: { ...s.appearOnKeyword, drAslamNaveed: e.target.checked } }))} className="h-4 w-4 rounded border-slate-300 dark:border-slate-600" />
                     Dr. Aslam Naveed
                   </label>
                   <label className="flex items-center gap-2 text-sm text-slate-700">
-                    <input type="checkbox" checked={arrivalReference.appearOnKeyword.drMujahidFarooq} onChange={e => setArrivalReference(s => ({ ...s, appearOnKeyword: { ...s.appearOnKeyword, drMujahidFarooq: e.target.checked } }))} className="h-4 w-4 rounded border-slate-300" />
+                    <input type="checkbox" checked={arrivalReference.appearOnKeyword.drMujahidFarooq} onChange={e => setArrivalReference(s => ({ ...s, appearOnKeyword: { ...s.appearOnKeyword, drMujahidFarooq: e.target.checked } }))} className="h-4 w-4 rounded border-slate-300 dark:border-slate-600" />
                     Dr. Mujahid Farooq
                   </label>
                   <label className="flex items-center gap-2 text-sm text-slate-700">
-                    <input type="checkbox" checked={arrivalReference.appearOnKeyword.mensCareClinic} onChange={e => setArrivalReference(s => ({ ...s, appearOnKeyword: { ...s.appearOnKeyword, mensCareClinic: e.target.checked } }))} className="h-4 w-4 rounded border-slate-300" />
+                    <input type="checkbox" checked={arrivalReference.appearOnKeyword.mensCareClinic} onChange={e => setArrivalReference(s => ({ ...s, appearOnKeyword: { ...s.appearOnKeyword, mensCareClinic: e.target.checked } }))} className="h-4 w-4 rounded border-slate-300 dark:border-slate-600" />
                     Men's Care Clinic
                   </label>
                   <label className="flex items-center gap-2 text-sm text-slate-700">
-                    <input type="checkbox" checked={arrivalReference.appearOnKeyword.olaDoc} onChange={e => setArrivalReference(s => ({ ...s, appearOnKeyword: { ...s.appearOnKeyword, olaDoc: e.target.checked } }))} className="h-4 w-4 rounded border-slate-300" />
+                    <input type="checkbox" checked={arrivalReference.appearOnKeyword.olaDoc} onChange={e => setArrivalReference(s => ({ ...s, appearOnKeyword: { ...s.appearOnKeyword, olaDoc: e.target.checked } }))} className="h-4 w-4 rounded border-slate-300 dark:border-slate-600" />
                     Ola Doc
                   </label>
                   <label className="flex items-center gap-2 text-sm text-slate-700">
-                    <input type="checkbox" checked={arrivalReference.appearOnKeyword.marham} onChange={e => setArrivalReference(s => ({ ...s, appearOnKeyword: { ...s.appearOnKeyword, marham: e.target.checked } }))} className="h-4 w-4 rounded border-slate-300" />
+                    <input type="checkbox" checked={arrivalReference.appearOnKeyword.marham} onChange={e => setArrivalReference(s => ({ ...s, appearOnKeyword: { ...s.appearOnKeyword, marham: e.target.checked } }))} className="h-4 w-4 rounded border-slate-300 dark:border-slate-600" />
                     Marham
                   </label>
                 </div>
@@ -4975,13 +5070,13 @@ export default function Doctor_Prescription() {
               <div className="space-y-4 rounded-xl border border-slate-200 bg-white p-5">
                 <div className="grid gap-4 sm:grid-cols-2">
                   <div>
-                    <label className="mb-1 block text-sm text-slate-700">Reports Entered by</label>
-                    <input value={labReportsHxBy} onChange={e => setLabReportsHxBy(e.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
+                    <label className="mb-1 block text-sm text-slate-700 dark:text-slate-300">Reports Entered by</label>
+                    <input value={labReportsHxBy} onChange={e => setLabReportsHxBy(e.target.value)} className="w-full rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2 text-sm dark:text-slate-200" />
                   </div>
 
                   <div>
-                    <label className="mb-1 block text-sm text-slate-700">Reports Entered on</label>
-                    <input type="date" value={labReportsHxDate} onChange={e => setLabReportsHxDate(e.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
+                    <label className="mb-1 block text-sm text-slate-700 dark:text-slate-300">Reports Entered on</label>
+                    <input type="date" value={labReportsHxDate} onChange={e => setLabReportsHxDate(e.target.value)} className="w-full rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2 text-sm dark:text-slate-200" />
                   </div>
                 </div>
 
@@ -4990,31 +5085,31 @@ export default function Doctor_Prescription() {
 
                   <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                     <div>
-                      <label className="mb-1 block text-sm text-slate-700">Lab Name</label>
+                      <label className="mb-1 block text-sm text-slate-700 dark:text-slate-300">Lab Name</label>
                       <input
                         value={labReportsLabInformation.labName}
                         onChange={e => setLabReportsLabInformation(s => ({ ...s, labName: e.target.value }))}
                         placeholder="Lab Name"
-                        className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+                        className="w-full rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2 text-sm dark:text-slate-200"
                       />
                     </div>
                     <div>
-                      <label className="mb-1 block text-sm text-slate-700">MR#</label>
+                      <label className="mb-1 block text-sm text-slate-700 dark:text-slate-300">MR#</label>
                       <input
                         value={labReportsLabInformation.mrNo}
                         onChange={e => setLabReportsLabInformation(s => ({ ...s, mrNo: e.target.value }))}
                         placeholder="MR#"
-                        className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+                        className="w-full rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2 text-sm dark:text-slate-200"
                       />
                     </div>
                     <div>
-                      <label className="mb-1 block text-sm text-slate-700">Date</label>
+                      <label className="mb-1 block text-sm text-slate-700 dark:text-slate-300">Date</label>
                       <input
                         type="date"
                         value={labReportsLabInformation.date}
                         onChange={e => setLabReportsLabInformation(s => ({ ...s, date: e.target.value }))}
                         placeholder="Date"
-                        className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+                        className="w-full rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2 text-sm dark:text-slate-200"
                       />
                     </div>
                   </div>
@@ -5026,13 +5121,13 @@ export default function Doctor_Prescription() {
                   <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                     {SEMEN_FIELDS.map(f => (
                       <div key={String(f.key)}>
-                        <label className="mb-1 block text-sm text-slate-700">{f.label}</label>
+                        <label className="mb-1 block text-sm text-slate-700 dark:text-slate-300">{f.label}</label>
                         <input
                           type={f.key === 'date' ? 'date' : 'text'}
                           value={labReportsSemenAnalysis[f.key]}
                           onChange={e => setLabReportsSemenAnalysis(s => ({ ...s, [f.key]: e.target.value }))}
                           placeholder={f.label}
-                          className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+                          className="w-full rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2 text-sm dark:text-slate-200"
                         />
                       </div>
                     ))}
@@ -5050,7 +5145,7 @@ export default function Doctor_Prescription() {
                       <div key={idx}>
                         <div className="grid gap-3 rounded-md border border-slate-200 p-3 sm:grid-cols-2 lg:grid-cols-5">
                           <div className="lg:col-span-2">
-                            <label className="mb-1 block text-sm text-slate-700">Test Name</label>
+                            <label className="mb-1 block text-sm text-slate-700 dark:text-slate-300">Test Name</label>
                             <SuggestField
                               value={row.testName}
                               onChange={(v: string) =>
@@ -5075,32 +5170,32 @@ export default function Doctor_Prescription() {
                               maxSuggestions={50}
                               placeholder="Select or type test name"
                               as="input"
-                              className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+                              className="w-full rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2 text-sm dark:text-slate-200"
                             />
                           </div>
 
                           <div>
-                            <label className="mb-1 block text-sm text-slate-700">Normal Value</label>
+                            <label className="mb-1 block text-sm text-slate-700 dark:text-slate-300">Normal Value</label>
                             <input
                               value={row.normalValue}
                               onChange={e => setLabReportsTests(s => s.map((x, i) => (i === idx ? { ...x, normalValue: e.target.value } : x)))}
                               placeholder="Auto-filled (editable)"
-                              className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+                              className="w-full rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2 text-sm dark:text-slate-200"
                             />
                           </div>
 
                           <div>
-                            <label className="mb-1 block text-sm text-slate-700">Result</label>
+                            <label className="mb-1 block text-sm text-slate-700 dark:text-slate-300">Result</label>
                             <input
                               value={row.result}
                               onChange={e => setLabReportsTests(s => s.map((x, i) => (i === idx ? { ...x, result: e.target.value } : x)))}
                               placeholder="Enter result"
-                              className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+                              className="w-full rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2 text-sm dark:text-slate-200"
                             />
                           </div>
 
                           <div>
-                            <label className="mb-1 block text-sm text-slate-700">Flag/Status</label>
+                            <label className="mb-1 block text-sm text-slate-700 dark:text-slate-300">Flag/Status</label>
                             <SuggestField
                               value={row.status}
                               onChange={(v: string) => setLabReportsTests(s => s.map((x, i) => (i === idx ? { ...x, status: v } : x)))}
@@ -5108,7 +5203,7 @@ export default function Doctor_Prescription() {
                               maxSuggestions={10}
                               placeholder="Select status"
                               as="input"
-                              className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+                              className="w-full rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2 text-sm dark:text-slate-200"
                             />
                           </div>
                         </div>
@@ -5167,7 +5262,7 @@ export default function Doctor_Prescription() {
                             type="checkbox"
                             checked={checked}
                             onChange={() => toggleLabQuickTest(t)}
-                            className="h-4 w-4 rounded border-slate-300"
+                            className="h-4 w-4 rounded border-slate-300 dark:border-slate-600"
                           />
                           <span className="flex-1">{t}</span>
                         </label>
@@ -5194,7 +5289,7 @@ export default function Doctor_Prescription() {
                               type="checkbox"
                               checked={checked}
                               onChange={() => toggleCustomLabTest(t)}
-                              className="h-4 w-4 rounded border-slate-300"
+                              className="h-4 w-4 rounded border-slate-300 dark:border-slate-600"
                             />
                             <span className="flex-1">{t}</span>
                           </label>
@@ -5213,7 +5308,7 @@ export default function Doctor_Prescription() {
               </div>
 
               <div>
-                <label className="mb-1 block text-sm text-slate-700">Lab Tests (comma or one per line)</label>
+                <label className="mb-1 block text-sm text-slate-700 dark:text-slate-300">Lab Tests (comma or one per line)</label>
                 <div className="rounded-md border border-slate-300 px-3 py-2">
                   <div className="flex flex-wrap items-center gap-2">
                     {parseListText(form.labTestsText).map((k) => (
@@ -5249,7 +5344,7 @@ export default function Doctor_Prescription() {
               </div>
 
               <div>
-                <label className="mb-1 block text-sm text-slate-700">Lab Notes</label>
+                <label className="mb-1 block text-sm text-slate-700 dark:text-slate-300">Lab Notes</label>
                 <SuggestField rows={2} value={form.labNotes} onChange={v => setForm(f => ({ ...f, labNotes: v }))} suggestions={sugLabNotes} />
               </div>
 
@@ -5269,7 +5364,7 @@ export default function Doctor_Prescription() {
                     </div>
 
                     <div>
-                      <label className="mb-1 block text-sm text-slate-700">Lab Test</label>
+                      <label className="mb-1 block text-sm text-slate-700 dark:text-slate-300">Lab Test</label>
                       <input
                         value={labOrderDraft}
                         onChange={e => setLabOrderDraft(e.target.value)}
@@ -5284,7 +5379,7 @@ export default function Doctor_Prescription() {
                             setLabOrderDraft('')
                           }
                         }}
-                        className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+                        className="w-full rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2 text-sm dark:text-slate-200"
                         placeholder="Type lab test"
                         autoFocus
                       />
@@ -5380,7 +5475,7 @@ export default function Doctor_Prescription() {
                 <div className="mb-2 text-sm font-semibold text-slate-800">Therapy Plan</div>
                 <div className="grid gap-3 sm:grid-cols-3">
                   <div>
-                    <label className="mb-1 block text-sm text-slate-700">Months</label>
+                    <label className="mb-1 block text-sm text-slate-700 dark:text-slate-300">Months</label>
                     <SuggestField
                       as="input"
                       value={therapyPlan.months}
@@ -5390,7 +5485,7 @@ export default function Doctor_Prescription() {
                     />
                   </div>
                   <div>
-                    <label className="mb-1 block text-sm text-slate-700">Days</label>
+                    <label className="mb-1 block text-sm text-slate-700 dark:text-slate-300">Days</label>
                     <SuggestField
                       as="input"
                       value={therapyPlan.days}
@@ -5400,7 +5495,7 @@ export default function Doctor_Prescription() {
                     />
                   </div>
                   <div>
-                    <label className="mb-1 block text-sm text-slate-700">Packages</label>
+                    <label className="mb-1 block text-sm text-slate-700 dark:text-slate-300">Packages</label>
                     <SuggestField
                       as="input"
                       value={therapyPlan.packages}
@@ -5438,7 +5533,7 @@ export default function Doctor_Prescription() {
                               ...s,
                               chi: e.target.checked ? { ...s.chi, enabled: true } : { enabled: false, pr: false, bk: false },
                             }))}
-                            className="h-4 w-4 rounded border-slate-300"
+                            className="h-4 w-4 rounded border-slate-300 dark:border-slate-600"
                           />
                           <span className="flex-1">CHi (R 2.5 Sp6, D 420 UB)</span>
                         </label>
@@ -5454,11 +5549,11 @@ export default function Doctor_Prescription() {
                       {therapyMachines.chi.enabled && (
                         <div className="ml-7 flex flex-wrap items-center gap-6">
                           <label className="flex items-center gap-2 text-sm text-slate-700">
-                            <input type="checkbox" checked={therapyMachines.chi.pr} onChange={e => setTherapyMachines(s => ({ ...s, chi: { ...s.chi, pr: e.target.checked } }))} className="h-4 w-4 rounded border-slate-300" />
+                            <input type="checkbox" checked={therapyMachines.chi.pr} onChange={e => setTherapyMachines(s => ({ ...s, chi: { ...s.chi, pr: e.target.checked } }))} className="h-4 w-4 rounded border-slate-300 dark:border-slate-600" />
                             PR
                           </label>
                           <label className="flex items-center gap-2 text-sm text-slate-700">
-                            <input type="checkbox" checked={therapyMachines.chi.bk} onChange={e => setTherapyMachines(s => ({ ...s, chi: { ...s.chi, bk: e.target.checked } }))} className="h-4 w-4 rounded border-slate-300" />
+                            <input type="checkbox" checked={therapyMachines.chi.bk} onChange={e => setTherapyMachines(s => ({ ...s, chi: { ...s.chi, bk: e.target.checked } }))} className="h-4 w-4 rounded border-slate-300 dark:border-slate-600" />
                             BK
                           </label>
                         </div>
@@ -5477,7 +5572,7 @@ export default function Doctor_Prescription() {
                               ...s,
                               eswt: e.target.checked ? { ...s.eswt, enabled: true } : { enabled: false, v1000: false, v1500: false, v2000: false },
                             }))}
-                            className="h-4 w-4 rounded border-slate-300"
+                            className="h-4 w-4 rounded border-slate-300 dark:border-slate-600"
                           />
                           <span className="flex-1">ESWT (Repair)</span>
                         </label>
@@ -5493,15 +5588,15 @@ export default function Doctor_Prescription() {
                       {therapyMachines.eswt.enabled && (
                         <div className="ml-7 flex flex-wrap items-center gap-6">
                           <label className="flex items-center gap-2 text-sm text-slate-700">
-                            <input type="checkbox" checked={therapyMachines.eswt.v1000} onChange={e => setTherapyMachines(s => ({ ...s, eswt: { ...s.eswt, v1000: e.target.checked } }))} className="h-4 w-4 rounded border-slate-300" />
+                            <input type="checkbox" checked={therapyMachines.eswt.v1000} onChange={e => setTherapyMachines(s => ({ ...s, eswt: { ...s.eswt, v1000: e.target.checked } }))} className="h-4 w-4 rounded border-slate-300 dark:border-slate-600" />
                             1000
                           </label>
                           <label className="flex items-center gap-2 text-sm text-slate-700">
-                            <input type="checkbox" checked={therapyMachines.eswt.v1500} onChange={e => setTherapyMachines(s => ({ ...s, eswt: { ...s.eswt, v1500: e.target.checked } }))} className="h-4 w-4 rounded border-slate-300" />
+                            <input type="checkbox" checked={therapyMachines.eswt.v1500} onChange={e => setTherapyMachines(s => ({ ...s, eswt: { ...s.eswt, v1500: e.target.checked } }))} className="h-4 w-4 rounded border-slate-300 dark:border-slate-600" />
                             1500
                           </label>
                           <label className="flex items-center gap-2 text-sm text-slate-700">
-                            <input type="checkbox" checked={therapyMachines.eswt.v2000} onChange={e => setTherapyMachines(s => ({ ...s, eswt: { ...s.eswt, v2000: e.target.checked } }))} className="h-4 w-4 rounded border-slate-300" />
+                            <input type="checkbox" checked={therapyMachines.eswt.v2000} onChange={e => setTherapyMachines(s => ({ ...s, eswt: { ...s.eswt, v2000: e.target.checked } }))} className="h-4 w-4 rounded border-slate-300 dark:border-slate-600" />
                             2000
                           </label>
                         </div>
@@ -5520,7 +5615,7 @@ export default function Doctor_Prescription() {
                               ...s,
                               ms: e.target.checked ? { ...s.ms, enabled: true } : { enabled: false, pr: false, bk: false },
                             }))}
-                            className="h-4 w-4 rounded border-slate-300"
+                            className="h-4 w-4 rounded border-slate-300 dark:border-slate-600"
                           />
                           <span className="flex-1">M/S (R 2.5 UB P)</span>
                         </label>
@@ -5536,11 +5631,11 @@ export default function Doctor_Prescription() {
                       {therapyMachines.ms.enabled && (
                         <div className="ml-7 flex flex-wrap items-center gap-6">
                           <label className="flex items-center gap-2 text-sm text-slate-700">
-                            <input type="checkbox" checked={therapyMachines.ms.pr} onChange={e => setTherapyMachines(s => ({ ...s, ms: { ...s.ms, pr: e.target.checked } }))} className="h-4 w-4 rounded border-slate-300" />
+                            <input type="checkbox" checked={therapyMachines.ms.pr} onChange={e => setTherapyMachines(s => ({ ...s, ms: { ...s.ms, pr: e.target.checked } }))} className="h-4 w-4 rounded border-slate-300 dark:border-slate-600" />
                             PR
                           </label>
                           <label className="flex items-center gap-2 text-sm text-slate-700">
-                            <input type="checkbox" checked={therapyMachines.ms.bk} onChange={e => setTherapyMachines(s => ({ ...s, ms: { ...s.ms, bk: e.target.checked } }))} className="h-4 w-4 rounded border-slate-300" />
+                            <input type="checkbox" checked={therapyMachines.ms.bk} onChange={e => setTherapyMachines(s => ({ ...s, ms: { ...s.ms, bk: e.target.checked } }))} className="h-4 w-4 rounded border-slate-300 dark:border-slate-600" />
                             BK
                           </label>
                         </div>
@@ -5559,7 +5654,7 @@ export default function Doctor_Prescription() {
                               ...s,
                               mam: e.target.checked ? { ...s.mam, enabled: true } : { enabled: false, m: false },
                             }))}
-                            className="h-4 w-4 rounded border-slate-300"
+                            className="h-4 w-4 rounded border-slate-300 dark:border-slate-600"
                           />
                           <span className="flex-1">MAM (CHCN)</span>
                         </label>
@@ -5575,7 +5670,7 @@ export default function Doctor_Prescription() {
                       {therapyMachines.mam.enabled && (
                         <div className="ml-7 flex flex-wrap items-center gap-6">
                           <label className="flex items-center gap-2 text-sm text-slate-700">
-                            <input type="checkbox" checked={therapyMachines.mam.m} onChange={e => setTherapyMachines(s => ({ ...s, mam: { ...s.mam, m: e.target.checked } }))} className="h-4 w-4 rounded border-slate-300" />
+                            <input type="checkbox" checked={therapyMachines.mam.m} onChange={e => setTherapyMachines(s => ({ ...s, mam: { ...s.mam, m: e.target.checked } }))} className="h-4 w-4 rounded border-slate-300 dark:border-slate-600" />
                             M
                           </label>
                         </div>
@@ -5594,7 +5689,7 @@ export default function Doctor_Prescription() {
                               ...s,
                               us: e.target.checked ? { ...s.us, enabled: true } : { enabled: false, pr: false, bk: false },
                             }))}
-                            className="h-4 w-4 rounded border-slate-300"
+                            className="h-4 w-4 rounded border-slate-300 dark:border-slate-600"
                           />
                           <span className="flex-1">U/S (R 2.5 UB P)</span>
                         </label>
@@ -5610,11 +5705,11 @@ export default function Doctor_Prescription() {
                       {therapyMachines.us.enabled && (
                         <div className="ml-7 flex flex-wrap items-center gap-6">
                           <label className="flex items-center gap-2 text-sm text-slate-700">
-                            <input type="checkbox" checked={therapyMachines.us.pr} onChange={e => setTherapyMachines(s => ({ ...s, us: { ...s.us, pr: e.target.checked } }))} className="h-4 w-4 rounded border-slate-300" />
+                            <input type="checkbox" checked={therapyMachines.us.pr} onChange={e => setTherapyMachines(s => ({ ...s, us: { ...s.us, pr: e.target.checked } }))} className="h-4 w-4 rounded border-slate-300 dark:border-slate-600" />
                             PR
                           </label>
                           <label className="flex items-center gap-2 text-sm text-slate-700">
-                            <input type="checkbox" checked={therapyMachines.us.bk} onChange={e => setTherapyMachines(s => ({ ...s, us: { ...s.us, bk: e.target.checked } }))} className="h-4 w-4 rounded border-slate-300" />
+                            <input type="checkbox" checked={therapyMachines.us.bk} onChange={e => setTherapyMachines(s => ({ ...s, us: { ...s.us, bk: e.target.checked } }))} className="h-4 w-4 rounded border-slate-300 dark:border-slate-600" />
                             BK
                           </label>
                         </div>
@@ -5633,7 +5728,7 @@ export default function Doctor_Prescription() {
                               ...s,
                               mcgSpg: e.target.checked ? { ...s.mcgSpg, enabled: true } : { enabled: false, dashBar: false, equal: false },
                             }))}
-                            className="h-4 w-4 rounded border-slate-300"
+                            className="h-4 w-4 rounded border-slate-300 dark:border-slate-600"
                           />
                           <span className="flex-1">MCG SPG</span>
                         </label>
@@ -5649,11 +5744,11 @@ export default function Doctor_Prescription() {
                       {therapyMachines.mcgSpg.enabled && (
                         <div className="ml-7 flex flex-wrap items-center gap-6">
                           <label className="flex items-center gap-2 text-sm text-slate-700">
-                            <input type="checkbox" checked={therapyMachines.mcgSpg.dashBar} onChange={e => setTherapyMachines(s => ({ ...s, mcgSpg: { ...s.mcgSpg, dashBar: e.target.checked } }))} className="h-4 w-4 rounded border-slate-300" />
+                            <input type="checkbox" checked={therapyMachines.mcgSpg.dashBar} onChange={e => setTherapyMachines(s => ({ ...s, mcgSpg: { ...s.mcgSpg, dashBar: e.target.checked } }))} className="h-4 w-4 rounded border-slate-300 dark:border-slate-600" />
                             --|
                           </label>
                           <label className="flex items-center gap-2 text-sm text-slate-700">
-                            <input type="checkbox" checked={therapyMachines.mcgSpg.equal} onChange={e => setTherapyMachines(s => ({ ...s, mcgSpg: { ...s.mcgSpg, equal: e.target.checked } }))} className="h-4 w-4 rounded border-slate-300" />
+                            <input type="checkbox" checked={therapyMachines.mcgSpg.equal} onChange={e => setTherapyMachines(s => ({ ...s, mcgSpg: { ...s.mcgSpg, equal: e.target.checked } }))} className="h-4 w-4 rounded border-slate-300 dark:border-slate-600" />
                             =
                           </label>
                         </div>
@@ -5672,7 +5767,7 @@ export default function Doctor_Prescription() {
                               ...s,
                               mproCryo: e.target.checked ? { ...s.mproCryo, enabled: true } : { enabled: false, m: false, c: false },
                             }))}
-                            className="h-4 w-4 rounded border-slate-300"
+                            className="h-4 w-4 rounded border-slate-300 dark:border-slate-600"
                           />
                           <span className="flex-1">Mpro Cryo</span>
                         </label>
@@ -5688,11 +5783,11 @@ export default function Doctor_Prescription() {
                       {therapyMachines.mproCryo.enabled && (
                         <div className="ml-7 flex flex-wrap items-center gap-6">
                           <label className="flex items-center gap-2 text-sm text-slate-700">
-                            <input type="checkbox" checked={therapyMachines.mproCryo.m} onChange={e => setTherapyMachines(s => ({ ...s, mproCryo: { ...s.mproCryo, m: e.target.checked } }))} className="h-4 w-4 rounded border-slate-300" />
+                            <input type="checkbox" checked={therapyMachines.mproCryo.m} onChange={e => setTherapyMachines(s => ({ ...s, mproCryo: { ...s.mproCryo, m: e.target.checked } }))} className="h-4 w-4 rounded border-slate-300 dark:border-slate-600" />
                             M
                           </label>
                           <label className="flex items-center gap-2 text-sm text-slate-700">
-                            <input type="checkbox" checked={therapyMachines.mproCryo.c} onChange={e => setTherapyMachines(s => ({ ...s, mproCryo: { ...s.mproCryo, c: e.target.checked } }))} className="h-4 w-4 rounded border-slate-300" />
+                            <input type="checkbox" checked={therapyMachines.mproCryo.c} onChange={e => setTherapyMachines(s => ({ ...s, mproCryo: { ...s.mproCryo, c: e.target.checked } }))} className="h-4 w-4 rounded border-slate-300 dark:border-slate-600" />
                             C
                           </label>
                         </div>
@@ -5711,7 +5806,7 @@ export default function Doctor_Prescription() {
                               ...s,
                               ximen: e.target.checked ? { ...s.ximen, enabled: true } : { enabled: false, note: '' },
                             }))}
-                            className="h-4 w-4 rounded border-slate-300"
+                            className="h-4 w-4 rounded border-slate-300 dark:border-slate-600"
                           />
                           <span className="flex-1">XIMEN</span>
                         </label>
@@ -5729,7 +5824,7 @@ export default function Doctor_Prescription() {
                           <input
                             value={therapyMachines.ximen.note}
                             onChange={e => setTherapyMachines(s => ({ ...s, ximen: { ...s.ximen, note: e.target.value } }))}
-                            className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+                            className="w-full rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2 text-sm dark:text-slate-200"
                             placeholder="Enter"
                           />
                         </div>
@@ -5757,7 +5852,7 @@ export default function Doctor_Prescription() {
                                   return next
                                 })
                               }}
-                              className="h-4 w-4 rounded border-slate-300"
+                              className="h-4 w-4 rounded border-slate-300 dark:border-slate-600"
                             />
                             <span className="flex-1">{m.name}</span>
                           </label>
@@ -5792,7 +5887,7 @@ export default function Doctor_Prescription() {
                                         return next
                                       })
                                     }}
-                                    className="h-4 w-4 rounded border-slate-300"
+                                    className="h-4 w-4 rounded border-slate-300 dark:border-slate-600"
                                   />
                                   {opt}
                                 </label>
@@ -5807,7 +5902,7 @@ export default function Doctor_Prescription() {
                               const val = st.fields?.[fld] || ''
                               return (
                                 <div key={fld}>
-                                  <label className="mb-1 block text-sm text-slate-700">{fld}</label>
+                                  <label className="mb-1 block text-sm text-slate-700 dark:text-slate-300">{fld}</label>
                                   <input
                                     value={val}
                                     onChange={e => {
@@ -5822,7 +5917,7 @@ export default function Doctor_Prescription() {
                                         return next
                                       })
                                     }}
-                                    className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+                                    className="w-full rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2 text-sm dark:text-slate-200"
                                     placeholder="Enter"
                                   />
                                 </div>
@@ -5837,7 +5932,7 @@ export default function Doctor_Prescription() {
               </div>
 
               <div>
-                <label className="mb-1 block text-sm text-slate-700">Therapy Notes</label>
+                <label className="mb-1 block text-sm text-slate-700 dark:text-slate-300">Therapy Notes</label>
                 <SuggestField rows={2} value={(form as any).therapyNotes} onChange={v => setForm(f => ({ ...(f as any), therapyNotes: v }))} suggestions={sugTherapyNotes} />
               </div>
 
@@ -5848,7 +5943,7 @@ export default function Doctor_Prescription() {
                   value={(form as any).therapyDiscount || ''}
                   onChange={(e) => setForm(f => ({ ...f as any, therapyDiscount: e.target.value }))}
                   placeholder="0"
-                  className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+                  className="w-full rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2 text-sm dark:text-slate-200"
                 />
               </div>
 
@@ -5921,11 +6016,11 @@ export default function Doctor_Prescription() {
 
                     <div className="space-y-3">
                       <div>
-                        <label className="mb-1 block text-sm text-slate-700">Machine Name</label>
+                        <label className="mb-1 block text-sm text-slate-700 dark:text-slate-300">Machine Name</label>
                         <input
                           value={therapyMachineAddName}
                           onChange={e => setTherapyMachineAddName(e.target.value)}
-                          className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+                          className="w-full rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2 text-sm dark:text-slate-200"
                           placeholder="Enter machine name"
                         />
                       </div>
@@ -5969,7 +6064,7 @@ export default function Doctor_Prescription() {
                                 <input
                                   value={opt}
                                   onChange={e => setTherapyMachineAddOptions(s => s.map((x, i) => (i === idx ? e.target.value : x)))}
-                                  className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+                                  className="w-full rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2 text-sm dark:text-slate-200"
                                   placeholder="Option name"
                                 />
                                 <button
@@ -6005,7 +6100,7 @@ export default function Doctor_Prescription() {
                                 <input
                                   value={fld}
                                   onChange={e => setTherapyMachineAddFields(s => s.map((x, i) => (i === idx ? e.target.value : x)))}
-                                  className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+                                  className="w-full rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2 text-sm dark:text-slate-200"
                                   placeholder="Field name"
                                 />
                                 <button
@@ -6034,7 +6129,7 @@ export default function Doctor_Prescription() {
                                   saveHiddenTherapyMachines(hiddenTherapyMachines.filter(x => x !== k))
                                   setIsTherapyMachineRestoreDialogOpen(false)
                                 }}
-                                className="w-full rounded-md border border-slate-300 px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50"
+                                className="w-full rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2 text-left text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-600"
                               >
                                 {therapyMachineLabel(k)}
                               </button>
@@ -6105,7 +6200,7 @@ export default function Doctor_Prescription() {
                           lcc: e.target.checked ? 'Yes' : '',
                           lccMonth: e.target.checked ? s.lccMonth : '',
                         }))}
-                        className="h-4 w-4 rounded border-slate-300"
+                        className="h-4 w-4 rounded border-slate-300 dark:border-slate-600"
                       />
                       LCC
                     </label>
@@ -6115,7 +6210,7 @@ export default function Doctor_Prescription() {
                       value={counselling.lccMonth}
                       onChange={e => setCounselling(s => ({ ...s, lccMonth: e.target.value }))}
                       placeholder="Month"
-                      className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+                      className="w-full rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2 text-sm dark:text-slate-200"
                     />
                   </div>
                 </div>
@@ -6134,7 +6229,7 @@ export default function Doctor_Prescription() {
                             ...s,
                             package: { ...s.package, d4: e.target.checked, d4Month: e.target.checked ? s.package.d4Month : '' },
                           }))}
-                          className="h-4 w-4 rounded border-slate-300"
+                          className="h-4 w-4 rounded border-slate-300 dark:border-slate-600"
                         />
                         D4
                       </label>
@@ -6144,7 +6239,7 @@ export default function Doctor_Prescription() {
                         value={counselling.package.d4Month}
                         onChange={e => setCounselling(s => ({ ...s, package: { ...s.package, d4Month: e.target.value } }))}
                         placeholder="Month"
-                        className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+                        className="w-full rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2 text-sm dark:text-slate-200"
                       />
                     </div>
                   </div>
@@ -6159,7 +6254,7 @@ export default function Doctor_Prescription() {
                             ...s,
                             package: { ...s.package, r4: e.target.checked, r4Month: e.target.checked ? s.package.r4Month : '' },
                           }))}
-                          className="h-4 w-4 rounded border-slate-300"
+                          className="h-4 w-4 rounded border-slate-300 dark:border-slate-600"
                         />
                         R4
                       </label>
@@ -6169,7 +6264,7 @@ export default function Doctor_Prescription() {
                         value={counselling.package.r4Month}
                         onChange={e => setCounselling(s => ({ ...s, package: { ...s.package, r4Month: e.target.value } }))}
                         placeholder="Month"
-                        className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+                        className="w-full rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2 text-sm dark:text-slate-200"
                       />
                     </div>
                   </div>
@@ -6177,12 +6272,12 @@ export default function Doctor_Prescription() {
               </div>
 
               <div>
-                <label className="mb-1 block text-sm text-slate-700">Note</label>
+                <label className="mb-1 block text-sm text-slate-700 dark:text-slate-300">Note</label>
                 <textarea
                   rows={4}
                   value={counselling.note}
                   onChange={e => setCounselling(s => ({ ...s, note: e.target.value }))}
-                  className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+                  className="w-full rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2 text-sm dark:text-slate-200"
                 />
               </div>
 
@@ -6193,7 +6288,7 @@ export default function Doctor_Prescription() {
                   value={(form as any).counsellingDiscount || ''}
                   onChange={(e) => setForm(f => ({ ...f as any, counsellingDiscount: e.target.value }))}
                   placeholder="0"
-                  className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+                  className="w-full rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2 text-sm dark:text-slate-200"
                 />
               </div>
             </div>

@@ -87,11 +87,49 @@ function computeSlotStartEnd(startTime: string, slotMinutes: number, slotNo: num
   return { start: fromMin(start), end: fromMin(start + (slotMinutes||15)) }
 }
 
-async function nextMrn(){
-  const key = 'lab_mrn_mr7553'
-  const c = await LabCounter.findByIdAndUpdate(key, { $inc: { seq: 1 } }, { upsert: true, new: true, setDefaultsOnInsert: true })
-  const seq = Number(c.seq || 1)
-  return `MR7553${seq}`
+import { HospitalSettings } from '../models/Settings'
+
+async function nextMrn(): Promise<string> {
+  // Get MR Number Format from settings (e.g., "7732")
+  let startSerial = 7732
+  try {
+    const settings: any = await HospitalSettings.findOne().lean()
+    const format = String(settings?.mrFormat || '').trim()
+    if (format) {
+      const parsed = parseInt(format, 10)
+      if (!isNaN(parsed) && parsed > 0) startSerial = parsed
+    }
+  } catch { /* fallback to default */ }
+
+  // Use a stable counter key and reset sequence when startSerial changes.
+  // This ensures that updating settings.mrFormat immediately reflects on newly generated MRNs.
+  const key = `mrn_counter`
+  const existing: any = await LabCounter.findById(key).lean()
+  const existingStart = Number(existing?.startSerial || 0)
+  const shouldReset = !existing || !existingStart || existingStart !== startSerial
+
+  const update: any = shouldReset
+    ? { $set: { startSerial, seq: 1 } }
+    : { $inc: { seq: 1 } }
+
+  // Ensure uniqueness even if counter is out-of-sync with existing patients.
+  // We'll attempt a few increments until we find a free MRN.
+  for (let attempts = 0; attempts < 50; attempts++) {
+    const c: any = await LabCounter.findByIdAndUpdate(
+      key,
+      attempts === 0 ? update : { $inc: { seq: 1 } },
+      { upsert: true, new: true, setDefaultsOnInsert: true }
+    )
+    const seq = Number(c?.seq || 1)
+    const mrNumber = startSerial + seq - 1
+    const candidate = `MR${mrNumber}`
+    const exists = await LabPatient.exists({ mrn: candidate })
+    if (!exists) return candidate
+  }
+  // Fallback: should be extremely rare.
+  const c: any = await LabCounter.findByIdAndUpdate(key, { $inc: { seq: 1 } }, { upsert: true, new: true, setDefaultsOnInsert: true })
+  const seq = Number(c?.seq || 1)
+  return `MR${startSerial + seq - 1}`
 }
 
 export async function createOpd(req: Request, res: Response){

@@ -155,15 +155,15 @@ export default function Hospital_HistoryTaking() {
       onThoughts: false,
       pornAddiction: false,
       other: '',
-      status: '' as '' | 'No issue' | 'ER↓' | 'Weakness',
+      status: [] as ('No issue' | 'ER↓' | 'Weakness')[],
     },
     ud: {
       status: '' as '' | 'Yes' | 'No',
       other: '',
     },
     pSize: {
-      status: '' as '' | 'Small' | 'Shrink' | 'Bent',
-      bentSide: '' as '' | 'Left' | 'Right',
+      status: [] as ('Small' | 'Shrink' | 'Bent')[],
+      bentSide: [] as ('Left' | 'Right')[],
       boeing: '' as '' | 'Yes' | 'No',
     },
     inf: {
@@ -184,7 +184,7 @@ export default function Hospital_HistoryTaking() {
       others: '',
     },
     oeMuscle: {
-      status: '' as '' | 'OK' | 'Semi' | 'FL',
+      status: [] as ('OK' | 'Semi' | 'FL')[],
     },
     oe: {
       disease: {
@@ -366,15 +366,15 @@ export default function Hospital_HistoryTaking() {
         onThoughts: false,
         pornAddiction: false,
         other: '',
-        status: '' as '' | 'No issue' | 'ER↓' | 'Weakness',
+        status: [] as ('No issue' | 'ER↓' | 'Weakness')[],
       },
       ud: {
         status: '' as '' | 'Yes' | 'No',
         other: '',
       },
       pSize: {
-        status: '' as '' | 'Small' | 'Shrink' | 'Bent',
-        bentSide: '' as '' | 'Left' | 'Right',
+        status: [] as ('Small' | 'Shrink' | 'Bent')[],
+        bentSide: [] as ('Left' | 'Right')[],
         boeing: '' as '' | 'Yes' | 'No',
       },
       inf: {
@@ -395,7 +395,7 @@ export default function Hospital_HistoryTaking() {
         others: '',
       },
       oeMuscle: {
-        status: '' as '' | 'OK' | 'Semi' | 'FL',
+        status: [] as ('OK' | 'Semi' | 'FL')[],
       },
       oe: {
         disease: {
@@ -511,6 +511,16 @@ export default function Hospital_HistoryTaking() {
     loadTokens()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [from, to])
+
+  useEffect(() => {
+    // Pre-fill Hx by with logged-in user's name
+    try {
+      const raw = localStorage.getItem('hospital.session') || localStorage.getItem('user') || '{}'
+      const s = JSON.parse(raw)
+      const name = String(s?.username || s?.fullName || s?.name || '').trim()
+      if (name) setHxBy(name)
+    } catch {}
+  }, [])
 
   useEffect(() => {
     let cancelled = false
@@ -1992,11 +2002,19 @@ export default function Hospital_HistoryTaking() {
                 <div className="mb-2 text-sm text-slate-700">Status</div>
                 <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
                   {(['No issue', 'ER↓', 'Weakness'] as const).map(opt => (
-                    <label key={opt} className={checkboxCardLabelCls(sexualHistory.pFluid.status === opt)}>
+                    <label key={opt} className={checkboxCardLabelCls(sexualHistory.pFluid.status.includes(opt))}>
                       <input
                         type="checkbox"
-                        checked={sexualHistory.pFluid.status === opt}
-                        onChange={(e) => setSexualHistory(s => ({ ...s, pFluid: { ...s.pFluid, status: e.target.checked ? opt : '' } }))}
+                        checked={sexualHistory.pFluid.status.includes(opt)}
+                        onChange={(e) => setSexualHistory(s => ({
+                          ...s,
+                          pFluid: {
+                            ...s.pFluid,
+                            status: e.target.checked
+                              ? [...s.pFluid.status, opt]
+                              : s.pFluid.status.filter(x => x !== opt),
+                          },
+                        }))}
                         className="h-4 w-4 rounded border-slate-300"
                       />
                       {opt}
@@ -2031,16 +2049,20 @@ export default function Hospital_HistoryTaking() {
               <div className="text-sm font-semibold text-slate-800">P.Size</div>
               <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
                 {(['Bent', 'Small', 'Shrink'] as const).map(opt => (
-                  <label key={opt} className={checkboxCardLabelCls(sexualHistory.pSize.status === opt)}>
+                  <label key={opt} className={checkboxCardLabelCls(sexualHistory.pSize.status.includes(opt))}>
                     <input
                       type="checkbox"
-                      checked={sexualHistory.pSize.status === opt}
+                      checked={sexualHistory.pSize.status.includes(opt)}
                       onChange={(e) => setSexualHistory(s => ({
                         ...s,
                         pSize: {
                           ...s.pSize,
-                          status: e.target.checked ? opt : '',
-                          bentSide: (e.target.checked && opt === 'Bent') ? s.pSize.bentSide : '',
+                          status: e.target.checked
+                            ? [...s.pSize.status, opt]
+                            : s.pSize.status.filter(x => x !== opt),
+                          bentSide: opt === 'Bent' && !e.target.checked
+                            ? s.pSize.bentSide.filter(x => x !== 'Left' && x !== 'Right')
+                            : s.pSize.bentSide,
                         },
                       }))}
                       className="h-4 w-4 rounded border-slate-300"
@@ -2050,23 +2072,39 @@ export default function Hospital_HistoryTaking() {
                 ))}
               </div>
 
-              {sexualHistory.pSize.status === 'Bent' && (
+              {sexualHistory.pSize.status.includes('Bent') && (
                 <div className="mt-3">
                   <div className="grid gap-2 sm:grid-cols-2">
-                    <label className={checkboxCardLabelCls(sexualHistory.pSize.bentSide === 'Left')}>
+                    <label className={checkboxCardLabelCls(sexualHistory.pSize.bentSide.includes('Left'))}>
                       <input
                         type="checkbox"
-                        checked={sexualHistory.pSize.bentSide === 'Left'}
-                        onChange={(e) => setSexualHistory(s => ({ ...s, pSize: { ...s.pSize, bentSide: e.target.checked ? 'Left' : '' } }))}
+                        checked={sexualHistory.pSize.bentSide.includes('Left')}
+                        onChange={(e) => setSexualHistory(s => ({
+                          ...s,
+                          pSize: {
+                            ...s.pSize,
+                            bentSide: e.target.checked
+                              ? [...s.pSize.bentSide, 'Left']
+                              : s.pSize.bentSide.filter(x => x !== 'Left'),
+                          },
+                        }))}
                         className="h-4 w-4 rounded border-slate-300"
                       />
                       Left
                     </label>
-                    <label className={checkboxCardLabelCls(sexualHistory.pSize.bentSide === 'Right')}>
+                    <label className={checkboxCardLabelCls(sexualHistory.pSize.bentSide.includes('Right'))}>
                       <input
                         type="checkbox"
-                        checked={sexualHistory.pSize.bentSide === 'Right'}
-                        onChange={(e) => setSexualHistory(s => ({ ...s, pSize: { ...s.pSize, bentSide: e.target.checked ? 'Right' : '' } }))}
+                        checked={sexualHistory.pSize.bentSide.includes('Right')}
+                        onChange={(e) => setSexualHistory(s => ({
+                          ...s,
+                          pSize: {
+                            ...s.pSize,
+                            bentSide: e.target.checked
+                              ? [...s.pSize.bentSide, 'Right']
+                              : s.pSize.bentSide.filter(x => x !== 'Right'),
+                          },
+                        }))}
                         className="h-4 w-4 rounded border-slate-300"
                       />
                       Right
@@ -2099,11 +2137,19 @@ export default function Hospital_HistoryTaking() {
                   <div className="text-sm text-slate-700">Muscles</div>
                   <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
                     {(['OK', 'Semi', 'FL'] as const).map(opt => (
-                      <label key={opt} className={checkboxCardLabelCls(sexualHistory.oeMuscle.status === opt)}>
+                      <label key={opt} className={checkboxCardLabelCls(sexualHistory.oeMuscle.status.includes(opt))}>
                         <input
                           type="checkbox"
-                          checked={sexualHistory.oeMuscle.status === opt}
-                          onChange={(e) => setSexualHistory(s => ({ ...s, oeMuscle: { ...s.oeMuscle, status: e.target.checked ? opt : '' } }))}
+                          checked={sexualHistory.oeMuscle.status.includes(opt)}
+                          onChange={(e) => setSexualHistory(s => ({
+                            ...s,
+                            oeMuscle: {
+                              ...s.oeMuscle,
+                              status: e.target.checked
+                                ? [...s.oeMuscle.status, opt]
+                                : s.oeMuscle.status.filter(x => x !== opt),
+                            },
+                          }))}
                           className="h-4 w-4 rounded border-slate-300"
                         />
                         {opt}

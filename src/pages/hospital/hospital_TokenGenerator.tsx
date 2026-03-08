@@ -105,6 +105,7 @@ export default function Hospital_TokenGenerator() {
   const [form, setForm] = useState({
     phone: '',
     patientId: '',
+    mrn: '',
     patientName: '',
     age: '',
     gender: '',
@@ -280,6 +281,7 @@ export default function Hospital_TokenGenerator() {
     setForm({
       phone: '',
       patientId: '',
+      mrn: '',
       patientName: '',
       age: '',
       gender: '',
@@ -395,6 +397,7 @@ export default function Hospital_TokenGenerator() {
     setForm(prev => ({
       ...prev,
       patientId: String(p._id || prev.patientId || ''),
+      mrn: String(p.mrn || prev.mrn || ''),
       patientName: p.fullName || prev.patientName,
       guardianName: p.fatherName || prev.guardianName,
       guardianRel: p.guardianRel || prev.guardianRel,
@@ -595,7 +598,7 @@ export default function Hospital_TokenGenerator() {
           doctorName: (doctors.find(d => String(d.id) === String(form.doctor))?.name) || '-',
           patientName: res?.token?.patientName || form.patientName || '-',
           phone: form.phone || '',
-          mrn: String(res?.token?.mrn || res?.token?.patientId?.mrn || ''),
+          mrn: String(res?.token?.mrn || res?.token?.patientId?.mrn || (form as any).mrn || ''),
           age: form.age || '',
           gender: form.gender || '',
           guardianRel: form.guardianRel || '',
@@ -655,7 +658,7 @@ export default function Hospital_TokenGenerator() {
         doctorName: selDoc?.name || '-',
         patientName: res?.token?.patientName || form.patientName || '-',
         phone: form.phone || '',
-        mrn: String(res?.token?.mrn || res?.token?.patientId?.mrn || ''),
+        mrn: String(res?.token?.mrn || res?.token?.patientId?.mrn || (form as any).mrn || ''),
         age: form.age || '',
         gender: form.gender || '',
         guardianRel: form.guardianRel || '',
@@ -700,6 +703,15 @@ export default function Hospital_TokenGenerator() {
           <div className="rounded-lg border border-slate-200 bg-white p-4">
             <h3 className="mb-3 text-sm font-semibold text-slate-700">Patient Information</h3>
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              <div className="md:col-span-2">
+                <label className="mb-1 block text-sm font-medium text-slate-700">MR Number</label>
+                <input
+                  className="w-full rounded-md border border-slate-300 bg-slate-50 px-3 py-2 text-slate-700 outline-none"
+                  placeholder="Auto"
+                  value={String((form as any).mrn || '')}
+                  readOnly
+                />
+              </div>
               <div className="md:col-span-2">
                 <label className="mb-1 block text-sm font-medium text-slate-700">Phone</label>
                 <input className="w-full rounded-md border border-slate-300 px-3 py-2 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-200" placeholder="Enter 11-digit phone" value={form.phone} onChange={e => { update('phone', e.target.value); skipLookupKeyRef.current = null; lastPromptKeyRef.current = null; lastPhonePromptRef.current = null; schedulePhoneLookup(e.target.value, { open: true }) }} onBlur={onPhoneBlur} ref={phoneRef} />

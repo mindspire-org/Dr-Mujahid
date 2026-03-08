@@ -34,8 +34,16 @@ type Appointment = {
   createdAt?: string
 }
 
+function normalizeMrnDisplay(mrn: string) {
+  const s = String(mrn || '').trim()
+  if (!s) return ''
+  if (/^\d+$/.test(s)) return `MR${s}`
+  return s
+}
+
 type AppointmentForm = {
   appointmentType: AppointmentType
+  patientMrn: string
   patientName: string
   patientPhone: string
   patientAge: string
@@ -58,6 +66,7 @@ type AppointmentForm = {
 function emptyForm(): AppointmentForm {
   return {
     appointmentType: 'OPD',
+    patientMrn: '',
     patientName: '',
     patientPhone: '',
     patientAge: '',
@@ -79,6 +88,7 @@ function mapToPayload(form: AppointmentForm) {
   return {
     appointmentType: form.appointmentType,
 
+    patientMrn: form.patientMrn.trim() || undefined,
     patientName: form.patientName.trim(),
     patientPhone: form.patientPhone || undefined,
     patientAge: form.patientAge || undefined,
@@ -119,6 +129,29 @@ function AppointmentDialog({
   onSubmit?: (form: AppointmentForm) => void
 }) {
   const [form, setForm] = useState<AppointmentForm>(initial)
+
+  useEffect(() => {
+    if (!open) return
+    const phone = String(form.patientPhone || '').trim()
+    if (!phone) return
+    let alive = true
+    ;(async () => {
+      try {
+        const res: any = await hospitalApi.searchPatientsByPhone(phone)
+        const p = res?.patient || (Array.isArray(res?.patients) ? res.patients[0] : null)
+        const mrn = normalizeMrnDisplay(String(p?.mrn || ''))
+        if (!mrn) return
+        if (!alive) return
+        setForm(prev => {
+          if (prev.patientMrn) return prev
+          return { ...prev, patientMrn: mrn }
+        })
+      } catch {
+        // ignore
+      }
+    })()
+    return () => { alive = false }
+  }, [open, form.patientPhone])
 
   const filteredDoctors = useMemo(() => {
     if (!form.departmentId) return doctors
@@ -167,6 +200,21 @@ function AppointmentDialog({
               <div className="text-sm font-semibold text-slate-800">Appointment Detail</div>
               <div className="mt-4 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
                 <div>
+                  <label className="mb-1 block text-sm text-slate-700">Appointment Type</label>
+                  <select
+                    value={form.appointmentType}
+                    onChange={e => update('appointmentType', e.target.value as AppointmentType)}
+                    disabled={readonly}
+                    className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+                  >
+                    <option value="OPD">OPD</option>
+                    <option value="Diagnostic">Diagnostic</option>
+                    <option value="Therapy">Therapy</option>
+                    <option value="Counselling">Counselling</option>
+                  </select>
+                </div>
+
+                <div>
                   <label className="mb-1 block text-sm text-slate-700">Appointment Date</label>
                   <input
                     type="date"
@@ -193,6 +241,16 @@ function AppointmentDialog({
             <div className="rounded-lg border border-slate-200 bg-white p-4">
               <div className="text-sm font-semibold text-slate-800">Patient Information</div>
               <div className="mt-4 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                <div>
+                  <label className="mb-1 block text-sm text-slate-700">MRN</label>
+                  <input
+                    value={normalizeMrnDisplay(form.patientMrn)}
+                    disabled
+                    placeholder="Auto"
+                    className="w-full rounded-md border border-slate-300 bg-slate-50 px-3 py-2 text-sm"
+                  />
+                </div>
+
                 <div>
                   <label className="mb-1 block text-sm text-slate-700">Patient Name</label>
                   <input
@@ -438,6 +496,7 @@ export default function Hospital_Appointments() {
   function formFromRow(r: Appointment): AppointmentForm {
     return {
       appointmentType: r.appointmentType,
+      patientMrn: r.patientMrn || '',
       patientName: r.patientName || '',
       patientPhone: r.patientPhone || '',
       patientAge: r.patientAge || '',
