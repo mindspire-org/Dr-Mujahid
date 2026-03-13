@@ -1,0 +1,156 @@
+import React from 'react'
+
+type Row = {
+  d: string
+  sys1: string
+  sys2: string
+  dys1: string
+  dys2: string
+  dDeg: string
+  walk: string
+  inj: string
+  t: string
+  status: string
+}
+
+type FormData = { rows: Row[]; clinicalNote: string }
+
+type Props = { value: string; onChange: (text: string)=>void }
+
+function safeParse(value: string): FormData | null {
+  try {
+    const v = JSON.parse(value)
+    if (!v || typeof v !== 'object') return null
+    const rows = Array.isArray((v as any).rows) ? (v as any).rows : []
+    const clinicalNote = typeof (v as any).clinicalNote === 'string' ? (v as any).clinicalNote : ''
+    return {
+      rows: rows.map((r: any) => ({
+        d: String(r?.d || ''),
+        sys1: String(r?.sys1 || ''),
+        sys2: String(r?.sys2 || ''),
+        dys1: String(r?.dys1 || ''),
+        dys2: String(r?.dys2 || ''),
+        dDeg: String(r?.dDeg || ''),
+        walk: String(r?.walk || ''),
+        inj: String(r?.inj || ''),
+        t: String(r?.t || ''),
+        status: String(r?.status || ''),
+      })),
+      clinicalNote,
+    }
+  } catch {
+    return null
+  }
+}
+
+const DEFAULT_ROWS: Row[] = [
+  { d: 'D', sys1: '', sys2: '', dys1: '', dys2: '', dDeg: '', walk: '', inj: '', t: '', status: '' },
+]
+
+const T_OPTIONS = ['', 'Mild', 'Moderate', 'Good', 'ExInt']
+const STATUS_OPTIONS = ['', 'OK', 'VL', 'AI']
+
+export default function Diagnostic_PDS({ value, onChange }: Props){
+  const prefillRef = React.useRef(false)
+  const [rows, setRows] = React.useState<Row[]>(DEFAULT_ROWS)
+  const [clinicalNote, setClinicalNote] = React.useState('')
+
+  React.useEffect(() => {
+    if (prefillRef.current) return
+    const parsed = safeParse(String(value || '').trim())
+    if (parsed){
+      setRows(parsed.rows?.length ? parsed.rows : DEFAULT_ROWS)
+      setClinicalNote(parsed.clinicalNote || '')
+    }
+    prefillRef.current = true
+  }, [value])
+
+  const emit = React.useCallback((nextRows: Row[], nextNote: string) => {
+    const payload: FormData = { rows: nextRows, clinicalNote: nextNote }
+    onChange(JSON.stringify(payload))
+  }, [onChange])
+
+  React.useEffect(() => {
+    emit(rows, clinicalNote)
+  }, [rows, clinicalNote, emit])
+
+  return (
+    <div className="space-y-4">
+      <div className="overflow-x-auto rounded-lg border border-slate-200">
+        <table className="w-full text-sm">
+          <thead className="bg-slate-50 text-slate-600">
+            <tr>
+              <th className="px-3 py-2 text-left font-medium" colSpan={1}>B + B</th>
+              <th className="px-3 py-2 text-center font-medium" colSpan={2}>Sys</th>
+              <th className="px-3 py-2 text-center font-medium" colSpan={2}>Dys</th>
+              <th className="px-3 py-2 text-left font-medium" rowSpan={2}>D°</th>
+              <th className="px-3 py-2 text-left font-medium" rowSpan={2}>Walk</th>
+              <th className="px-3 py-2 text-left font-medium" rowSpan={2}>Inj</th>
+              <th className="px-3 py-2 text-left font-medium" rowSpan={2}>T</th>
+              <th className="px-3 py-2 text-left font-medium" rowSpan={2}>Status</th>
+            </tr>
+            <tr>
+              <th className="px-3 py-2 text-left font-medium">D</th>
+              <th className="px-3 py-2 text-left font-medium">Sys</th>
+              <th className="px-3 py-2 text-left font-medium">Sys</th>
+              <th className="px-3 py-2 text-left font-medium">Dys</th>
+              <th className="px-3 py-2 text-left font-medium">Dys</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r, idx) => (
+              <tr key={idx} className="border-t border-slate-100">
+                <td className="px-3 py-2">
+                  <div className="w-full rounded-md border border-slate-200 bg-slate-50 px-3 py-1.5 text-slate-700">
+                    {(r.d || 'D')}
+                  </div>
+                </td>
+                <td className="px-3 py-2">
+                  <input value={r.sys1} onChange={e=>{ const v=e.target.value; setRows(prev=>prev.map((x,i)=> i===idx?{...x,sys1:v}:x)) }} className="w-full rounded-md border border-slate-300 px-3 py-1.5" />
+                </td>
+                <td className="px-3 py-2">
+                  <input value={r.sys2} onChange={e=>{ const v=e.target.value; setRows(prev=>prev.map((x,i)=> i===idx?{...x,sys2:v}:x)) }} className="w-full rounded-md border border-slate-300 px-3 py-1.5" />
+                </td>
+                <td className="px-3 py-2">
+                  <input value={r.dys1} onChange={e=>{ const v=e.target.value; setRows(prev=>prev.map((x,i)=> i===idx?{...x,dys1:v}:x)) }} className="w-full rounded-md border border-slate-300 px-3 py-1.5" />
+                </td>
+                <td className="px-3 py-2">
+                  <input value={r.dys2} onChange={e=>{ const v=e.target.value; setRows(prev=>prev.map((x,i)=> i===idx?{...x,dys2:v}:x)) }} className="w-full rounded-md border border-slate-300 px-3 py-1.5" />
+                </td>
+                <td className="px-3 py-2">
+                  <input value={r.dDeg} onChange={e=>{ const v=e.target.value; setRows(prev=>prev.map((x,i)=> i===idx?{...x,dDeg:v}:x)) }} className="w-full rounded-md border border-slate-300 px-3 py-1.5" />
+                </td>
+                <td className="px-3 py-2">
+                  <input value={r.walk} onChange={e=>{ const v=e.target.value; setRows(prev=>prev.map((x,i)=> i===idx?{...x,walk:v}:x)) }} className="w-full rounded-md border border-slate-300 px-3 py-1.5" />
+                </td>
+                <td className="px-3 py-2">
+                  <input value={r.inj} onChange={e=>{ const v=e.target.value; setRows(prev=>prev.map((x,i)=> i===idx?{...x,inj:v}:x)) }} className="w-full rounded-md border border-slate-300 px-3 py-1.5" />
+                </td>
+                <td className="px-3 py-2">
+                  <select value={r.t} onChange={e=>{ const v=e.target.value; setRows(prev=>prev.map((x,i)=> i===idx?{...x,t:v}:x)) }} className="w-full rounded-md border border-slate-300 px-3 py-1.5">
+                    {T_OPTIONS.map(o => <option key={o} value={o}>{o || 'Select'}</option>)}
+                  </select>
+                </td>
+                <td className="px-3 py-2">
+                  <select value={r.status} onChange={e=>{ const v=e.target.value; setRows(prev=>prev.map((x,i)=> i===idx?{...x,status:v}:x)) }} className="w-full rounded-md border border-slate-300 px-3 py-1.5">
+                    {STATUS_OPTIONS.map(o => <option key={o} value={o}>{o || 'Select'}</option>)}
+                  </select>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <div>
+        <label className="mb-1 block text-sm font-medium text-slate-700">Clinical Note</label>
+        <textarea
+          value={clinicalNote}
+          onChange={e=>setClinicalNote(e.target.value)}
+          className="min-h-[100px] w-full rounded-md border border-slate-300 px-3 py-2"
+          placeholder="Clinical note"
+        />
+      </div>
+    </div>
+  )
+}

@@ -1,0 +1,23 @@
+import React from 'react'
+
+export type ReportRendererProps = { value: string; onChange: (text: string)=>void }
+
+import UltrasoundGeneric from './diagnostic_UltrasoundGeneric'
+import CTScan from './diagnostic_CTScan'
+import Echocardiography from './diagnostic_Echocardiography'
+import Colonoscopy from './diagnostic_Colonoscopy'
+import UpperGIEndoscopy from './diagnostic_UpperGIEndoscopy'
+import STT from './diagnostic_STT'
+import NPT from './diagnostic_NPT'
+import PDS from './diagnostic_PDS'
+
+export const DiagnosticFormRegistry: Record<string, React.ComponentType<ReportRendererProps>> = {
+  Ultrasound: UltrasoundGeneric,
+  CTScan: CTScan,
+  Echocardiography: Echocardiography,
+  Colonoscopy: Colonoscopy,
+  UpperGiEndoscopy: UpperGIEndoscopy,
+  STT,
+  NPT,
+  PDS,
+}
