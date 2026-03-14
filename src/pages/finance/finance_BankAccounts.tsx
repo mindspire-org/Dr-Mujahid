@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { hospitalApi } from '../../utils/api'
 
 export default function Finance_BankAccounts(){
@@ -22,6 +22,7 @@ export default function Finance_BankAccounts(){
   const [editBranchCode, setEditBranchCode] = useState('')
   const [editSwift, setEditSwift] = useState('')
   const [editStatus, setEditStatus] = useState<'Active'|'Inactive'>('Active')
+  const [editResponsibleStaff, setEditResponsibleStaff] = useState('')
 
   const [txnOpen, setTxnOpen] = useState(false)
   const [txnBank, setTxnBank] = useState<any|null>(null)
@@ -30,14 +31,21 @@ export default function Finance_BankAccounts(){
   const [txnRows, setTxnRows] = useState<any[]>([])
   const [txnLoading, setTxnLoading] = useState(false)
 
-  const [toast, setToast] = useState<null | { type: 'success' | 'error'; message: string }>(null)
-  const showToast = (type: 'success' | 'error', message: string) => {
-    setToast({ type, message })
-    setTimeout(() => setToast(null), 2500)
-  }
-
   const [deleteItem, setDeleteItem] = useState<any|null>(null)
   const [deleteLoading, setDeleteLoading] = useState(false)
+
+  const [toastMsg, setToastMsg] = useState('')
+  const [toastOpen, setToastOpen] = useState(false)
+  const toastTimerRef = useRef<number | null>(null)
+
+  const showToast = (msg: string) => {
+    setToastMsg(msg)
+    setToastOpen(true)
+    if (toastTimerRef.current) window.clearTimeout(toastTimerRef.current)
+    toastTimerRef.current = window.setTimeout(() => {
+      setToastOpen(false)
+    }, 2500)
+  }
 
   const openTransactions = async (bank: any) => {
     setTxnBank(bank)
@@ -49,7 +57,7 @@ export default function Finance_BankAccounts(){
       const res: any = await hospitalApi.listFinanceAccountTransactions({ code: finCode, from: txnFrom || undefined, to: txnTo || undefined, limit: 200 })
       setTxnRows(res?.entries || [])
     } catch (e: any) {
-      showToast('error', e?.message || 'Failed to load transactions')
+      alert(e?.message || 'Failed to load transactions')
     } finally {
       setTxnLoading(false)
     }
@@ -73,31 +81,19 @@ export default function Finance_BankAccounts(){
   useEffect(()=>{ reload(); reloadUsers() }, [])
 
   async function create(){
-    if (!bankName || !accountTitle || !accountNumber || !status) {
-      showToast('error', 'Please fill required fields')
-      return
-    }
+    if (!bankName || !accountTitle || !accountNumber || !status) return alert('Please fill required fields')
     setLoading(true)
     try {
       await hospitalApi.createBankAccount({ bankName, accountTitle, accountNumber, branchName: branchName||undefined, branchCode: branchCode||undefined, swift: swift||undefined, responsibleStaff: responsibleStaff||undefined, status })
       setBankName(''); setAccountTitle(''); setAccountNumber(''); setBranchName(''); setBranchCode(''); setSwift(''); setResponsibleStaff(''); setStatus('Active')
       await reload()
-      showToast('success', 'Bank account created')
-    } catch(e: any){
-      showToast('error', e?.message || 'Failed')
-    }
+      showToast('Bank account created')
+    } catch(e: any){ alert(e?.message || 'Failed') }
     finally { setLoading(false) }
   }
 
   return (
     <div className="w-full px-3 sm:px-6 py-5 sm:py-6 space-y-4">
-      {toast && (
-        <div className="fixed bottom-4 right-4 z-50">
-          <div className={`${toast.type === 'success' ? 'bg-emerald-600' : 'bg-rose-600'} rounded-lg px-4 py-2 text-sm font-medium text-white shadow-lg`}>
-            {toast.message}
-          </div>
-        </div>
-      )}
       <div>
         <div className="text-2xl font-bold text-slate-800">Bank Accounts</div>
         <div className="text-sm text-slate-500">Add bank accounts</div>
@@ -220,6 +216,18 @@ export default function Finance_BankAccounts(){
                   <option value="Inactive">Inactive</option>
                 </select>
               </div>
+              <div>
+                <label className="mb-1 block text-sm font-medium text-slate-700">Assigned User</label>
+                <select value={editResponsibleStaff} onChange={e=> setEditResponsibleStaff(e.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm">
+                  <option value="">-- Select User --</option>
+                  {users.map((u:any)=>(
+                    <option key={String(u.id)} value={String(u.username||'')}>{`${String(u.username||'')}-${String(u.role||'')}`}</option>
+                  ))}
+                  {!!editResponsibleStaff && !users.some((u:any)=> String(u.username||'') === editResponsibleStaff) && (
+                    <option value={editResponsibleStaff}>{editResponsibleStaff}</option>
+                  )}
+                </select>
+              </div>
             </div>
             <div className="mt-4 flex justify-end gap-2">
               <button className="rounded border border-slate-300 px-3 py-2 text-sm" onClick={()=> setEditItem(null)}>Cancel</button>
@@ -231,6 +239,7 @@ export default function Finance_BankAccounts(){
                     branchName: editBranchName.trim() || undefined,
                     branchCode: editBranchCode.trim() || undefined,
                     swift: editSwift.trim() || undefined,
+                    responsibleStaff: editResponsibleStaff.trim() || undefined,
                     status: editStatus,
                   })
                   setEditItem(null)
@@ -294,6 +303,7 @@ export default function Finance_BankAccounts(){
                           setEditBranchCode(a.branchCode||'');
                           setEditSwift(a.swift||'');
                           setEditStatus((a.status as any) || 'Active');
+                          setEditResponsibleStaff(a.responsibleStaff||'');
                         }}
                         aria-label="Edit"
                         title="Edit"
@@ -404,6 +414,13 @@ export default function Finance_BankAccounts(){
                 </tbody>
               </table>
             </div>
+          </div>
+        </div>
+      )}
+      {toastOpen && (
+        <div className="fixed bottom-4 right-4 z-50">
+          <div className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white shadow-lg">
+            {toastMsg}
           </div>
         </div>
       )}

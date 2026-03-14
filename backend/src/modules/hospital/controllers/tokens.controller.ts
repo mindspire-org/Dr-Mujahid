@@ -9,6 +9,7 @@ import { HospitalDoctorSchedule } from '../models/DoctorSchedule'
 import { LabPatient } from '../../lab/models/Patient'
 import { CorporateCompany } from '../../corporate/models/Company'
 import { LabCounter } from '../../lab/models/Counter'
+import { HospitalSettings } from '../models/Settings'
 import { HospitalAuditLog } from '../models/AuditLog'
 import { postOpdTokenJournal, reverseJournalByRef, reverseOpdTokenAsReturn } from './finance_ledger'
 import { resolveOPDPrice } from '../../corporate/utils/price'
@@ -87,49 +88,30 @@ function computeSlotStartEnd(startTime: string, slotMinutes: number, slotNo: num
   return { start: fromMin(start), end: fromMin(start + (slotMinutes||15)) }
 }
 
-import { HospitalSettings } from '../models/Settings'
-
-async function nextMrn(): Promise<string> {
-  // Get MR Number Format from settings (e.g., "7732")
-  let startSerial = 7732
-  try {
-    const settings: any = await HospitalSettings.findOne().lean()
-    const format = String(settings?.mrFormat || '').trim()
-    if (format) {
-      const parsed = parseInt(format, 10)
-      if (!isNaN(parsed) && parsed > 0) startSerial = parsed
-    }
-  } catch { /* fallback to default */ }
-
-  // Use a stable counter key and reset sequence when startSerial changes.
-  // This ensures that updating settings.mrFormat immediately reflects on newly generated MRNs.
-  const key = `mrn_counter`
-  const existing: any = await LabCounter.findById(key).lean()
-  const existingStart = Number(existing?.startSerial || 0)
-  const shouldReset = !existing || !existingStart || existingStart !== startSerial
-
-  const update: any = shouldReset
-    ? { $set: { startSerial, seq: 1 } }
-    : { $inc: { seq: 1 } }
-
-  // Ensure uniqueness even if counter is out-of-sync with existing patients.
-  // We'll attempt a few increments until we find a free MRN.
-  for (let attempts = 0; attempts < 50; attempts++) {
-    const c: any = await LabCounter.findByIdAndUpdate(
-      key,
-      attempts === 0 ? update : { $inc: { seq: 1 } },
-      { upsert: true, new: true, setDefaultsOnInsert: true }
-    )
-    const seq = Number(c?.seq || 1)
-    const mrNumber = startSerial + seq - 1
-    const candidate = `MR${mrNumber}`
-    const exists = await LabPatient.exists({ mrn: candidate })
-    if (!exists) return candidate
+async function nextMrn(){
+  const key = 'lab_mrn_mr7553'
+  
+  // Get settings to check for custom starting number
+  const settings = await HospitalSettings.findOne().lean()
+  const mrStart = settings?.mrStart || 1
+  
+  // Check current counter value
+  let existingCounter = await LabCounter.findById(key).lean()
+  const currentSeq = (existingCounter as any)?.seq || 0
+  
+  // If no counter exists OR current seq is less than mrStart-1, reset to mrStart-1
+  const targetSeq = Math.max(0, mrStart - 1)
+  if (!existingCounter) {
+    // Initialize counter to mrStart - 1, so first increment gives mrStart
+    await LabCounter.create({ _id: key, seq: targetSeq })
+  } else if (currentSeq < targetSeq) {
+    // Reset counter to mrStart - 1 if current is lower
+    await LabCounter.findByIdAndUpdate(key, { $set: { seq: targetSeq } })
   }
-  // Fallback: should be extremely rare.
-  const c: any = await LabCounter.findByIdAndUpdate(key, { $inc: { seq: 1 } }, { upsert: true, new: true, setDefaultsOnInsert: true })
-  const seq = Number(c?.seq || 1)
-  return `MR${startSerial + seq - 1}`
+  
+  const c = await LabCounter.findByIdAndUpdate(key, { $inc: { seq: 1 } }, { upsert: true, new: true, setDefaultsOnInsert: true })
+  const seq = Number(c.seq || 1)
+  return String(seq)
 }
 
 export async function createOpd(req: Request, res: Response){
@@ -277,7 +259,17 @@ export async function createOpd(req: Request, res: Response){
     dateIso = next.dateIso
   }
 
-  const finalFee = hasOverride ? Math.max(0, Number(overrideFee)) : Math.max(0, resolvedFee - (data.discount || 0))
+  // Calculate discount based on type
+  let discountAmount = 0
+  const discountValue = Number((data as any).discount || 0)
+  const discountType = (data as any).discountType || 'PKR'
+  if (discountType === '%') {
+    discountAmount = resolvedFee * (discountValue / 100)
+  } else {
+    discountAmount = discountValue
+  }
+
+  const finalFee = hasOverride ? Math.max(0, Number(overrideFee)) : Math.max(0, resolvedFee - discountAmount)
 
   // Dues/Advance accounting (mirrors Diagnostic module)
   const patientIdStr = String((patient as any)?._id || '')
@@ -343,6 +335,7 @@ export async function createOpd(req: Request, res: Response){
     amount: hasOverride ? finalFee : resolvedFee,
     fee: finalFee,
     discount: (data as any).discount,
+    discountType: (data as any).discountType || 'PKR',
     receptionistName: (data as any).receptionistName,
     paymentMethod: (data as any).paymentMethod,
     paymentRef: (data as any).paymentRef,

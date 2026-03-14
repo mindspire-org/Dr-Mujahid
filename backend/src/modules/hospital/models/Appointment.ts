@@ -22,9 +22,6 @@ const AppointmentSchema = new Schema({
 
   notes: { type: String },
   receptionistName: { type: String },
-  status: { type: String, enum: ['Scheduled', 'Checked-In', 'Completed', 'Cancelled'], default: 'Scheduled' },
-  encounterId: { type: Schema.Types.ObjectId, ref: 'Hospital_Encounter' },
-  counsellingSaved: { type: Boolean, default: false },
 }, { timestamps: true })
 
 AppointmentSchema.index({ appointmentDate: -1, createdAt: -1 })
@@ -52,8 +49,6 @@ export type HospitalAppointmentDoc = {
 
   notes?: string
   receptionistName?: string
-  status?: 'Scheduled' | 'Checked-In' | 'Completed' | 'Cancelled'
-  encounterId?: string
 }
 
 export const HospitalAppointment = models.Hospital_Appointment || model('Hospital_Appointment', AppointmentSchema)

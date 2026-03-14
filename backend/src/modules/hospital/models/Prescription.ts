@@ -53,6 +53,16 @@ const PrescriptionSchema = new Schema({
     bsa: { type: Number },
     spo2: { type: Number },
   },
+  // Stores doctor's edits on history fields (delta only, no duplication)
+  historyEdits: {
+    personalInfo: { type: Schema.Types.Mixed, default: null },
+    maritalStatus: { type: Schema.Types.Mixed, default: null },
+    coitus: { type: Schema.Types.Mixed, default: null },
+    health: { type: Schema.Types.Mixed, default: null },
+    sexualHistory: { type: Schema.Types.Mixed, default: null },
+    previousMedicalHistory: { type: Schema.Types.Mixed, default: null },
+    arrivalReference: { type: Schema.Types.Mixed, default: null },
+  },
   createdBy: { type: String },
 }, { timestamps: true })
 
@@ -97,6 +107,15 @@ export type HospitalPrescriptionDoc = {
     bmi?: number
     bsa?: number
     spo2?: number
+  }
+  historyEdits?: {
+    personalInfo?: any
+    maritalStatus?: any
+    coitus?: any
+    health?: any
+    sexualHistory?: any
+    previousMedicalHistory?: any
+    arrivalReference?: any
   }
   createdBy?: string
 }

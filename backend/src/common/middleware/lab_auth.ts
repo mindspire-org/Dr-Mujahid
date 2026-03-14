@@ -15,6 +15,17 @@ export function labAuth(req: Request, res: Response, next: NextFunction) {
       return
     }
     if (scope === 'hospital') {
+      // Check if this is a template route - allow all hospital users for templates
+      const path = req.path || ''
+      const isTemplateRoute = path.includes('/templates')
+      
+      if (isTemplateRoute) {
+        ;(req as any).user = payload
+        next()
+        return
+      }
+      
+      // For other lab routes, require lab permissions
       const role = String(payload?.role || '')
       const permissions = (payload?.permissions && typeof payload.permissions === 'object') ? payload.permissions : null
       const labPerm = permissions ? (permissions as any).lab : null

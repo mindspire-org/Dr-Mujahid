@@ -31,6 +31,7 @@ export type DiagnosticTokenSlipData = {
   tests: Array<{ name: string; price: number }>
   subtotal: number
   discount: number
+  discountType?: 'PKR' | '%'
   payable: number
   createdAt?: string
 }
@@ -272,7 +273,7 @@ export default function Diagnostic_TokenSlip({ open, onClose, data, autoPrint = 
 
         <div className="space-y-1 text-sm text-slate-800">
           <Row label="Total Amount:" value={`PKR ${data.subtotal.toLocaleString()}`} />
-          <Row label="Discount:" value={`PKR ${Number(data.discount||0).toLocaleString()}`} />
+          <Row label="Discount:" value={`${data.discountType === '%' ? data.discount + '% (PKR ' + Math.round(data.subtotal * (data.discount / 100)).toLocaleString() + ')' : 'PKR ' + Number(data.discount||0).toLocaleString()}`} />
           <Row label="Payable:" value={`PKR ${payable.toLocaleString()}`} boldValue />
           <Row label="Paid:" value={`PKR ${computed.paidToday.toLocaleString()}`} />
           <Row label="Remaining:" value={`PKR ${computed.remaining.toLocaleString()}`} />

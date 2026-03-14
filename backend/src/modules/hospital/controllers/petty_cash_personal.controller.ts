@@ -25,11 +25,14 @@ export async function myPettyCash(req: Request, res: Response) {
   const u: any = await HospitalUser.findById(userId).lean()
   if (!u || u.active === false) return res.status(401).json({ error: 'Unauthorized' })
 
-  const code = String(u.pettyCashAccountCode || '').trim().toUpperCase()
-  if (!code) return res.json({ account: null, balance: 0 })
+  const username = String(u.username || '').trim().toLowerCase()
+  if (!username) return res.json({ account: null, balance: 0 })
 
-  const acct: any = await PettyCashAccount.findOne({ code }).lean()
+  const acct: any = await PettyCashAccount.findOne({ responsibleStaff: username, status: 'Active' }).lean()
   if (!acct) return res.json({ account: null, balance: 0 })
+
+  const code = String(acct.code || '').trim().toUpperCase()
+  if (!code) return res.json({ account: null, balance: 0 })
 
   const balance = await computeAccountBalance(code)
   return res.json({ account: { id: String(acct._id), code: acct.code, name: acct.name, status: acct.status }, balance })
@@ -52,8 +55,14 @@ export async function pullFundsToMyPetty(req: Request, res: Response) {
   const u: any = await HospitalUser.findById(userId).lean()
   if (!u || u.active === false) return res.status(401).json({ error: 'Unauthorized' })
 
-  const toCode = String(u.pettyCashAccountCode || '').trim().toUpperCase()
-  if (!toCode) return res.status(400).json({ error: 'No petty cash account assigned' })
+  const username = String(u.username || '').trim().toLowerCase()
+  if (!username) return res.status(400).json({ error: 'No petty cash account assigned' })
+
+  const toPetty: any = await PettyCashAccount.findOne({ responsibleStaff: username, status: 'Active' }).lean()
+  if (!toPetty) return res.status(400).json({ error: 'No petty cash account assigned' })
+
+  const toCode = String(toPetty.code || '').trim().toUpperCase()
+  if (!toCode) return res.status(400).json({ error: 'Receiver petty cash account not configured' })
 
   const { fromAccountCode, amount, dateIso, memo } = pullFundsSchema.parse({
     ...req.body,
@@ -61,10 +70,6 @@ export async function pullFundsToMyPetty(req: Request, res: Response) {
   })
 
   if (fromAccountCode === toCode) return res.status(400).json({ error: 'Sender and receiver cannot be the same' })
-
-  const toPetty: any = await PettyCashAccount.findOne({ code: toCode }).lean()
-  if (!toPetty) return res.status(404).json({ error: 'Receiver petty cash account not found' })
-  if (toPetty.status !== 'Active') return res.status(400).json({ error: 'Receiver petty cash account is not active' })
 
   // Validate sender exists as either petty cash or bank finance account code.
   console.log(`[DEBUG] pullFundsToMyPetty: fromAccountCode=${fromAccountCode}, amount=${amount}`)
@@ -130,7 +135,13 @@ export async function listMyPettyPulls(req: Request, res: Response) {
   const u: any = await HospitalUser.findById(userId).lean()
   if (!u || u.active === false) return res.status(401).json({ error: 'Unauthorized' })
 
-  const code = String(u.pettyCashAccountCode || '').trim().toUpperCase()
+  const username = String(u.username || '').trim().toLowerCase()
+  if (!username) return res.json({ entries: [] })
+
+  const petty: any = await PettyCashAccount.findOne({ responsibleStaff: username, status: 'Active' }).lean()
+  if (!petty) return res.json({ entries: [] })
+
+  const code = String(petty.code || '').trim().toUpperCase()
   if (!code) return res.json({ entries: [] })
 
   const rows: any[] = await FinanceJournal.aggregate([

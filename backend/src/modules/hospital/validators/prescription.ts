@@ -52,6 +52,15 @@ export const createPrescriptionSchema = z
       })
       .partial()
       .optional(),
+    historyEdits: z.object({
+      personalInfo: z.any().optional(),
+      maritalStatus: z.any().optional(),
+      coitus: z.any().optional(),
+      health: z.any().optional(),
+      sexualHistory: z.any().optional(),
+      previousMedicalHistory: z.any().optional(),
+      arrivalReference: z.any().optional(),
+    }).optional(),
     createdBy: z.string().optional(),
   })
   .refine((data) => Array.isArray((data as any).medicine) || Array.isArray((data as any).items), {
@@ -98,4 +107,13 @@ export const updatePrescriptionSchema = z.object({
     bsa: z.coerce.number().optional(),
     spo2: z.coerce.number().optional(),
   }).partial().optional(),
+  historyEdits: z.object({
+    personalInfo: z.any().optional(),
+    maritalStatus: z.any().optional(),
+    coitus: z.any().optional(),
+    health: z.any().optional(),
+    sexualHistory: z.any().optional(),
+    previousMedicalHistory: z.any().optional(),
+    arrivalReference: z.any().optional(),
+  }).optional(),
 })

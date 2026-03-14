@@ -48,7 +48,15 @@ function getToken(path?: string) {
         // Fallback legacy token key
         return localStorage.getItem('token') || ''
       }
-      if (path.startsWith('/lab')) return localStorage.getItem('lab.token') || localStorage.getItem('aesthetic.token') || localStorage.getItem('token') || ''
+      if (path.startsWith('/lab')) {
+        const labToken = localStorage.getItem('lab.token')
+        if (labToken) return labToken
+        
+        const hospitalToken = localStorage.getItem('hospital.token')
+        if (hospitalToken) return hospitalToken
+
+        return localStorage.getItem('aesthetic.token') || localStorage.getItem('token') || ''
+      }
       if (path.startsWith('/aesthetic')) return localStorage.getItem('aesthetic.token') || localStorage.getItem('token') || ''
       if (path.startsWith('/pharmacy')) return localStorage.getItem('pharmacy.token') || localStorage.getItem('token') || ''
       if (path.startsWith('/therapy')) return localStorage.getItem('therapy.token') || localStorage.getItem('token') || ''
@@ -155,8 +163,8 @@ export const diagnosticApi = {
   },
 
 
-  createTest: (data: { name: string; price?: number; department?: string; purchasePrice?: number; qtyPerPack?: number }) => api('/diagnostic/tests', { method: 'POST', body: JSON.stringify(data) }),
-  updateTest: (id: string, data: { name?: string; price?: number; department?: string; purchasePrice?: number; qtyPerPack?: number }) => api(`/diagnostic/tests/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  createTest: (data: { name: string; price?: number }) => api('/diagnostic/tests', { method: 'POST', body: JSON.stringify(data) }),
+  updateTest: (id: string, data: { name?: string; price?: number }) => api(`/diagnostic/tests/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   deleteTest: (id: string) => api(`/diagnostic/tests/${id}`, { method: 'DELETE' }),
 
   // Orders (Samples)
@@ -194,7 +202,7 @@ export const diagnosticApi = {
     corporateCoverageCap?: number
   }) =>
     api('/diagnostic/orders', { method: 'POST', body: JSON.stringify(data) }),
-  updateOrder: (id: string, data: { tests?: string[]; patient?: { mrn?: string; fullName?: string; phone?: string; age?: string; gender?: string; address?: string; guardianRelation?: string; guardianName?: string; cnic?: string }; subtotal?: number; discount?: number; net?: number }) =>
+  updateOrder: (id: string, data: { tests?: string[]; patient?: { mrn?: string; fullName?: string; phone?: string; age?: string; gender?: string; address?: string; guardianRelation?: string; guardianName?: string; cnic?: string }; subtotal?: number; discount?: number; discountInput?: number; discountType?: 'PKR' | '%'; net?: number; amountReceived?: number; paidForToday?: number }) =>
     api(`/diagnostic/orders/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   updateOrderTrack: (id: string, data: { sampleTime?: string; reportingTime?: string; status?: 'received' | 'completed' | 'returned'; referringConsultant?: string }) =>
     api(`/diagnostic/orders/${id}/track`, { method: 'PUT', body: JSON.stringify(data) }),
@@ -1579,6 +1587,15 @@ export const labApi = {
   createBBBag: (data: any) => api('/lab/bb/inventory', { method: 'POST', body: JSON.stringify(data) }),
   updateBBBag: (id: string, data: any) => api(`/lab/bb/inventory/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   deleteBBBag: (id: string) => api(`/lab/bb/inventory/${id}`, { method: 'DELETE' }),
+
+  // Templates (for doctor prescription lab orders)
+  listTemplates: (doctorId: string) => api(`/lab/templates?doctorId=${encodeURIComponent(doctorId)}`),
+  createTemplate: (data: { doctorId: string; name: string; tests: string[] }) =>
+    api('/lab/templates', { method: 'POST', body: JSON.stringify(data) }),
+  getTemplate: (id: string) => api(`/lab/templates/${encodeURIComponent(id)}`),
+  updateTemplate: (id: string, data: { name?: string; tests?: string[] }) =>
+    api(`/lab/templates/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify(data) }),
+  deleteTemplate: (id: string) => api(`/lab/templates/${encodeURIComponent(id)}`, { method: 'DELETE' }),
 }
 
 export const therapyApi = {
@@ -1703,7 +1720,7 @@ export const hospitalApi = {
   markAllUserNotificationsRead: () => api('/hospital/user-notifications/mark-all-read', { method: 'POST' }),
 
   // Appointments
-  listAppointments: (params?: { from?: string; to?: string; appointmentType?: 'OPD' | 'Diagnostic' | 'Therapy' | 'Counselling'; status?: 'Scheduled' | 'Checked-In' | 'Completed' | 'Cancelled'; doctorId?: string; departmentId?: string; encounterId?: string; q?: string }) => {
+  listAppointments: (params?: { from?: string; to?: string; appointmentType?: 'OPD' | 'Diagnostic' | 'Therapy' | 'Counselling'; status?: 'Scheduled' | 'Checked-In' | 'Completed' | 'Cancelled'; doctorId?: string; departmentId?: string; q?: string }) => {
     const qs = new URLSearchParams()
     if (params?.from) qs.set('from', params.from)
     if (params?.to) qs.set('to', params.to)
@@ -1711,7 +1728,6 @@ export const hospitalApi = {
     if (params?.status) qs.set('status', params.status)
     if (params?.doctorId) qs.set('doctorId', params.doctorId)
     if (params?.departmentId) qs.set('departmentId', params.departmentId)
-    if (params?.encounterId) qs.set('encounterId', params.encounterId)
     if (params?.q) qs.set('q', params.q)
     const s = qs.toString()
     return api(`/hospital/appointments${s ? `?${s}` : ''}`)
@@ -1720,7 +1736,6 @@ export const hospitalApi = {
   createAppointment: (data: any) => api('/hospital/appointments', { method: 'POST', body: JSON.stringify(data) }),
   updateAppointment: (id: string, data: any) => api(`/hospital/appointments/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify(data) }),
   deleteAppointment: (id: string) => api(`/hospital/appointments/${encodeURIComponent(id)}`, { method: 'DELETE' }),
-  createEncounterFromAppointment: (id: string) => api(`/hospital/appointments/${encodeURIComponent(id)}/encounter`, { method: 'POST' }),
 
   // History Taking (OPD)
   getHistoryTaking: (encounterId: string) =>
@@ -1762,17 +1777,47 @@ export const hospitalApi = {
     const s = qs.toString()
     return api(`/hospital/patients/search${s ? `?${s}` : ''}`)
   },
-  
-  // Bulk import patients from Excel
-  importPatients: (patients: any[]) =>
-    api('/hospital/patients/import', { method: 'POST', body: JSON.stringify({ patients }) }),
-  
-  // List all imported patients
-  listImportedPatients: () => api('/hospital/patients/imported'),
-  
-  // Delete all imported patients
-  deleteAllImportedPatients: () =>
-    api('/hospital/patients/imported', { method: 'DELETE' }),
+  exportPatientsUrl: (params?: { mrn?: string; name?: string; fatherName?: string; phone?: string }) => {
+    const qs = new URLSearchParams()
+    if (params?.mrn) qs.set('mrn', params.mrn)
+    if (params?.name) qs.set('name', params.name)
+    if (params?.fatherName) qs.set('fatherName', params.fatherName)
+    if (params?.phone) qs.set('phone', params.phone)
+    const s = qs.toString()
+    return `${baseURL}/hospital/patients/export${s ? `?${s}` : ''}`
+  },
+  importPatientsExcel: (formData: FormData) => {
+    const token = getToken('/hospital/patients/import-excel')
+    const headers: Record<string, string> = {}
+    if (token) headers['Authorization'] = `Bearer ${token}`
+    return fetch(`${baseURL}/hospital/patients/import-excel`, { 
+      method: 'POST', 
+      body: formData, 
+      headers 
+    }).then(async res => {
+      if (!res.ok) {
+        const text = await res.text()
+        throw new Error(text || res.statusText)
+      }
+      return res.json()
+    })
+  },
+  previewPatientsExcel: (formData: FormData) => {
+    const token = getToken('/hospital/patients/preview-excel')
+    const headers: Record<string, string> = {}
+    if (token) headers['Authorization'] = `Bearer ${token}`
+    return fetch(`${baseURL}/hospital/patients/preview-excel`, { 
+      method: 'POST', 
+      body: formData, 
+      headers 
+    }).then(async res => {
+      if (!res.ok) {
+        const text = await res.text()
+        throw new Error(text || res.statusText)
+      }
+      return res.json()
+    })
+  },
 
   // Accounts (dues/advance)
   getAccount: (patientId: string) => api(`/hospital/accounts/${encodeURIComponent(patientId)}`),
@@ -2411,11 +2456,11 @@ export const hospitalApi = {
     api(`/hospital/ipd/billing/payments/${encodeURIComponent(id)}`, { method: 'DELETE' }),
 
   // Prescriptions
-  createPrescription: (data: { encounterId: string; historyTakingId?: string; labReportsEntryId?: string; medicine?: Array<{ name: string; dose?: string; frequency?: string; duration?: string; notes?: string }>; items?: Array<{ name: string; dose?: string; frequency?: string; duration?: string; notes?: string }>; labTests?: string[]; labNotes?: string; diagnosticTests?: string[]; diagnosticNotes?: string; diagnosticDiscount?: number; therapyTests?: string[]; therapyNotes?: string; therapyDiscount?: number; therapyPlan?: any; therapyMachines?: any; counselling?: any; counsellingDiscount?: number; primaryComplaint?: string; primaryComplaintHistory?: string; familyHistory?: string; treatmentHistory?: string; allergyHistory?: string; history?: string; examFindings?: string; diagnosis?: string; advice?: string; createdBy?: string; vitals?: { pulse?: number; temperatureC?: number; bloodPressureSys?: number; bloodPressureDia?: number; respiratoryRate?: number; bloodSugar?: number; weightKg?: number; heightCm?: number; bmi?: number; bsa?: number; spo2?: number } }) =>
+  createPrescription: (data: { encounterId: string; historyTakingId?: string; labReportsEntryId?: string; medicine?: Array<{ name: string; dose?: string; frequency?: string; duration?: string; notes?: string }>; items?: Array<{ name: string; dose?: string; frequency?: string; duration?: string; notes?: string }>; labTests?: string[]; labNotes?: string; diagnosticTests?: string[]; diagnosticNotes?: string; diagnosticDiscount?: number; therapyTests?: string[]; therapyNotes?: string; therapyDiscount?: number; therapyPlan?: any; therapyMachines?: any; counselling?: any; counsellingDiscount?: number; primaryComplaint?: string; primaryComplaintHistory?: string; familyHistory?: string; treatmentHistory?: string; allergyHistory?: string; history?: string; examFindings?: string; diagnosis?: string; advice?: string; createdBy?: string; vitals?: { pulse?: number; temperatureC?: number; bloodPressureSys?: number; bloodPressureDia?: number; respiratoryRate?: number; bloodSugar?: number; weightKg?: number; heightCm?: number; bmi?: number; bsa?: number; spo2?: number }; historyEdits?: { personalInfo?: any; maritalStatus?: any; coitus?: any; health?: any; sexualHistory?: any; previousMedicalHistory?: any; arrivalReference?: any } }) =>
     api('/hospital/opd/prescriptions', { method: 'POST', body: JSON.stringify(data) }),
   getPrescriptionByEncounter: (encounterId: string) =>
     api(`/hospital/opd/encounters/${encodeURIComponent(encounterId)}/prescription`),
-  upsertPrescriptionByEncounter: (encounterId: string, data: { historyTakingId?: string; labReportsEntryId?: string; medicine?: Array<{ name: string; dose?: string; frequency?: string; duration?: string; notes?: string }>; items?: Array<{ name: string; dose?: string; frequency?: string; duration?: string; notes?: string }>; labTests?: string[]; labNotes?: string; diagnosticTests?: string[]; diagnosticNotes?: string; diagnosticDiscount?: number; therapyTests?: string[]; therapyNotes?: string; therapyDiscount?: number; therapyPlan?: any; therapyMachines?: any; counselling?: any; counsellingDiscount?: number; primaryComplaint?: string; primaryComplaintHistory?: string; familyHistory?: string; treatmentHistory?: string; allergyHistory?: string; history?: string; examFindings?: string; diagnosis?: string; advice?: string; createdBy?: string; vitals?: { pulse?: number; temperatureC?: number; bloodPressureSys?: number; bloodPressureDia?: number; respiratoryRate?: number; bloodSugar?: number; weightKg?: number; heightCm?: number; bmi?: number; bsa?: number; spo2?: number } }) =>
+  upsertPrescriptionByEncounter: (encounterId: string, data: { historyTakingId?: string; labReportsEntryId?: string; medicine?: Array<{ name: string; dose?: string; frequency?: string; duration?: string; notes?: string }>; items?: Array<{ name: string; dose?: string; frequency?: string; duration?: string; notes?: string }>; labTests?: string[]; labNotes?: string; diagnosticTests?: string[]; diagnosticNotes?: string; diagnosticDiscount?: number; therapyTests?: string[]; therapyNotes?: string; therapyDiscount?: number; therapyPlan?: any; therapyMachines?: any; counselling?: any; counsellingDiscount?: number; primaryComplaint?: string; primaryComplaintHistory?: string; familyHistory?: string; treatmentHistory?: string; allergyHistory?: string; history?: string; examFindings?: string; diagnosis?: string; advice?: string; createdBy?: string; vitals?: { pulse?: number; temperatureC?: number; bloodPressureSys?: number; bloodPressureDia?: number; respiratoryRate?: number; bloodSugar?: number; weightKg?: number; heightCm?: number; bmi?: number; bsa?: number; spo2?: number }; historyEdits?: { personalInfo?: any; maritalStatus?: any; coitus?: any; health?: any; sexualHistory?: any; previousMedicalHistory?: any; arrivalReference?: any } }) =>
     api(`/hospital/opd/encounters/${encodeURIComponent(encounterId)}/prescription`, { method: 'PUT', body: JSON.stringify(data) }),
   listPrescriptions: (params?: { doctorId?: string; patientMrn?: string; from?: string; to?: string; page?: number; limit?: number }) => {
     const qs = new URLSearchParams()
@@ -2429,7 +2474,9 @@ export const hospitalApi = {
     return api(`/hospital/opd/prescriptions${s ? `?${s}` : ''}`)
   },
   getPrescription: (id: string) => api(`/hospital/opd/prescriptions/${id}`),
-  updatePrescription: (id: string, data: { historyTakingId?: string; labReportsEntryId?: string; medicine?: Array<{ name: string; dose?: string; frequency?: string; duration?: string; notes?: string }>; items?: Array<{ name: string; dose?: string; frequency?: string; duration?: string; notes?: string }>; labTests?: string[]; labNotes?: string; diagnosticTests?: string[]; diagnosticNotes?: string; diagnosticDiscount?: number; therapyTests?: string[]; therapyNotes?: string; therapyDiscount?: number; therapyPlan?: any; therapyMachines?: any; counselling?: any; counsellingDiscount?: number; primaryComplaint?: string; primaryComplaintHistory?: string; familyHistory?: string; treatmentHistory?: string; allergyHistory?: string; history?: string; examFindings?: string; diagnosis?: string; advice?: string; createdBy?: string; vitals?: { pulse?: number; temperatureC?: number; bloodPressureSys?: number; bloodPressureDia?: number; respiratoryRate?: number; bloodSugar?: number; weightKg?: number; heightCm?: number; bmi?: number; bsa?: number; spo2?: number } }) =>
+  getPrescriptionByHistoryTakingId: (historyTakingId: string) =>
+    api(`/hospital/opd/prescriptions/by-history-taking/${encodeURIComponent(historyTakingId)}`),
+  updatePrescription: (id: string, data: { historyTakingId?: string; labReportsEntryId?: string; medicine?: Array<{ name: string; dose?: string; frequency?: string; duration?: string; notes?: string }>; items?: Array<{ name: string; dose?: string; frequency?: string; duration?: string; notes?: string }>; labTests?: string[]; labNotes?: string; diagnosticTests?: string[]; diagnosticNotes?: string; diagnosticDiscount?: number; therapyTests?: string[]; therapyNotes?: string; therapyDiscount?: number; therapyPlan?: any; therapyMachines?: any; counselling?: any; counsellingDiscount?: number; primaryComplaint?: string; primaryComplaintHistory?: string; familyHistory?: string; treatmentHistory?: string; allergyHistory?: string; history?: string; examFindings?: string; diagnosis?: string; advice?: string; createdBy?: string; vitals?: { pulse?: number; temperatureC?: number; bloodPressureSys?: number; bloodPressureDia?: number; respiratoryRate?: number; bloodSugar?: number; weightKg?: number; heightCm?: number; bmi?: number; bsa?: number; spo2?: number }; historyEdits?: { personalInfo?: any; maritalStatus?: any; coitus?: any; health?: any; sexualHistory?: any; previousMedicalHistory?: any; arrivalReference?: any } }) =>
     api(`/hospital/opd/prescriptions/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   deletePrescription: (id: string) => api(`/hospital/opd/prescriptions/${id}`, { method: 'DELETE' }),
 

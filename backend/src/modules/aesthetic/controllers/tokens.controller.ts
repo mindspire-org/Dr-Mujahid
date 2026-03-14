@@ -4,6 +4,7 @@ import { ProcedureSession } from '../models/ProcedureSession'
 import { AestheticCounter } from '../models/Counter'
 import { LabPatient } from '../../lab/models/Patient'
 import { LabCounter } from '../../lab/models/Counter'
+import { HospitalSettings } from '../../hospital/models/Settings'
 
 function dateKey(dateIso?: string){
   const d = dateIso ? new Date(dateIso) : new Date()
@@ -23,9 +24,28 @@ function normDigits(s?: string){ return (s||'').replace(/\D+/g,'') }
 function normLower(s?: string){ return (s||'').trim().toLowerCase().replace(/\s+/g,' ') }
 async function nextMrn(){
   const key = 'lab_mrn_mr7553'
+  
+  // Get settings to check for custom starting number
+  const settings = await HospitalSettings.findOne().lean()
+  const mrStart = settings?.mrStart || 1
+  
+  // Check current counter value
+  let existingCounter = await LabCounter.findById(key).lean()
+  const currentSeq = (existingCounter as any)?.seq || 0
+  
+  // If no counter exists OR current seq is less than mrStart-1, reset to mrStart-1
+  const targetSeq = Math.max(0, mrStart - 1)
+  if (!existingCounter) {
+    // Initialize counter to mrStart - 1, so first increment gives mrStart
+    await LabCounter.create({ _id: key, seq: targetSeq })
+  } else if (currentSeq < targetSeq) {
+    // Reset counter to mrStart - 1 if current is lower
+    await LabCounter.findByIdAndUpdate(key, { $set: { seq: targetSeq } })
+  }
+  
   const c = await LabCounter.findByIdAndUpdate(key, { $inc: { seq: 1 } }, { upsert: true, new: true, setDefaultsOnInsert: true })
   const seq = Number((c as any).seq || 1)
-  return `MR7553${seq}`
+  return String(seq)
 }
 
 async function ensureLabPatient(body: any){

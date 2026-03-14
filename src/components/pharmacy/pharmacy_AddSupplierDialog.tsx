@@ -7,16 +7,11 @@ export type Supplier = {
   company?: string
   companyIds?: string[]
   phone?: string
-  email?: string
   address?: string
-  city?: string
-  state?: string
-  country?: string
   taxId?: string
   status: 'Active' | 'Inactive'
   totalPurchases?: number
   paid?: number
-  totalOverdue?: number
   lastOrder?: string // yyyy-mm-dd
 }
 
@@ -65,16 +60,11 @@ export default function Pharmacy_AddSupplierDialog({ open, onClose, onSave, init
       company: (companies.find(c => String(c._id) === String(selectedCompanyId))?.name) || '',
       companyIds: selectedCompanyId ? [selectedCompanyId] : undefined,
       phone: String(fd.get('phone') || ''),
-      email: String(fd.get('email') || ''),
       address: String(fd.get('address') || ''),
-      city: String(fd.get('city') || ''),
-      state: String(fd.get('state') || ''),
-      country: String(fd.get('country') || ''),
       taxId: String(fd.get('taxId') || ''),
       status: (String(fd.get('status') || 'Active') as 'Active' | 'Inactive'),
       totalPurchases: initial?.totalPurchases ?? 0,
       paid: initial?.paid ?? 0,
-      totalOverdue: Number(fd.get('totalOverdue') || initial?.totalOverdue || 0),
       lastOrder: initial?.lastOrder ?? '',
     }
     onSave(s)
@@ -107,34 +97,12 @@ export default function Pharmacy_AddSupplierDialog({ open, onClose, onSave, init
             <input name="phone" defaultValue={initial?.phone} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
           </div>
           <div>
-            <label className="mb-1 block text-sm text-slate-700">Email</label>
-            <input name="email" defaultValue={(initial as any)?.email} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
-          </div>
-          <div>
             <label className="mb-1 block text-sm text-slate-700">Address</label>
             <textarea name="address" defaultValue={initial?.address} rows={3} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
-          </div>
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-            <div>
-              <label className="mb-1 block text-sm text-slate-700">City</label>
-              <input name="city" defaultValue={(initial as any)?.city} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
-            </div>
-            <div>
-              <label className="mb-1 block text-sm text-slate-700">State</label>
-              <input name="state" defaultValue={(initial as any)?.state} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
-            </div>
-            <div>
-              <label className="mb-1 block text-sm text-slate-700">Country</label>
-              <input name="country" defaultValue={(initial as any)?.country} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
-            </div>
           </div>
           <div>
             <label className="mb-1 block text-sm text-slate-700">Tax ID</label>
             <input name="taxId" defaultValue={initial?.taxId} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
-          </div>
-          <div>
-            <label className="mb-1 block text-sm text-slate-700">Total Overdue</label>
-            <input name="totalOverdue" defaultValue={String((initial as any)?.totalOverdue ?? '')} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
           </div>
           <div>
             <label className="mb-1 block text-sm text-slate-700">Status</label>

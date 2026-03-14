@@ -5,7 +5,7 @@ export default function Hospital_PettyCashBalance() {
   const [pettyAccounts, setPettyAccounts] = useState<Array<{ id: string; code: string; name: string }>>([])
   const [bankAccounts, setBankAccounts] = useState<any[]>([])
   const [pettyCode, setPettyCode] = useState('')
-  const [hasAssignedPetty, setHasAssignedPetty] = useState(false)
+  const [pettyAccountName, setPettyAccountName] = useState('')
   const [senderAccountCode, setSenderAccountCode] = useState(() => {
     try { return String(localStorage.getItem('hospital.petty.senderAccountCode') || '') } catch { return '' }
   })
@@ -27,6 +27,8 @@ export default function Hospital_PettyCashBalance() {
 
   const [ledgerRows, setLedgerRows] = useState<any[]>([])
   const [ledgerLoading, setLedgerLoading] = useState(false)
+
+  const [successDialog, setSuccessDialog] = useState<{ open: boolean; sender?: string; receiver?: string; amount?: number }>({ open: false })
 
   const loadLedger = async (code: string, from?: string, to?: string) => {
     const acct = String(code || '').trim().toUpperCase()
@@ -73,27 +75,19 @@ export default function Hospital_PettyCashBalance() {
           if (!cancelled) {
             setPettyAccounts(petty)
             setBankAccounts(bankRaw)
-            const assigned = String(mine?.account?.code || '').trim().toUpperCase()
-            const has = !!assigned
-            setHasAssignedPetty(has)
+            const code = String(mine?.account?.code || '').trim().toUpperCase()
+            const name = String(mine?.account?.name || '')
+            setPettyCode(code)
+            setPettyAccountName(name || code)
+            setPettyFilterCode(code)
 
-            if (has) {
-              setPettyCode(assigned)
-              setPettyFilterCode(assigned)
-            } else {
-              // Admin/no assignment: default to first active petty cash account so page works.
-              const first = String(petty?.[0]?.code || '').trim().toUpperCase()
-              setPettyCode(first)
-              setPettyFilterCode(first)
-            }
-
-            if (assigned) {
+            if (code) {
               try {
-                const key = `hospital.pettyAssignedToastShown:${assigned}`
+                const key = `hospital.pettyAssignedToastShown:${code}`
                 const shown = sessionStorage.getItem(key)
                 if (!shown) {
                   sessionStorage.setItem(key, '1')
-                  showToast(`Petty cash account assigned: ${assigned}`)
+                  showToast(`Petty cash account assigned: ${code}`)
                 }
               } catch { }
             }
@@ -271,26 +265,8 @@ export default function Hospital_PettyCashBalance() {
           </div>
           <div>
             <label className="mb-1 block text-sm font-medium text-slate-700">Petty Cash Account(Receiver)</label>
-            <select
-              value={pettyCode}
-              disabled={hasAssignedPetty}
-              onChange={e => {
-                const code = String(e.target.value || '').trim().toUpperCase()
-                setPettyCode(code)
-                setPettyFilterCode(code)
-              }}
-              className={`w-full rounded-md border border-slate-300 px-3 py-2 text-sm ${hasAssignedPetty ? 'bg-slate-50' : 'bg-white'}`}
-            >
-              {hasAssignedPetty ? (
-                <option value={pettyCode}>{pettyCode || 'No petty cash assigned'}</option>
-              ) : (
-                <>
-                  <option value="">Select petty cash</option>
-                  {pettyAccounts.map(a => (
-                    <option key={a.id} value={a.code}>{a.code} — {a.name}</option>
-                  ))}
-                </>
-              )}
+            <select value={pettyCode} disabled className="w-full rounded-md border border-slate-300 bg-slate-50 px-3 py-2 text-sm">
+              <option value={pettyCode}>{pettyCode ? `${pettyCode} — ${pettyAccountName}` : 'No petty cash assigned'}</option>
             </select>
           </div>
           <div className="sm:col-span-2">
@@ -338,28 +314,39 @@ export default function Hospital_PettyCashBalance() {
             onClick={async () => {
               if (!dateIso || !pettyCode || !(amount > 0) || !senderAccountCode) return
               try {
-                if (hasAssignedPetty) {
-                  // Regular user flow: pull into assigned petty cash
-                  await hospitalApi.pullFundsToMyPettyCash({ fromAccountCode: senderAccountCode, amount: Number(amount || 0), dateIso, memo })
-                  await reloadPullHistory()
-                } else {
-                  // Admin/no assignment flow: transfer between finance accounts into selected petty cash
-                  const from = String(senderAccountCode || '').trim().toUpperCase()
-                  const to = String(pettyCode || '').trim().toUpperCase()
-                  await hospitalApi.transferPettyCash({ fromAccountCode: from, toPettyCode: to, amount: Number(amount || 0), dateIso, memo })
-                }
+                await hospitalApi.pullFundsToMyPettyCash({ fromAccountCode: senderAccountCode, amount: Number(amount || 0), dateIso, memo })
+                await reloadPullHistory()
                 if (pettyCode) {
                   await loadLedger(pettyCode, pettyFrom || undefined, pettyTo || undefined)
                 }
                 setPettyFilterCode(pettyCode)
-                showToast(hasAssignedPetty ? 'Funds received to your petty cash' : 'Petty cash transfer completed')
 
-                // Reset fields (keep date as-is)
+                const sender = bankAccounts.find((b: any) => {
+                  const finCode = String(b.financeAccountCode || `BANK_${String(b.accountNumber || '').slice(-4)}`.toUpperCase()).trim().toUpperCase()
+                  return finCode === senderAccountCode
+                })
+                let senderName = ''
+                if (sender) {
+                  senderName = `${sender.bankName || ''} — ${sender.accountTitle || ''}`.trim()
+                } else {
+                  const p = pettyAccounts.find(a => a.code === senderAccountCode)
+                  senderName = p?.name || senderAccountCode
+                }
+                const receiver = pettyAccounts.find(a => a.code === pettyCode)
+                const receiverName = receiver?.name || pettyCode
+
+                setSuccessDialog({
+                  open: true,
+                  sender: `${senderAccountCode}${senderName ? ` — ${senderName}` : ''}`,
+                  receiver: `${pettyCode}${receiverName ? ` — ${receiverName}` : ''}`,
+                  amount: Number(amount || 0)
+                })
+
                 setSenderAccountCode('')
                 setAmount(0)
                 setMemo('')
               } catch (e: any) {
-                showToast(e?.message || 'Failed')
+                alert(e?.message || 'Failed')
               }
             }}
           >Receive</button>
@@ -578,6 +565,47 @@ export default function Hospital_PettyCashBalance() {
             <div className="mt-4 flex justify-end">
               <button className="btn" onClick={() => setViewTxn(null)}>Close</button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {successDialog.open && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div className="fixed inset-0 bg-black/50" onClick={() => setSuccessDialog({ open: false })}></div>
+          <div className="relative z-50 w-full max-w-md bg-white rounded-2xl shadow-xl p-6 m-4 text-center">
+            <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-green-100">
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+              </svg>
+            </div>
+            <h3 className="text-xl font-semibold text-slate-800 mb-4">Transfer Successful</h3>
+            <div className="mb-6 space-y-3">
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-slate-500">From:</span>
+                <span className="font-medium text-slate-700">{successDialog.sender}</span>
+              </div>
+              <div className="flex items-center justify-center">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 8l4 4m0 0l-4 4m4-4H3" />
+                </svg>
+              </div>
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-slate-500">To:</span>
+                <span className="font-medium text-slate-700">{successDialog.receiver}</span>
+              </div>
+              <div className="pt-3 border-t border-slate-200">
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-slate-500">Amount transferred:</span>
+                  <span className="font-semibold text-green-600">Rs. {new Intl.NumberFormat('en-PK').format(Number(successDialog.amount || 0))}</span>
+                </div>
+              </div>
+            </div>
+            <button
+              className="w-full rounded-lg bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700"
+              onClick={() => setSuccessDialog({ open: false })}
+            >
+              OK
+            </button>
           </div>
         </div>
       )}

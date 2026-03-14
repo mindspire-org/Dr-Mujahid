@@ -18,6 +18,7 @@ export const diagnosticOrderCreateSchema = z.object({
   tests: z.array(z.string().min(1)).min(1),
   subtotal: z.coerce.number().nonnegative().optional().default(0),
   discount: z.coerce.number().nonnegative().optional().default(0),
+  discountType: z.enum(['PKR', '%']).default('PKR'),
   net: z.coerce.number().nonnegative().optional().default(0),
   payPreviousDues: z.coerce.boolean().optional().default(false),
   useAdvance: z.coerce.boolean().optional().default(false),
@@ -57,7 +58,11 @@ export const diagnosticOrderUpdateSchema = z.object({
   patient: patientSnapshotSchema.optional(),
   subtotal: z.coerce.number().nonnegative().optional(),
   discount: z.coerce.number().nonnegative().optional(),
+  discountInput: z.coerce.number().nonnegative().optional(),
+  discountType: z.enum(['PKR', '%']).optional(),
   net: z.coerce.number().nonnegative().optional(),
+  amountReceived: z.coerce.number().nonnegative().optional(),
+  paidForToday: z.coerce.number().nonnegative().optional(),
 })
 
 export const diagnosticOrderPaySchema = z.object({

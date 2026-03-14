@@ -21,10 +21,11 @@ export default function Finance_ManagePettyCash() {
   const [pettyFrom, setPettyFrom] = useState<string>('')
   const [pettyTo, setPettyTo] = useState<string>('')
   const [viewTxn, setViewTxn] = useState<any | null>(null)
-  const [successDialog, setSuccessDialog] = useState<{ show: boolean; senderName: string; receiverName: string; amount: number; senderCode: string; receiverCode: string } | null>(null)
 
   const [ledgerRows, setLedgerRows] = useState<any[]>([])
   const [ledgerLoading, setLedgerLoading] = useState(false)
+
+  const [successDialog, setSuccessDialog] = useState<{ open: boolean; sender?: string; receiver?: string; amount?: number }>({ open: false })
 
   const loadLedger = async (code: string, from?: string, to?: string) => {
     const acct = String(code || '').trim().toUpperCase()
@@ -197,33 +198,35 @@ export default function Finance_ManagePettyCash() {
             onClick={async () => {
               if (!dateIso || !pettyCode || !(amount > 0) || !senderAccountKey) return
               try {
+                let senderCode = ''
+                let senderName = ''
                 if (String(senderAccountKey).startsWith('BANK:')) {
                   const bankId = String(senderAccountKey).slice('BANK:'.length)
+                  const b: any = bankAccounts.find((x: any) => String(x.id || x._id) === bankId)
+                  senderCode = String(b?.financeAccountCode || `BANK_${String(b?.accountNumber || '').slice(-4)}`.toUpperCase()).trim().toUpperCase()
+                  senderName = `${b?.bankName || ''} — ${b?.accountTitle || ''}`.trim()
                   await hospitalApi.refillPettyCash({ pettyCode, bankId, amount: Number(amount || 0), dateIso, memo })
                 } else if (String(senderAccountKey).startsWith('PETTY:')) {
-                  const fromAccountCode = String(senderAccountKey).slice('PETTY:'.length).trim().toUpperCase()
-                  await hospitalApi.transferPettyCash({ toPettyCode: pettyCode, fromAccountCode, amount: Number(amount || 0), dateIso, memo })
+                  senderCode = String(senderAccountKey).slice('PETTY:'.length).trim().toUpperCase()
+                  const p = pettyAccounts.find(a => a.code === senderCode)
+                  senderName = p?.name || senderCode
+                  await hospitalApi.transferPettyCash({ toPettyCode: pettyCode, fromAccountCode: senderCode, amount: Number(amount || 0), dateIso, memo })
                 }
                 await reloadRefills()
                 if (pettyCode) {
                   await loadLedger(pettyCode, pettyFrom || undefined, pettyTo || undefined)
                 }
-                const receiverName = pettyAccounts.find(a => a.code === pettyCode)?.name || pettyCode
-              const senderName = senderAccountKey.startsWith('PETTY:') 
-                ? (pettyAccounts.find(a => a.code === senderAccountKey.slice('PETTY:'.length).trim().toUpperCase())?.name || senderAccountKey.slice('PETTY:'.length))
-                : (bankAccounts.find((b: any) => String(b.id || b._id) === senderAccountKey.slice('BANK:'.length))?.accountTitle || senderAccountKey)
-              const senderCode = senderAccountKey.startsWith('PETTY:') 
-                ? senderAccountKey.slice('PETTY:'.length).trim().toUpperCase()
-                : 'BANK'
-              
-              setSuccessDialog({
-                show: true,
-                senderName,
-                receiverName,
-                amount: Number(amount || 0),
-                senderCode,
-                receiverCode: pettyCode
-              })
+                setPettyFilterCode(pettyCode)
+                const receiver = pettyAccounts.find(a => a.code === pettyCode)
+                setSuccessDialog({
+                  open: true,
+                  sender: `${senderCode}${senderName ? ` — ${senderName}` : ''}`,
+                  receiver: `${pettyCode}${receiver ? ` — ${receiver.name}` : ''}`,
+                  amount: Number(amount || 0)
+                })
+                setSenderAccountKey('')
+                setAmount(0)
+                setMemo('')
               } catch (e: any) {
                 alert(e?.message || 'Failed')
               }
@@ -587,43 +590,40 @@ export default function Finance_ManagePettyCash() {
         </div>
       )}
 
-      {successDialog && successDialog.show && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-          <div className="w-full max-w-md rounded-xl bg-white p-6 shadow-2xl">
-            <div className="mb-4 flex items-center justify-center">
-              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-green-100">
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+      {successDialog.open && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div className="fixed inset-0 bg-black/50" onClick={() => setSuccessDialog({ open: false })}></div>
+          <div className="relative z-50 w-full max-w-md bg-white rounded-2xl shadow-xl p-6 m-4 text-center">
+            <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-green-100">
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+              </svg>
+            </div>
+            <h3 className="text-xl font-semibold text-slate-800 mb-4">Transfer Successful</h3>
+            <div className="mb-6 space-y-3">
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-slate-500">From:</span>
+                <span className="font-medium text-slate-700">{successDialog.sender}</span>
+              </div>
+              <div className="flex items-center justify-center">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 8l4 4m0 0l-4 4m4-4H3" />
                 </svg>
               </div>
-            </div>
-            <h3 className="mb-2 text-center text-lg font-semibold text-slate-800">Transfer Successful</h3>
-            <div className="mb-4 rounded-lg bg-slate-50 p-4">
-              <div className="mb-3 flex items-center justify-between">
-                <div>
-                  <div className="text-sm font-medium text-slate-800">{successDialog.senderName}</div>
-                  <div className="text-xs text-slate-500">{successDialog.senderCode}</div>
-                </div>
-                <div className="text-slate-400">
-                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5l7 7m0 0l-7 7m7-7H3" />
-                  </svg>
-                </div>
-                <div className="text-right">
-                  <div className="text-sm font-medium text-slate-800">{successDialog.receiverName}</div>
-                  <div className="text-xs text-slate-500">{successDialog.receiverCode}</div>
-                </div>
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-slate-500">To:</span>
+                <span className="font-medium text-slate-700">{successDialog.receiver}</span>
               </div>
-              <div className="border-t border-slate-200 pt-3">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-slate-600">Amount Transferred:</span>
-                  <span className="text-lg font-bold text-green-600">Rs. {new Intl.NumberFormat('en-PK').format(successDialog.amount)}</span>
+              <div className="pt-3 border-t border-slate-200">
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-slate-500">Amount transferred:</span>
+                  <span className="font-semibold text-green-600">Rs. {new Intl.NumberFormat('en-PK').format(Number(successDialog.amount || 0))}</span>
                 </div>
               </div>
             </div>
             <button
-              onClick={() => setSuccessDialog(null)}
-              className="w-full rounded-lg bg-green-600 px-4 py-2 font-medium text-white hover:bg-green-700"
+              className="w-full rounded-lg bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700"
+              onClick={() => setSuccessDialog({ open: false })}
             >
               OK
             </button>

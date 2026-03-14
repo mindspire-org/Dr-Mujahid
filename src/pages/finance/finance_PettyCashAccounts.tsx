@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { hospitalApi } from '../../utils/api'
 
 export default function Finance_PettyCashAccounts(){
@@ -18,6 +18,19 @@ export default function Finance_PettyCashAccounts(){
 
   const [deleteItem, setDeleteItem] = useState<any|null>(null)
   const [deleteLoading, setDeleteLoading] = useState(false)
+
+  const [toastMsg, setToastMsg] = useState('')
+  const [toastOpen, setToastOpen] = useState(false)
+  const toastTimerRef = useRef<number | null>(null)
+
+  const showToast = (msg: string) => {
+    setToastMsg(msg)
+    setToastOpen(true)
+    if (toastTimerRef.current) window.clearTimeout(toastTimerRef.current)
+    toastTimerRef.current = window.setTimeout(() => {
+      setToastOpen(false)
+    }, 2500)
+  }
 
   async function reload(){
     setLoading(true)
@@ -43,7 +56,7 @@ export default function Finance_PettyCashAccounts(){
       await hospitalApi.createPettyCashAccount({ code, name, department: department||undefined, responsibleStaff: responsibleStaff||undefined, status: 'Active' })
       setCode(''); setName(''); setDepartment(''); setResponsibleStaff('')
       await reload()
-      alert('Petty cash account created')
+      showToast('Petty cash account created')
     } catch(e: any){ alert(e?.message || 'Failed') }
     finally { setLoading(false) }
   }
@@ -255,6 +268,13 @@ export default function Finance_PettyCashAccounts(){
                 }}
               >Delete</button>
             </div>
+          </div>
+        </div>
+      )}
+      {toastOpen && (
+        <div className="fixed bottom-4 right-4 z-50">
+          <div className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white shadow-lg">
+            {toastMsg}
           </div>
         </div>
       )}

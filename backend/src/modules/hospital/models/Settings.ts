@@ -6,7 +6,7 @@ const SettingsSchema = new Schema({
   address: { type: String, default: '' },
   logoDataUrl: { type: String, default: '' },
   code: { type: String, default: '' },
-  mrFormat: { type: String, default: '' },
+  mrStart: { type: Number, default: 1 },
   slipFooter: { type: String, default: '' },
 }, { timestamps: true })
 
@@ -17,7 +17,7 @@ export type HospitalSettingsDoc = {
   address: string
   logoDataUrl?: string
   code?: string
-  mrFormat?: string
+  mrStart?: number
   slipFooter?: string
 }
 

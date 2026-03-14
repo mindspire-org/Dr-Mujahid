@@ -24,6 +24,7 @@ import * as BBReceivers from '../controllers/bb_receivers.controller'
 import * as BBInventory from '../controllers/bb_inventory.controller'
 import * as CashMovements from '../controllers/cash_movement.controller'
 import * as CashCounts from '../controllers/cash_count.controller'
+import * as Templates from '../controllers/templates.controller'
 
 const r = Router()
 
@@ -167,5 +168,12 @@ r.post('/bb/inventory', BBInventory.create)
 r.put('/bb/inventory/:id', BBInventory.update)
 r.delete('/bb/inventory/:id', BBInventory.remove)
 r.get('/bb/inventory/summary', BBInventory.summary)
+
+// Lab Templates (for doctor prescription lab orders)
+r.get('/templates', Templates.list)
+r.post('/templates', Templates.create)
+r.get('/templates/:id', Templates.getById)
+r.put('/templates/:id', Templates.update)
+r.delete('/templates/:id', Templates.remove)
 
 export default r

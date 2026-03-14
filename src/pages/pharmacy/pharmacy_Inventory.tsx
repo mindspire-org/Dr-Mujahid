@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
-import { RotateCw, FileDown, FileUp, CalendarDays, Package, TrendingDown, AlertTriangle } from 'lucide-react'
+import { RotateCw, FileDown, CalendarDays, Package, TrendingDown, AlertTriangle, Upload } from 'lucide-react'
 import Pharmacy_InventoryTable from '../../components/pharmacy/pharmacy_InventoryTable'
 import Pharmacy_UpdateStock from '../../components/pharmacy/pharmacy_UpdateStock'
+import Pharmacy_ImportCSVDialog from '../../components/pharmacy/pharmacy_ImportCSVDialog'
 import { pharmacyApi } from '../../utils/api'
 import Pharmacy_EditInventoryItem from '../../components/pharmacy/pharmacy_EditInventoryItem'
 import Pharmacy_ConfirmDialog from '../../components/pharmacy/pharmacy_ConfirmDialog'
@@ -12,10 +13,9 @@ export default function Pharmacy_Inventory() {
   const navigate = useNavigate()
   const location = useLocation()
   const [updateStockOpen, setUpdateStockOpen] = useState(false)
+  const [importCSVOpen, setImportCSVOpen] = useState(false)
   const [editOpen, setEditOpen] = useState(false)
   const [editMedicine, setEditMedicine] = useState<string>('')
-  const [importOpen, setImportOpen] = useState(false)
-  const [importLoading, setImportLoading] = useState(false)
   const tabs = ['All Items','Pending Review','Low Stock','Expiring Soon','Out of Stock'] as const
   type Tab = typeof tabs[number]
   const [activeTab, setActiveTab] = useState<Tab>('All Items')
@@ -244,11 +244,67 @@ export default function Pharmacy_Inventory() {
     load()
   }, [activeTab, search, refreshTick, page, limit])
 
-  function handleExport(){
+  async function handleExport(){
+    // Fetch all items without pagination limit
+    let allRows: any[] = []
+    
+    if (activeTab === 'Pending Review') {
+      const res: any = await pharmacyApi.listPurchaseDraftLines({ search: search || undefined, limit: 100000 })
+      const items: any[] = res?.items ?? res ?? []
+      allRows = (items || []).map((it: any) => ({
+        invoice: it.invoice || '-',
+        medicine: it.name || '-',
+        generic: it.genericName || '-',
+        category: it.category || '-',
+        packs: it.packs ?? '-',
+        unitsPerPack: it.unitsPerPack ?? '-',
+        unitSale: (it.unitsPerPack && it.salePerPack) ? Number((it.salePerPack / it.unitsPerPack).toFixed(3)) : '-',
+        totalItems: (it.totalItems != null) ? it.totalItems : ((it.unitsPerPack || 1) * (it.packs || 0)),
+        minStock: (it.minStock != null) ? it.minStock : '-',
+        expiry: it.expiry || '-',
+        supplier: it.supplierName || '-',
+      }))
+    } else if (activeTab === 'All Items') {
+      const res: any = await pharmacyApi.listInventoryCached({ search: search || undefined, limit: 100000 }, { ttlMs: 60_000 })
+      const items: any[] = res?.items ?? res ?? []
+      allRows = (items || []).map((it: any)=>({
+        invoice: it.lastInvoice || '-',
+        medicine: it.name || '-',
+        generic: it.genericName || it.lastGenericName || '-',
+        category: it.category || '-',
+        packs: (it.unitsPerPack && it.unitsPerPack>0) ? Math.floor((it.onHand||0) / it.unitsPerPack) : '-',
+        unitsPerPack: it.unitsPerPack ?? '-',
+        unitSale: (it.lastSalePerUnit != null) ? Number((it.lastSalePerUnit).toFixed(3)) : '-',
+        totalItems: it.onHand ?? 0,
+        minStock: (it.minStock != null) ? it.minStock : '-',
+        expiry: (String(it.lastExpiry || it.earliestExpiry || '').slice(0,10)) || '-',
+        supplier: it.lastSupplier || '-',
+      }))
+    } else {
+      // Derived tabs: Low Stock, Expiring Soon, Out of Stock
+      const status = activeTab === 'Low Stock' ? 'low' : (activeTab === 'Out of Stock' ? 'out' : 'expiring')
+      const res: any = await pharmacyApi.listInventoryFilteredCached({ status: status as any, search: search || undefined, limit: 100000 }, { ttlMs: 60_000 })
+      const itemsRaw: any[] = res?.items ?? res ?? []
+      const items: any[] = status==='expiring' ? itemsRaw.filter((it:any)=> Number(it.onHand||0) > 0) : itemsRaw
+      allRows = (items || []).map((it: any)=>({
+        invoice: it.lastInvoice || '-',
+        medicine: it.name || '-',
+        generic: it.genericName || it.lastGenericName || '-',
+        category: it.category || '-',
+        packs: (it.unitsPerPack && it.unitsPerPack>0) ? Math.floor((it.onHand||0) / it.unitsPerPack) : '-',
+        unitsPerPack: it.unitsPerPack ?? '-',
+        unitSale: (it.lastSalePerUnit != null) ? Number((it.lastSalePerUnit).toFixed(3)) : '-',
+        totalItems: it.onHand ?? 0,
+        minStock: (it.minStock != null) ? it.minStock : '-',
+        expiry: (status === 'expiring' ? String(it.earliestExpiry || '').slice(0,10) : String(it.lastExpiry || it.earliestExpiry || '').slice(0,10)) || '-',
+        supplier: it.lastSupplier || '-',
+      }))
+    }
+    
     const csvRows: string[] = []
     const headers = ['Invoice #','Medicine','Category','Packs','Units/Pack','Unit Sale','Total Items','Min Stock','Expiry','Supplier']
     csvRows.push(headers.join(','))
-    rows.forEach((r: any)=>{
+    allRows.forEach((r: any)=>{
       const vals = [r.invoice, r.medicine, r.category, r.packs, r.unitsPerPack, r.unitSale, r.totalItems, r.minStock, r.expiry, r.supplier]
       csvRows.push(vals.map(v => typeof v === 'string' ? '"'+v.replace(/"/g,'""')+'"' : String(v)).join(','))
     })
@@ -256,7 +312,7 @@ export default function Pharmacy_Inventory() {
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
-    a.download = `pharmacy_inventory_${new Date().toISOString().slice(0,10)}.csv`
+    a.download = `pharmacy_inventory_${activeTab.replace(/\s+/g, '_').toLowerCase()}_${new Date().toISOString().slice(0,10)}.csv`
     document.body.appendChild(a)
     a.click()
     document.body.removeChild(a)
@@ -312,80 +368,6 @@ export default function Pharmacy_Inventory() {
     }
   }
 
-  async function handleImportExcel(file: File) {
-    setImportLoading(true)
-    try {
-      const XLSX = await import('xlsx')
-      const data = await file.arrayBuffer()
-      const workbook = XLSX.read(data, { type: 'array' })
-      const sheetName = workbook.SheetNames[0]
-      const worksheet = workbook.Sheets[sheetName]
-      const jsonData: any[] = XLSX.utils.sheet_to_json(worksheet, { header: 1 })
-      
-      if (jsonData.length < 2) {
-        alert('Excel file is empty or has no data rows')
-        return
-      }
-      
-      // Skip header row and parse data rows
-      const rows = jsonData.slice(1)
-      
-      // Map Excel columns to expected format
-      // Expected: Type, Products, Qty per Box, Sales price per Packing
-      const lines = rows.map((row: any[]) => {
-        const type = String(row[0] || '').trim()
-        const name = String(row[1] || '').trim()
-        const qtyPerBox = parseInt(String(row[2] || '0')) || 0
-        const salePerPack = parseFloat(String(row[3] || '0')) || 0
-        
-        if (!name) return null
-        
-        const unitsPerPack = qtyPerBox || 1
-        return {
-          name,
-          genericName: '',
-          category: type || 'Medicine',
-          unitsPerPack,
-          packs: 0,
-          totalItems: 0,
-          buyPerPack: 0,
-          buyPerUnit: 0,
-          salePerPack: salePerPack || 0,
-          // backend prefers salePerUnit for some reports; totals calculation uses buy fields
-          salePerUnit: unitsPerPack ? (salePerPack || 0) / unitsPerPack : (salePerPack || 0),
-          expiry: '',
-          batch: '',
-          minStock: 10,
-        }
-      }).filter(Boolean)
-      
-      if (lines.length === 0) {
-        alert('No valid items found in Excel file')
-        return
-      }
-      
-      // Create purchase draft with imported items (goes to Pending Review)
-      const draftData = {
-        invoice: `IMPORT-${Date.now()}`,
-        date: new Date().toISOString().slice(0, 10),
-        supplierName: 'Excel Import',
-        lines,
-      }
-      
-      await pharmacyApi.createPurchaseDraft(draftData)
-      
-      alert(`Successfully imported ${lines.length} items to Pending Review`)
-      setImportOpen(false)
-      setRefreshTick(t => t + 1)
-      // Switch to Pending Review tab
-      setTabAndUrl('Pending Review')
-    } catch (e: any) {
-      alert('Import failed: ' + (e?.message || 'Unknown error'))
-    } finally {
-      setImportLoading(false)
-    }
-  }
-
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-2 text-slate-800">
@@ -397,11 +379,11 @@ export default function Pharmacy_Inventory() {
         <div className="mb-3 flex flex-wrap items-center gap-3">
           <div className="text-2xl font-extrabold text-slate-900">Inventory Control</div>
           <div className="ml-auto flex items-center gap-2">
+            <button onClick={() => setImportCSVOpen(true)} className="btn"><Upload className="h-4 w-4" /> Import CSV</button>
             <button onClick={() => setUpdateStockOpen(true)} className="btn"><RotateCw className="h-4 w-4" /> Update Stock</button>
             <button onClick={() => navigate('/pharmacy/inventory/add-invoice')} className="btn"><CalendarDays className="h-4 w-4" /> Add Invoice</button>
             <button onClick={()=>setRefreshTick(t=>t+1)} className="btn-outline-navy"><RotateCw className="h-4 w-4" /> Refresh</button>
             <button onClick={handleExport} className="btn-outline-navy"><FileDown className="h-4 w-4" /> Export</button>
-            <button onClick={() => setImportOpen(true)} className="btn-outline-navy"><FileUp className="h-4 w-4" /> Import</button>
           </div>
         </div>
 
@@ -525,6 +507,16 @@ export default function Pharmacy_Inventory() {
       </div>
 
       <Pharmacy_UpdateStock open={updateStockOpen} onClose={() => setUpdateStockOpen(false)} />
+      <Pharmacy_ImportCSVDialog
+        open={importCSVOpen}
+        onClose={() => setImportCSVOpen(false)}
+        onImportSuccess={() => {
+          setImportCSVOpen(false)
+          setRefreshTick(t => t + 1)
+          // Switch to Pending Review tab after successful import
+          setTabAndUrl('Pending Review')
+        }}
+      />
       <Pharmacy_EditInventoryItem open={editOpen} onClose={()=>{ setEditOpen(false); setRefreshTick(t=>t+1) }} medicine={editMedicine} />
       <Pharmacy_InventoryItemDetailsDialog open={detailsOpen} onClose={()=>{ setDetailsOpen(false); setDetailsKey('') }} itemKey={detailsKey} />
       <Pharmacy_ConfirmDialog
@@ -570,45 +562,6 @@ export default function Pharmacy_Inventory() {
           setToDelete(null)
         }}
       />
-
-      {/* Import Excel Dialog */}
-      {importOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="w-full max-w-md rounded-xl bg-white p-6 shadow-xl">
-            <h3 className="mb-4 text-lg font-semibold text-slate-800">Import Medicines from Excel</h3>
-            <p className="mb-4 text-sm text-slate-600">
-              Upload an Excel file with columns: <strong>Type, Products, Qty per Box, Sales price per Packing</strong>
-              <br /><br />
-              Imported items will go to <strong>Pending Review</strong> for approval.
-            </p>
-            <input
-              type="file"
-              accept=".xlsx,.xls,.csv"
-              onChange={(e) => {
-                const file = e.target.files?.[0]
-                if (file) handleImportExcel(file)
-              }}
-              disabled={importLoading}
-              className="mb-4 w-full rounded-md border border-slate-300 px-3 py-2 text-sm file:mr-4 file:rounded-md file:border-0 file:bg-navy-600 file:px-3 file:py-1.5 file:text-sm file:text-white hover:file:bg-navy-700"
-            />
-            {importLoading && (
-              <div className="mb-4 flex items-center gap-2 text-sm text-slate-600">
-                <RotateCw className="h-4 w-4 animate-spin" />
-                Importing...
-              </div>
-            )}
-            <div className="flex justify-end gap-2">
-              <button
-                onClick={() => setImportOpen(false)}
-                disabled={importLoading}
-                className="rounded-md border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   )
 }

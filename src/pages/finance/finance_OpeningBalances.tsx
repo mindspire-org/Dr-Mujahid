@@ -24,6 +24,8 @@ export default function Finance_OpeningBalances() {
   const [bankTo, setBankTo] = useState<string>('')
   const [viewTxn, setViewTxn] = useState<any | null>(null)
 
+  const [successDialog, setSuccessDialog] = useState<{ open: boolean; sender?: string; receiver?: string; amount?: number }>({ open: false })
+
   const [toastMsg, setToastMsg] = useState('')
   const [toastOpen, setToastOpen] = useState(false)
   const toastTimerRef = useRef<number | null>(null)
@@ -222,7 +224,18 @@ export default function Finance_OpeningBalances() {
                   }
                   setBalancesByCode(updated)
                 } catch { }
-                showToast('Transfer completed')
+
+                const senderAcc = accounts.find(a => a.code === senderAccount) || bankAccounts.find((b: any) => String(b.financeAccountCode || '').trim().toUpperCase() === senderAccount)
+                const senderName = (senderAcc as any)?.name || (senderAcc as any)?.bankName || (senderAcc as any)?.accountTitle || senderAccount
+                const receiverAcc = accounts.find(a => a.code === account) || bankAccounts.find((b: any) => String(b.financeAccountCode || '').trim().toUpperCase() === account)
+                const receiverName = (receiverAcc as any)?.name || (receiverAcc as any)?.bankName || (receiverAcc as any)?.accountTitle || account
+
+                setSuccessDialog({
+                  open: true,
+                  sender: `${senderAccount}${senderName ? ` — ${senderName}` : ''}`,
+                  receiver: `${account}${receiverName ? ` — ${receiverName}` : ''}`,
+                  amount: Number(amount || 0)
+                })
 
                 // Reset fields (keep date as-is)
                 setAccount('')
@@ -498,6 +511,47 @@ export default function Finance_OpeningBalances() {
             <div className="mt-4 flex justify-end">
               <button className="btn" onClick={() => setViewTxn(null)}>Close</button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {successDialog.open && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div className="fixed inset-0 bg-black/50" onClick={() => setSuccessDialog({ open: false })}></div>
+          <div className="relative z-50 w-full max-w-md bg-white rounded-2xl shadow-xl p-6 m-4 text-center">
+            <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-green-100">
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+              </svg>
+            </div>
+            <h3 className="text-xl font-semibold text-slate-800 mb-4">Transfer Successful</h3>
+            <div className="mb-6 space-y-3">
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-slate-500">From:</span>
+                <span className="font-medium text-slate-700">{successDialog.sender}</span>
+              </div>
+              <div className="flex items-center justify-center">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 8l4 4m0 0l-4 4m4-4H3" />
+                </svg>
+              </div>
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-slate-500">To:</span>
+                <span className="font-medium text-slate-700">{successDialog.receiver}</span>
+              </div>
+              <div className="pt-3 border-t border-slate-200">
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-slate-500">Amount transferred:</span>
+                  <span className="font-semibold text-green-600">Rs. {new Intl.NumberFormat('en-PK').format(Number(successDialog.amount || 0))}</span>
+                </div>
+              </div>
+            </div>
+            <button
+              className="w-full rounded-lg bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700"
+              onClick={() => setSuccessDialog({ open: false })}
+            >
+              OK
+            </button>
           </div>
         </div>
       )}

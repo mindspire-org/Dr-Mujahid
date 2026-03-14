@@ -65,7 +65,7 @@ export default function TherapyLab_Header({ title = 'Therapy & Lab Reports Entry
         <div className="flex items-center gap-2">
           <div className="flex h-8 w-8 items-center justify-center overflow-hidden rounded-full bg-white/10 ring-1 ring-white/15">
             {brand.logoDataUrl ? (
-              <img src={brand.logoDataUrl} alt="Logo" className="h-full w-full object-contain" />
+              <img src={brand.logoDataUrl} alt="Logo" className="h-full w-full object-cover" />
             ) : (
               <div className="flex h-full w-full items-center justify-center bg-violet-100 text-violet-600 shadow-inner">
                 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="h-5 w-5">

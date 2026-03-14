@@ -32,6 +32,7 @@ export type TokenSlipData = {
   advanceAfter?: number
   amount: number
   discount: number
+  discountType?: 'PKR' | '%'
   payable: number
   createdAt?: string
 }
@@ -256,7 +257,7 @@ export default function Hospital_TokenSlip({ open, onClose, data, autoPrint = fa
 
           <div className="space-y-1 text-sm text-slate-800">
             <Row label="Total Amount:" value={`PKR ${Number(data.amount||0).toLocaleString()}`} />
-            <Row label="Discount:" value={`PKR ${Number(data.discount||0).toLocaleString()}`} />
+            <Row label="Discount:" value={`${data.discountType === '%' ? data.discount + '% (PKR ' + Math.round((data.amount || 0) * (data.discount / 100)).toLocaleString() + ')' : 'PKR ' + Number(data.discount||0).toLocaleString()}`} />
             <Row label="Payable:" value={`PKR ${payable.toLocaleString()}`} boldValue />
             <Row label="Paid:" value={`PKR ${paidNowSimple.toLocaleString()}`} />
             <Row label="Remaining:" value={`PKR ${remainingSimple.toLocaleString()}`} />

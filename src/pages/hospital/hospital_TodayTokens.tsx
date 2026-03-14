@@ -17,6 +17,7 @@ interface TokenRow {
   department?: string
   fee: number
   discount?: number
+  discountType?: 'PKR' | '%'
   paymentStatus?: 'paid' | 'unpaid'
   receptionistName?: string
   paymentMethod?: string
@@ -73,11 +74,11 @@ export default function Hospital_TodayTokens() {
     doctorId: '',
     amount: '',
     discount: '',
+    discountType: 'PKR' as 'PKR' | '%',
     paymentStatus: 'paid' as 'paid' | 'unpaid',
     receptionistName: '',
     paymentMethod: 'Cash' as 'Cash' | 'Card' | 'Insurance',
     accountNumberIban: '',
-    mrn: '',
   })
 
 
@@ -177,6 +178,7 @@ export default function Hospital_TodayTokens() {
       department: t.departmentId?.name || '-',
       fee: Number(t.fee || 0),
       discount: Number(t.discount ?? t.pricing?.discount ?? 0),
+      discountType: (t.discountType || 'PKR') as 'PKR' | '%',
       paymentStatus: (t.paymentStatus || 'paid') as any,
       receptionistName: t.receptionistName || '',
       paymentMethod: t.paymentMethod || '',
@@ -255,8 +257,6 @@ export default function Hospital_TodayTokens() {
     const cnic = String(patient.cnicNormalized || t.cnic || '')
     const address = String(patient.address || t.address || '')
 
-    const mrn = String(patient.mrn || t.mrn || r.mrNo || '')
-
     const departmentId = String(t.departmentId?._id || t.departmentId || '')
     const doctorId = String(t.doctorId?._id || t.doctorId || '')
 
@@ -279,7 +279,6 @@ export default function Hospital_TodayTokens() {
       guardianName,
       cnic,
       address,
-      mrn,
       departmentId,
       doctorId,
       amount,
@@ -373,6 +372,7 @@ export default function Hospital_TodayTokens() {
       gender: r.gender,
       amount,
       discount,
+      discountType: r.discountType || 'PKR',
       payable,
       paymentStatus: r.paymentStatus || (r.raw?.paymentStatus || 'paid'),
       receptionistName: r.receptionistName || (r.raw?.receptionistName || ''),
@@ -507,7 +507,11 @@ export default function Hospital_TodayTokens() {
                   </div>
                 </Td>
                 <Td>
-                  Rs. {Number(r.discount ?? r.raw?.discount ?? r.raw?.pricing?.discount ?? 0).toLocaleString()}
+                  {r.discountType === '%' ? (() => {
+                    const originalAmount = r.fee / (1 - r.discount / 100);
+                    const discountAmount = Math.round(originalAmount * (r.discount / 100));
+                    return `${r.discount}% (PKR ${discountAmount.toLocaleString()})`;
+                  })() : `Rs. ${Number(r.discount ?? 0).toLocaleString()}`}
                 </Td>
                 <Td><button onClick={() => printSlip(r)} className="text-sky-600 hover:underline">Print Slip</button></Td>
                 <Td>
@@ -586,14 +590,9 @@ export default function Hospital_TodayTokens() {
 
               <section className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 <div className="md:col-span-2 text-sm font-semibold text-slate-800">Patient Details</div>
-                <div className="md:col-span-2">
-                  <label className="mb-1 block text-sm font-medium text-slate-700">MR Number</label>
-                  <input 
-                    value={editForm.mrn} 
-                    readOnly 
-                    className="w-full rounded-md border border-slate-300 bg-slate-50 px-3 py-2 text-slate-700 outline-none" 
-                    placeholder="MR Number"
-                  />
+                <div className="sm:col-span-2">
+                  <label className="mb-1 block text-xs font-medium text-slate-600">MR #</label>
+                  <input value={editRow?.mrNo || '-'} disabled readOnly className="w-full rounded-md border border-slate-300 bg-slate-100 px-3 py-2 text-sm text-slate-600 cursor-not-allowed" />
                 </div>
                 <div className="md:col-span-2">
                   <label className="mb-1 block text-sm font-medium text-slate-700">Patient Name</label>

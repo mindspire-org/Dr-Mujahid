@@ -16,6 +16,7 @@ export const createOpdTokenSchema = z.object({
   doctorId: z.string().optional(),
   visitType: z.enum(['new','followup']).default('new'),
   discount: z.number().min(0).optional(),
+  discountType: z.enum(['PKR', '%']).default('PKR'),
   paymentStatus: z.enum(['paid','unpaid']).default('paid'),
   payPreviousDues: z.coerce.boolean().optional(),
   useAdvance: z.coerce.boolean().optional(),
@@ -66,6 +67,7 @@ export const updateTokenSchema = z.object({
   // Billing
   amount: z.number().min(0).optional(),
   discount: z.number().min(0).optional(),
+  discountType: z.enum(['PKR', '%']).optional(),
   paymentStatus: z.enum(['paid','unpaid']).optional(),
   receptionistName: z.string().optional(),
   paymentMethod: z.enum(['Cash','Card','Insurance']).optional(),

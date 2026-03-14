@@ -63,20 +63,20 @@ function TokenDetailsDialog({ open, onClose, row }: { open: boolean; onClose: ()
 
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 px-2 py-4 sm:px-4 sm:py-8">
-      <div className="w-full max-w-4xl max-h-[96dvh] flex flex-col overflow-hidden rounded-xl bg-white dark:bg-slate-900 shadow-2xl ring-1 ring-black/5 dark:ring-white/10">
-        <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-700 px-4 py-3 sm:px-6 sm:py-4">
+      <div className="w-full max-w-4xl max-h-[96dvh] flex flex-col overflow-hidden rounded-xl bg-white shadow-2xl ring-1 ring-black/5">
+        <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3 sm:px-6 sm:py-4">
           <div>
-            <h3 className="text-base sm:text-lg font-semibold text-slate-800 dark:text-slate-100">Patient Details</h3>
-            <div className="mt-0.5 text-[10px] sm:text-xs text-slate-500 dark:text-slate-400">Token #{String(t.tokenNo || row.tokenNo || '-')} • {createdAt}</div>
+            <h3 className="text-base sm:text-lg font-semibold text-slate-800">Patient Details</h3>
+            <div className="mt-0.5 text-[10px] sm:text-xs text-slate-500">Token #{String(t.tokenNo || row.tokenNo || '-')} • {createdAt}</div>
           </div>
-          <button onClick={onClose} className="rounded-md border border-slate-200 dark:border-slate-600 p-2 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700 hover:text-slate-900 dark:hover:text-slate-200" aria-label="Close">
+          <button onClick={onClose} className="rounded-md border border-slate-200 p-2 text-slate-600 hover:bg-slate-50 hover:text-slate-900" aria-label="Close">
             <X size={18} />
           </button>
         </div>
 
         <div className="flex-1 overflow-y-auto px-4 py-5 sm:px-6 space-y-6">
           <section>
-            <h4 className="text-sm font-semibold text-slate-800 dark:text-slate-200">Patient Details</h4>
+            <h4 className="text-sm font-semibold text-slate-800">Patient Details</h4>
             <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
               <Info label="Patient Name" value={String(patientName)} />
               <Info label="MR Number" value={String(mrn)} />
@@ -120,9 +120,9 @@ function TokenDetailsDialog({ open, onClose, row }: { open: boolean; onClose: ()
 
 function Info({ label, value, full }: { label: string; value: string; full?: boolean }) {
   return (
-    <div className={`${full ? 'sm:col-span-2' : ''} rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-2`}>
-      <div className="text-xs font-medium text-slate-500 dark:text-slate-400">{label}</div>
-      <div className="mt-0.5 text-sm text-slate-800 dark:text-slate-200 break-words">{value || '-'}</div>
+    <div className={`${full ? 'sm:col-span-2' : ''} rounded-lg border border-slate-200 bg-slate-50 px-3 py-2`}>
+      <div className="text-xs font-medium text-slate-500">{label}</div>
+      <div className="mt-0.5 text-sm text-slate-800 break-words">{value || '-'}</div>
     </div>
   )
 }
@@ -319,17 +319,14 @@ export default function Doctor_Patients() {
   const myQueue = useMemo(() => {
     const presSet = new Set(presEncounterIds.filter(Boolean))
     return (list || [])
-      // Backend already filters by doctorId; here we only filter by status/prescription.
-      // Some rows may have doctorId as populated object, so strict equality against doc.id can hide valid tokens.
-      .filter(t => t.status === 'queued' && (!t.encounterId || !presSet.has(String(t.encounterId))))
+      .filter(t => t.doctorId === doc?.id && t.status === 'queued' && (!t.encounterId || !presSet.has(String(t.encounterId))))
       .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
   }, [list, doc, presEncounterIds])
 
   const completed = useMemo(() => {
     const presSet = new Set(presEncounterIds.filter(Boolean))
     return (list || [])
-      // Backend already filters by doctorId; see note above.
-      .filter(t => t.status !== 'cancelled' && !!t.encounterId && presSet.has(String(t.encounterId)))
+      .filter(t => t.doctorId === doc?.id && t.status !== 'cancelled' && !!t.encounterId && presSet.has(String(t.encounterId)))
       .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
   }, [list, doc, presEncounterIds])
 
@@ -406,11 +403,11 @@ export default function Doctor_Patients() {
   const renderRow = (t: Token, idx: number, allowActions: boolean) => (
     <div key={t._id} className="flex flex-col gap-3 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:py-3 text-sm">
       <div className="flex items-start gap-3">
-        <div className="mt-0.5 rounded-md bg-slate-100 dark:bg-slate-700 px-2 py-1 text-[10px] font-bold text-slate-600 dark:text-slate-300">{idx + 1}</div>
+        <div className="mt-0.5 rounded-md bg-slate-100 px-2 py-1 text-[10px] font-bold text-slate-600">{idx + 1}</div>
         <div className="min-w-0 flex-1">
-          <div className="font-bold text-slate-900 dark:text-slate-100 truncate">{t.patientName}</div>
-          <div className="mt-0.5 flex flex-wrap items-center gap-x-2 text-[11px] text-slate-500 dark:text-slate-400">
-            <span className="font-medium text-slate-700 dark:text-slate-300">MR: {t.mrNo}</span>
+          <div className="font-bold text-slate-900 truncate">{t.patientName}</div>
+          <div className="mt-0.5 flex flex-wrap items-center gap-x-2 text-[11px] text-slate-500">
+            <span className="font-medium text-slate-700">MR: {t.mrNo}</span>
             <span className="opacity-50">•</span>
             <span>{new Date(t.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
           </div>
@@ -419,11 +416,11 @@ export default function Doctor_Patients() {
       <div className="flex flex-wrap items-center gap-2 sm:justify-end">
         {allowActions ? (
           <>
-            <span className="rounded-full bg-sky-50 dark:bg-sky-900/30 px-2.5 py-0.5 text-[11px] font-semibold text-sky-700 dark:text-sky-300 ring-1 ring-inset ring-sky-600/20 dark:ring-sky-400/30">Queued</span>
+            <span className="rounded-full bg-sky-50 px-2.5 py-0.5 text-[11px] font-semibold text-sky-700 ring-1 ring-inset ring-sky-600/20">Queued</span>
             <div className="flex items-center gap-2 ml-auto sm:ml-0">
               <button
                 type="button"
-                className="flex h-8 w-8 items-center justify-center rounded-md border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700 shadow-sm transition-colors"
+                className="flex h-8 w-8 items-center justify-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-50 shadow-sm transition-colors"
                 onClick={() => { setDetailsRow(t); setShowDetails(true) }}
                 title="View Details"
               >
@@ -441,11 +438,11 @@ export default function Doctor_Patients() {
           </>
         ) : (
           <>
-            <span className="rounded-full bg-emerald-50 dark:bg-emerald-900/30 px-2.5 py-0.5 text-[11px] font-semibold text-emerald-700 dark:text-emerald-300 ring-1 ring-inset ring-emerald-600/20 dark:ring-emerald-400/30">Completed</span>
+            <span className="rounded-full bg-emerald-50 px-2.5 py-0.5 text-[11px] font-semibold text-emerald-700 ring-1 ring-inset ring-emerald-600/20">Completed</span>
             <div className="flex items-center gap-2 ml-auto sm:ml-0">
               <button
                 type="button"
-                className="flex h-8 w-8 items-center justify-center rounded-md border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700 shadow-sm transition-colors"
+                className="flex h-8 w-8 items-center justify-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-50 shadow-sm transition-colors"
                 onClick={() => { setDetailsRow(t); setShowDetails(true) }}
                 title="View Details"
               >
@@ -453,7 +450,7 @@ export default function Doctor_Patients() {
               </button>
               <button
                 type="button"
-                className="rounded-md border border-sky-600 dark:border-sky-400 px-3 py-1.5 text-xs font-semibold text-sky-700 dark:text-sky-300 hover:bg-sky-50 dark:hover:bg-sky-900/30 shadow-sm transition-colors"
+                className="rounded-md border border-sky-600 px-3 py-1.5 text-xs font-semibold text-sky-700 hover:bg-sky-50 shadow-sm transition-colors"
                 onClick={() => printPrescriptionByEncounter(t.encounterId)}
               >Print Rx</button>
             </div>
@@ -467,20 +464,20 @@ export default function Doctor_Patients() {
   return (
     <div className="space-y-4">
       <div className="flex flex-col gap-4">
-        <div className="text-xl font-bold text-slate-900 dark:text-slate-100">Queued Patients</div>
+        <div className="text-xl font-bold text-slate-900">Queued Patients</div>
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex flex-wrap items-center gap-2 text-sm">
             <div className="flex items-center gap-2">
-              <span className="text-slate-500 dark:text-slate-400 text-xs whitespace-nowrap">From</span>
-              <input type="date" value={from} onChange={e => setFrom(e.target.value)} className="rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-2 py-1.5 focus:border-sky-500 dark:text-slate-200" />
+              <span className="text-slate-500 text-xs whitespace-nowrap">From</span>
+              <input type="date" value={from} onChange={e => setFrom(e.target.value)} className="rounded-md border border-slate-300 px-2 py-1.5 focus:border-sky-500" />
             </div>
             <div className="flex items-center gap-2">
-              <span className="text-slate-500 dark:text-slate-400 text-xs whitespace-nowrap">To</span>
-              <input type="date" value={to} onChange={e => setTo(e.target.value)} className="rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-2 py-1.5 focus:border-sky-500 dark:text-slate-200" />
+              <span className="text-slate-500 text-xs whitespace-nowrap">To</span>
+              <input type="date" value={to} onChange={e => setTo(e.target.value)} className="rounded-md border border-slate-300 px-2 py-1.5 focus:border-sky-500" />
             </div>
             <div className="flex items-center gap-1">
-              <button onClick={() => { setFrom(''); setTo('') }} className="rounded-md border border-slate-300 dark:border-slate-600 px-3 py-1.5 text-xs hover:bg-slate-50 dark:hover:bg-slate-700 dark:text-slate-300">Reset</button>
-              <button onClick={() => { const t = new Date().toISOString().slice(0, 10); setFrom(t); setTo(t) }} className="rounded-md border border-slate-300 dark:border-slate-600 px-3 py-1.5 text-xs hover:bg-slate-50 dark:hover:bg-slate-700 dark:text-slate-300">Today</button>
+              <button onClick={() => { setFrom(''); setTo('') }} className="rounded-md border border-slate-300 px-3 py-1.5 text-xs hover:bg-slate-50">Reset</button>
+              <button onClick={() => { const t = new Date().toISOString().slice(0, 10); setFrom(t); setTo(t) }} className="rounded-md border border-slate-300 px-3 py-1.5 text-xs hover:bg-slate-50">Today</button>
             </div>
           </div>
           <div className="w-full sm:max-w-xs">
@@ -488,50 +485,50 @@ export default function Doctor_Patients() {
               value={query}
               onChange={e => setQuery(e.target.value)}
               placeholder="Search name or MR#"
-              className="w-full rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2 text-sm outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-100 dark:text-slate-200"
+              className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-100"
             />
           </div>
         </div>
       </div>
-      <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-sm overflow-hidden">
-        <div className="border-b border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/50 px-4 py-3 font-semibold text-slate-800 dark:text-slate-100">First-Come First-Serve</div>
+      <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+        <div className="border-b border-slate-200 bg-slate-50/50 px-4 py-3 font-semibold text-slate-800">First-Come First-Serve</div>
         {hasDateRange ? (
           <>
-            <div className="border-t border-slate-200 dark:border-slate-700" />
-            <div className="px-4 py-3 text-xs font-semibold text-slate-700 dark:text-slate-300">Patients ({dateRangeLabel})</div>
+            <div className="border-t border-slate-200" />
+            <div className="px-4 py-3 text-xs font-semibold text-slate-700">Patients ({dateRangeLabel})</div>
             {queuedGrouped.keys.map((k) => (
               <div key={`q_${k}`}>
-                <div className="border-t border-slate-200 dark:border-slate-700" />
-                <div className="px-4 py-3 text-xs font-semibold text-slate-700 dark:text-slate-300">{headingForDate(k)}</div>
-                <div className="divide-y divide-slate-200 dark:divide-slate-800">
+                <div className="border-t border-slate-200" />
+                <div className="px-4 py-3 text-xs font-semibold text-slate-700">{headingForDate(k)}</div>
+                <div className="divide-y divide-slate-200">
                   {(queuedGrouped.map[k] || []).map((t, idx) => renderRow(t, idx, true))}
                 </div>
               </div>
             ))}
             {queuedGrouped.keys.length === 0 && (
               <>
-                <div className="border-t border-slate-200 dark:border-slate-700" />
-                <div className="px-4 py-6 text-center text-slate-500 dark:text-slate-400">No queued patients for selected range</div>
+                <div className="border-t border-slate-200" />
+                <div className="px-4 py-6 text-center text-slate-500">No queued patients for selected range</div>
               </>
             )}
           </>
         ) : (
           <>
-            <div className="border-t border-slate-200 dark:border-slate-700" />
-            <div className="px-4 py-3 text-xs font-semibold text-slate-700 dark:text-slate-300">Today's Patients ({todayLabel})</div>
-            <div className="divide-y divide-slate-200 dark:divide-slate-800">
+            <div className="border-t border-slate-200" />
+            <div className="px-4 py-3 text-xs font-semibold text-slate-700">Today's Patients ({todayLabel})</div>
+            <div className="divide-y divide-slate-200">
               {queuedToday.map((t, idx) => renderRow(t, idx, true))}
               {queuedToday.length === 0 && (
-                <div className="px-4 py-6 text-center text-slate-500 dark:text-slate-400">No queued patients for today</div>
+                <div className="px-4 py-6 text-center text-slate-500">No queued patients for today</div>
               )}
             </div>
 
-            <div className="border-t border-slate-200 dark:border-slate-700" />
-            <div className="px-4 py-3 text-xs font-semibold text-slate-700 dark:text-slate-300">Yesterday Patients ({yesterdayLabel})</div>
-            <div className="divide-y divide-slate-200 dark:divide-slate-800">
+            <div className="border-t border-slate-200" />
+            <div className="px-4 py-3 text-xs font-semibold text-slate-700">Yesterday Patients ({yesterdayLabel})</div>
+            <div className="divide-y divide-slate-200">
               {queuedYesterday.map((t, idx) => renderRow(t, idx, true))}
               {queuedYesterday.length === 0 && (
-                <div className="px-4 py-6 text-center text-slate-500 dark:text-slate-400">No queued patients for yesterday</div>
+                <div className="px-4 py-6 text-center text-slate-500">No queued patients for yesterday</div>
               )}
             </div>
           </>
@@ -546,48 +543,48 @@ export default function Doctor_Patients() {
         />
       )}
 
-      <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900">
-        <div className="border-b border-slate-200 dark:border-slate-700 px-4 py-3">
-          <div className="text-sm font-semibold text-slate-800 dark:text-slate-100">Completed Patients</div>
-          <div className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">Prescription submitted/finalized</div>
+      <div className="rounded-xl border border-slate-200 bg-white">
+        <div className="border-b border-slate-200 px-4 py-3">
+          <div className="text-sm font-semibold text-slate-800">Completed Patients</div>
+          <div className="mt-0.5 text-xs text-slate-500">Prescription submitted/finalized</div>
         </div>
 
         {hasDateRange ? (
           <>
-            <div className="border-t border-slate-200 dark:border-slate-700" />
-            <div className="px-4 py-3 text-xs font-semibold text-slate-700 dark:text-slate-300">Patients ({dateRangeLabel})</div>
+            <div className="border-t border-slate-200" />
+            <div className="px-4 py-3 text-xs font-semibold text-slate-700">Patients ({dateRangeLabel})</div>
             {completedGrouped.keys.map((k) => (
               <div key={`c_${k}`}>
-                <div className="border-t border-slate-200 dark:border-slate-700" />
-                <div className="px-4 py-3 text-xs font-semibold text-slate-700 dark:text-slate-300">{headingForDate(k)}</div>
-                <div className="divide-y divide-slate-200 dark:divide-slate-800">
+                <div className="border-t border-slate-200" />
+                <div className="px-4 py-3 text-xs font-semibold text-slate-700">{headingForDate(k)}</div>
+                <div className="divide-y divide-slate-200">
                   {(completedGrouped.map[k] || []).map((t, idx) => renderRow(t, idx, false))}
                 </div>
               </div>
             ))}
             {completedGrouped.keys.length === 0 && (
               <>
-                <div className="border-t border-slate-200 dark:border-slate-700" />
-                <div className="px-4 py-6 text-center text-slate-500 dark:text-slate-400">No completed patients for selected range</div>
+                <div className="border-t border-slate-200" />
+                <div className="px-4 py-6 text-center text-slate-500">No completed patients for selected range</div>
               </>
             )}
           </>
         ) : (
           <>
-            <div className="px-4 py-3 text-xs font-semibold text-slate-700 dark:text-slate-300">Today's Patients ({todayLabel})</div>
-            <div className="divide-y divide-slate-200 dark:divide-slate-800">
+            <div className="px-4 py-3 text-xs font-semibold text-slate-700">Today's Patients ({todayLabel})</div>
+            <div className="divide-y divide-slate-200">
               {completedToday.map((t, idx) => renderRow(t, idx, false))}
               {completedToday.length === 0 && (
-                <div className="px-4 py-6 text-center text-slate-500 dark:text-slate-400">No completed patients for today</div>
+                <div className="px-4 py-6 text-center text-slate-500">No completed patients for today</div>
               )}
             </div>
 
-            <div className="border-t border-slate-200 dark:border-slate-700" />
-            <div className="px-4 py-3 text-xs font-semibold text-slate-700 dark:text-slate-300">Yesterday Patients ({yesterdayLabel})</div>
-            <div className="divide-y divide-slate-200 dark:divide-slate-800">
+            <div className="border-t border-slate-200" />
+            <div className="px-4 py-3 text-xs font-semibold text-slate-700">Yesterday Patients ({yesterdayLabel})</div>
+            <div className="divide-y divide-slate-200">
               {completedYesterday.map((t, idx) => renderRow(t, idx, false))}
               {completedYesterday.length === 0 && (
-                <div className="px-4 py-6 text-center text-slate-500 dark:text-slate-400">No completed patients for yesterday</div>
+                <div className="px-4 py-6 text-center text-slate-500">No completed patients for yesterday</div>
               )}
             </div>
           </>
