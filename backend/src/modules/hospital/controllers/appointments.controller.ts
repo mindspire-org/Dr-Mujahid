@@ -19,7 +19,7 @@ async function nextMrn(){
   const key = 'lab_mrn_mr7553'
   
   // Get settings to check for custom starting number
-  const settings = await HospitalSettings.findOne().lean()
+  const settings = await HospitalSettings.findOne().lean() as any
   const mrStart = settings?.mrStart || 1
   
   // Check current counter value
