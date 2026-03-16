@@ -8,6 +8,7 @@ import { diagnosticSidebarNav } from '../../components/diagnostic/diagnostic_Sid
 import { pharmacySidebarNav } from '../../components/pharmacy/pharmacy_Sidebar'
 import { financeSidebarGroups } from '../../components/finance/finance_Sidebar'
 import { therapyLabSidebarNav } from '../therapyLab/therapyLab_Sidebar'
+import { counsellingSidebarNavTop } from '../../components/counselling/counselling_Sidebar'
 
 type User = {
   id: string
@@ -98,7 +99,9 @@ export default function Hospital_UserManagement() {
     const v = permDraft?.[portalKey]
     if (!Array.isArray(v) || v.length === 0) return false
     if (v.includes('*')) return true
-    return v.includes(to)
+    
+    const normalizedTo = normalizePath(to)
+    return v.some(x => normalizePath(String(x)) === normalizedTo)
   }
   const togglePortal = (portalKey: string, enabled: boolean) => {
     setPermDraft(prev => {
@@ -149,7 +152,7 @@ export default function Hospital_UserManagement() {
     setPortalDialogKey(null)
   }
 
-  const portalDialog = accessTree.find(p => p.portalKey === portalDialogKey) || null
+  const portalDialog = accessTree.find(p => p.portalKey === portalDialogKey) || (portalDialogKey === 'counselling' ? { portalKey: 'counselling', modules: [], pages: [] } as any : null)
 
   const normalizePath = (p: string) => {
     const v = String(p || '').trim()
@@ -199,6 +202,21 @@ export default function Hospital_UserManagement() {
     if (portalKey === 'therapyLab') {
       const arr = (therapyLabSidebarNav || []).map(it => mk((it as any).to, (it as any).label))
       return { pages: arr, groups: [] }
+    }
+
+    if (portalKey === 'therapy') {
+      const arr = (therapyLabSidebarNav || []).map(it => mk((it as any).to, (it as any).label))
+      const receptionTherapyItems = (receptionSidebarGroups.find(g => g.label === 'Therapy')?.items || []).map(it => mk(it.to, it.label))
+      return { pages: [...arr, ...receptionTherapyItems], groups: [{ label: 'Reception Therapy', pages: receptionTherapyItems }] }
+    }
+
+    if (portalKey === 'counselling') {
+      const top = (counsellingSidebarNavTop || []).map(it => mk(it.to, it.label))
+      const receptionCounsellingItems = (receptionSidebarGroups.find(g => g.label === 'Counselling')?.items || []).map(it => mk(it.to, it.label))
+      return { pages: [...top, ...receptionCounsellingItems], groups: [
+        { label: 'Counselling Portal', pages: top },
+        { label: 'Reception Counselling', pages: receptionCounsellingItems }
+      ] }
     }
 
     return { pages: [], groups: [] }
@@ -580,7 +598,7 @@ export default function Hospital_UserManagement() {
           <select
             value={newUser.role}
             onChange={e => setNewUser(v => ({ ...v, role: e.target.value }))}
-            className="rounded-md border border-slate-300 px-3 py-2 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-200"
+            className="rounded-md border border-slate-300 px-3 py-2 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-200 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
           >
             {roles.map(r => (<option key={r.id} value={r.name}>{r.name}</option>))}
           </select>
@@ -606,7 +624,7 @@ export default function Hospital_UserManagement() {
                 setPermUserId(id)
                 void loadPermissionsForUser(id)
               }}
-              className="w-full rounded-md border border-slate-300 px-3 py-2 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-200"
+              className="w-full rounded-md border border-slate-300 px-3 py-2 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-200 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
             >
               {users.map(u => (
                 <option key={u.id} value={u.id}>{u.username}-{u.role}</option>
@@ -660,6 +678,42 @@ export default function Hospital_UserManagement() {
               </div>
             </div>
           ))}
+
+          {!accessTree.some(p => p.portalKey === 'counselling') && (
+            <div key="counselling" className="rounded-lg border border-slate-200 p-3">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
+                <div className="text-sm font-semibold text-slate-800">counselling</div>
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
+                  <div className="flex flex-wrap items-center gap-3">
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={isPortalEnabled('counselling')}
+                      onClick={() => {
+                        const next = !isPortalEnabled('counselling')
+                        togglePortal('counselling', next)
+                        if (next) openPortalDialog('counselling')
+                      }}
+                      className={`${isPortalEnabled('counselling') ? 'bg-violet-700' : 'bg-slate-300'} relative inline-flex h-6 w-11 items-center rounded-full transition`}
+                      title={isPortalEnabled('counselling') ? 'Disable' : 'Enable'}
+                    >
+                      <span className={`${isPortalEnabled('counselling') ? 'translate-x-6' : 'translate-x-1'} inline-block h-4 w-4 transform rounded-full bg-white transition`} />
+                    </button>
+                    <div className="text-sm text-slate-700">{isPortalEnabled('counselling') ? 'Enabled' : 'Disabled'}</div>
+                  </div>
+                  {isPortalEnabled('counselling') && (
+                    <button
+                      type="button"
+                      onClick={() => openPortalDialog('counselling')}
+                      className="w-full rounded-md border border-slate-300 bg-white px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50 sm:w-auto"
+                    >
+                      Configure
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 

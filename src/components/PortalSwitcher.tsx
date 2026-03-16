@@ -17,8 +17,9 @@ const ALL_PORTALS: Portal[] = [
     // { key: 'lab', label: 'Lab Portal', path: '/lab', color: 'bg-sky-600' },
     { key: 'pharmacy', label: 'Pharmacy Portal', path: '/pharmacy', color: 'bg-teal-600' },
     { key: 'therapyLab', label: 'Therapy Portal', path: '/therapy-lab', color: 'bg-indigo-600' },
-    // { key: 'aesthetic', label: 'Aesthetic Portal', path: '/aesthetic', color: 'bg-pink-600' },
+    { key: 'counselling', label: 'Counselling Portal', path: '/counselling', color: 'bg-rose-600' },
     { key: 'finance', label: 'Finance Portal', path: '/finance', color: 'bg-green-600' },
+    { key: 'aesthetic', label: 'Aesthetic Portal', path: '/aesthetic', color: 'bg-pink-600' },
 ]
 
 export default function PortalSwitcher({ collapsed, onExpand }: { collapsed?: boolean; onExpand?: () => void }) {
@@ -41,6 +42,7 @@ export default function PortalSwitcher({ collapsed, onExpand }: { collapsed?: bo
                         { key: 'lab', storageKey: 'lab.session' },
                         { key: 'pharmacy', storageKey: 'pharmacy.session' },
                         { key: 'therapyLab', storageKey: 'therapyLab.session' },
+                        { key: 'counselling', storageKey: 'counselling.session' },
                         { key: 'finance', storageKey: 'finance.session' },
                         { key: 'aesthetic', storageKey: 'aesthetic.session' },
                     ]
@@ -72,16 +74,21 @@ export default function PortalSwitcher({ collapsed, onExpand }: { collapsed?: bo
                         return
                     }
 
-                    const isAdmin = roles.some(r => String(r).toLowerCase() === 'admin')
-                    if (isAdmin) {
-                        setAccessiblePortals(ALL_PORTALS)
-                        return
-                    }
-
+                    // const isAdmin = roles.some(r => String(r).toLowerCase() === 'admin')
+                    
                     const canPortal = (key: string) => {
+                        // 1. Check for explicit session
+                        const sessionKey = sessions.find(s => s.key === key)?.storageKey
+                        if (sessionKey) {
+                            const raw = localStorage.getItem(sessionKey)
+                            if (raw) return true
+                        }
+                        
+                        // 2. Check permissions from any active session
                         const arr = allPermissions?.[key]
                         if (arr === '*') return true
                         if (Array.isArray(arr) && arr.length > 0) return true
+                        
                         return false
                     }
 

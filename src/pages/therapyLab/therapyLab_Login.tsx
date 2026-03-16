@@ -54,7 +54,7 @@ export default function TherapyLab_Login() {
     }
   }, [])
 
-  const fallbackLogoSrc = `${(import.meta as any).env?.BASE_URL || '/'}hospital_icon.jpeg`
+  const fallbackLogoSrc = `${(import.meta as any).env?.BASE_URL || '/'}mcclogo.png`
   const logoSrc = brand.logoDataUrl || fallbackLogoSrc
 
   const onSubmit = async (e: React.FormEvent) => {
@@ -70,7 +70,7 @@ export default function TherapyLab_Login() {
     setError('')
 
     try {
-      const res: any = await hospitalApi.loginHospitalUser(uname, pwd)
+      const res: any = await hospitalApi.loginHospitalUser(uname, pwd, 'therapyLab')
       const u = res?.user
       const token = res?.token
       const permissions = (u?.permissions && typeof u.permissions === 'object') ? u.permissions : undefined
@@ -98,7 +98,7 @@ export default function TherapyLab_Login() {
         localStorage.setItem('therapyLab.session', JSON.stringify({ username: u.username, role: u.role, permissions }))
       } catch { }
 
-      navigate('/therapy-lab/lab-reports-entry')
+      navigate('/therapy-lab')
     } catch (err) {
       const msg = String((err as any)?.message || 'Invalid credentials')
       const clean = /<\/?(html|head|body)/i.test(msg) ? 'Login service not available. Please try again or contact admin.' : msg

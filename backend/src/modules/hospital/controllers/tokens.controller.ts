@@ -9,6 +9,7 @@ import { HospitalDoctorSchedule } from '../models/DoctorSchedule'
 import { LabPatient } from '../../lab/models/Patient'
 import { CorporateCompany } from '../../corporate/models/Company'
 import { LabCounter } from '../../lab/models/Counter'
+import { HospitalSettings } from '../models/Settings'
 import { HospitalAuditLog } from '../models/AuditLog'
 import { postOpdTokenJournal, reverseJournalByRef, reverseOpdTokenAsReturn } from './finance_ledger'
 import { resolveOPDPrice } from '../../corporate/utils/price'
@@ -89,9 +90,28 @@ function computeSlotStartEnd(startTime: string, slotMinutes: number, slotNo: num
 
 async function nextMrn(){
   const key = 'lab_mrn_mr7553'
+  
+  // Get settings to check for custom starting number
+  const settings = await HospitalSettings.findOne().lean()
+  const mrStart = settings?.mrStart || 1
+  
+  // Check current counter value
+  let existingCounter = await LabCounter.findById(key).lean()
+  const currentSeq = (existingCounter as any)?.seq || 0
+  
+  // If no counter exists OR current seq is less than mrStart-1, reset to mrStart-1
+  const targetSeq = Math.max(0, mrStart - 1)
+  if (!existingCounter) {
+    // Initialize counter to mrStart - 1, so first increment gives mrStart
+    await LabCounter.create({ _id: key, seq: targetSeq })
+  } else if (currentSeq < targetSeq) {
+    // Reset counter to mrStart - 1 if current is lower
+    await LabCounter.findByIdAndUpdate(key, { $set: { seq: targetSeq } })
+  }
+  
   const c = await LabCounter.findByIdAndUpdate(key, { $inc: { seq: 1 } }, { upsert: true, new: true, setDefaultsOnInsert: true })
   const seq = Number(c.seq || 1)
-  return `MR7553${seq}`
+  return String(seq)
 }
 
 export async function createOpd(req: Request, res: Response){
@@ -239,7 +259,17 @@ export async function createOpd(req: Request, res: Response){
     dateIso = next.dateIso
   }
 
-  const finalFee = hasOverride ? Math.max(0, Number(overrideFee)) : Math.max(0, resolvedFee - (data.discount || 0))
+  // Calculate discount based on type
+  let discountAmount = 0
+  const discountValue = Number((data as any).discount || 0)
+  const discountType = (data as any).discountType || 'PKR'
+  if (discountType === '%') {
+    discountAmount = resolvedFee * (discountValue / 100)
+  } else {
+    discountAmount = discountValue
+  }
+
+  const finalFee = hasOverride ? Math.max(0, Number(overrideFee)) : Math.max(0, resolvedFee - discountAmount)
 
   // Dues/Advance accounting (mirrors Diagnostic module)
   const patientIdStr = String((patient as any)?._id || '')
@@ -305,6 +335,7 @@ export async function createOpd(req: Request, res: Response){
     amount: hasOverride ? finalFee : resolvedFee,
     fee: finalFee,
     discount: (data as any).discount,
+    discountType: (data as any).discountType || 'PKR',
     receptionistName: (data as any).receptionistName,
     paymentMethod: (data as any).paymentMethod,
     paymentRef: (data as any).paymentRef,

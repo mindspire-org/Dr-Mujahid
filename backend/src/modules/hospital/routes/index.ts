@@ -1,4 +1,5 @@
 ﻿import { Router } from 'express'
+import multer from 'multer'
 import * as OPD from '../controllers/opd.controller'
 import * as IPD from '../controllers/ipd.controller'
 import * as Prescriptions from '../controllers/prescriptions.controller'
@@ -48,6 +49,9 @@ import * as StaffEarnings from '../controllers/staff_earnings.controller'
 import { auth } from '../../../common/middleware/auth'
 
 const r = Router()
+
+// Configure multer for file uploads (memory storage)
+const upload = multer({ storage: multer.memoryStorage() })
 
 const adminOnly = (req: any, res: any, next: any) => {
   const role = String(req?.user?.role || '')
@@ -112,6 +116,7 @@ r.delete('/appointments/:id', Appointments.remove)
 r.post('/opd/prescriptions', Prescriptions.create)
 r.get('/opd/prescriptions', Prescriptions.list)
 r.get('/opd/prescriptions/:id', Prescriptions.getById)
+r.get('/opd/prescriptions/by-history-taking/:historyTakingId', Prescriptions.getByHistoryTakingId)
 r.put('/opd/prescriptions/:id', Prescriptions.update)
 r.delete('/opd/prescriptions/:id', Prescriptions.remove)
 
@@ -387,6 +392,9 @@ r.put('/settings', Settings.update)
 
 // Patients (lookup)
 r.get('/patients/search', Patients.search)
+r.get('/patients/export', Patients.exportPatients)
+r.post('/patients/preview-excel', upload.single('file'), Patients.previewExcel)
+r.post('/patients/import-excel', upload.single('file'), Patients.importExcel)
 
 // Notifications (Doctor portal)
 r.get('/notifications', Notifications.list)

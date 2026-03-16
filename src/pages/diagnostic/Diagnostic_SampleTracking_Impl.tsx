@@ -17,6 +17,8 @@ type Order = {
   sampleTime?: string
   subtotal?: number
   discount?: number
+  discountInput?: number
+  discountType?: 'PKR' | '%'
   net?: number
   duesBefore?: number
   advanceBefore?: number
@@ -108,9 +110,10 @@ export default function Diagnostic_SampleTracking() {
           status: (String(x.status || 'received').toLowerCase() === 'completed' ? 'completed' : 'received') as any,
           tokenNo: x.tokenNo,
           sampleTime: x.sampleTime,
-          subtotal: Number(x.subtotal || 0),
-          discount: Number(x.discount || 0),
-          net: Number(x.net || 0),
+          subtotal: x.subtotal ?? 0,
+          discount: x.discount ?? 0,
+          discountType: (x.discountType || 'PKR') as 'PKR' | '%',
+          net: x.net ?? 0,
           duesBefore: (x.duesBefore != null) ? Number(x.duesBefore || 0) : undefined,
           advanceBefore: (x.advanceBefore != null) ? Number(x.advanceBefore || 0) : undefined,
           payPreviousDues: (x.payPreviousDues != null) ? !!x.payPreviousDues : undefined,
@@ -246,12 +249,25 @@ export default function Diagnostic_SampleTracking() {
   }, [])
   // Edit Sample Dialog
   const [editOpen, setEditOpen] = useState(false)
-  const [editOrder, setEditOrder] = useState<{ id: string; patient: any; tests: string[] } | null>(null)
-  function openEdit(o: Order) { setEditOrder({ id: o.id, patient: o.patient, tests: o.tests }); setEditOpen(true) }
+  const [editOrder, setEditOrder] = useState<Order | null>(null)
+  function openEdit(o: Order) { setEditOrder(o); setEditOpen(true) }
   function onEditSaved(updated: any) {
     const id = String(updated?._id || updated?.id || (editOrder && editOrder.id))
     if (!id) { setEditOpen(false); return }
-    setOrders(prev => prev.map(o => o.id === id ? { ...o, patient: updated.patient || o.patient, tests: updated.tests || o.tests, tokenNo: updated.tokenNo || o.tokenNo, createdAt: updated.createdAt || o.createdAt } : o))
+    setOrders(prev => prev.map(o => o.id === id ? { 
+      ...o, 
+      patient: updated.patient || o.patient, 
+      tests: updated.tests || o.tests, 
+      tokenNo: updated.tokenNo || o.tokenNo, 
+      createdAt: updated.createdAt || o.createdAt,
+      subtotal: updated.subtotal ?? o.subtotal,
+      discount: updated.discount ?? o.discount,
+      discountInput: updated.discountInput ?? o.discountInput,
+      discountType: updated.discountType ?? o.discountType,
+      net: updated.net ?? o.net,
+      amountReceived: updated.amountReceived ?? o.amountReceived,
+      paidForToday: updated.paidForToday ?? o.paidForToday,
+    } : o))
     setEditOpen(false)
   }
   const buildSlipData = (o: Order) => {
@@ -274,16 +290,17 @@ export default function Diagnostic_SampleTracking() {
       tests: rows,
       subtotal,
       discount,
+      discountType: o.discountType || 'PKR',
       payable,
       paymentStatus: o.paymentStatus,
-      amountReceived: o.amountReceived,
+      amountReceived: o.amountReceived ?? payable,
       payPreviousDues: o.payPreviousDues,
       useAdvance: o.useAdvance,
       advanceApplied: o.advanceApplied,
       duesBefore: o.duesBefore,
       advanceBefore: o.advanceBefore,
       duesPaid: o.duesPaid,
-      paidForToday: o.paidForToday,
+      paidForToday: payable,
       advanceAdded: o.advanceAdded,
       duesAfter: o.duesAfter,
       advanceAfter: o.advanceAfter,
@@ -500,8 +517,10 @@ function SampleDetailsDialog({ open, onClose, order, testsMap, testsPrice, payTo
   const tests = (order.tests || []).map(tid => ({ id: String(tid), name: testsMap[String(tid)] || String(tid), price: Number(testsPrice[String(tid)] || 0) }))
   const computedSubtotal = tests.reduce((s, t) => s + Number(t.price || 0), 0)
   const subtotal = (order.subtotal != null && !Number.isNaN(order.subtotal)) ? Number(order.subtotal) : computedSubtotal
-  const discount = (order.discount != null && !Number.isNaN(order.discount)) ? Number(order.discount) : 0
-  const payable = (order.net != null && !Number.isNaN(order.net)) ? Number(order.net) : Math.max(0, subtotal - discount)
+  const discountRaw = (order.discount != null && !Number.isNaN(order.discount)) ? Number(order.discount) : 0
+  const discountType = order.discountType || 'PKR'
+  const discountAmount = discountType === '%' ? Math.round(subtotal * (discountRaw / 100)) : discountRaw
+  const payable = (order.net != null && !Number.isNaN(order.net)) ? Number(order.net) : Math.max(0, subtotal - discountAmount)
 
   const paymentStatus = String(order.paymentStatus || 'paid')
   const isPaid = paymentStatus.toLowerCase() === 'paid'
@@ -561,7 +580,7 @@ function SampleDetailsDialog({ open, onClose, order, testsMap, testsPrice, payTo
             </div>
             <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
               <Info label="Subtotal" value={`PKR ${subtotal.toLocaleString()}`} />
-              <Info label="Discount" value={`PKR ${discount.toLocaleString()}`} />
+              <Info label="Discount" value={discountType === '%' ? `${discountRaw}% (PKR ${discountAmount.toLocaleString()})` : `PKR ${discountAmount.toLocaleString()}`} />
               <Info label="Payable" value={`PKR ${payable.toLocaleString()}`} />
             </div>
           </section>

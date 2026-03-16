@@ -1,5 +1,5 @@
 import { NavLink, useLocation, useNavigate } from 'react-router-dom'
-import { LogOut, Ticket, ListChecks, Search, Wallet, LayoutDashboard, FileText, ScrollText, CalendarDays, Bell } from 'lucide-react'
+import { LogOut, Ticket, ListChecks, Search, Wallet, LayoutDashboard, FileText, ScrollText, CalendarDays, Bell, PlusCircle, Users, History } from 'lucide-react'
 import { hospitalApi } from '../../utils/api'
 import { useEffect, useState } from 'react'
 import PortalSwitcher from '../PortalSwitcher'
@@ -32,6 +32,26 @@ export const receptionSidebarGroups: Group[] = [
       { to: '/reception/diagnostic/sample-tracking', label: 'Diagnostic Sample Tracking', icon: ListChecks },
       { to: '/reception/diagnostic/appointments', label: 'Diagnostic Appointments', icon: CalendarDays },
       { to: '/reception/diagnostic/credit-patients', label: 'Diagnostic Credit Patients', icon: Wallet },
+    ],
+  },
+  {
+    label: 'Therapy',
+    items: [
+      { to: '/reception/therapy/token-generator', label: 'Token Generator', icon: PlusCircle },
+      { to: '/reception/therapy/today-tokens', label: "Today's Tokens", icon: Ticket },
+      { to: '/reception/therapy/token-history', label: 'Token History', icon: History },
+      { to: '/reception/therapy/appointments', label: 'Appointments', icon: CalendarDays },
+      { to: '/reception/therapy/credit-patients', label: 'Credit Patients', icon: Users },
+    ],
+  },
+  {
+    label: 'Counselling',
+    items: [
+      { to: '/reception/counselling/token-generator', label: 'Token Generator', icon: PlusCircle },
+      { to: '/reception/counselling/today-tokens', label: "Today's Tokens", icon: Ticket },
+      { to: '/reception/counselling/token-history', label: 'Token History', icon: History },
+      { to: '/reception/counselling/appointments', label: 'Appointments', icon: CalendarDays },
+      { to: '/reception/counselling/credit-patients', label: 'Credit Patients', icon: Users },
     ],
   },
 ]
@@ -96,8 +116,31 @@ export default function Reception_Sidebar({
 
       const perms = s?.permissions
       const a = perms?.reception
-      if (Array.isArray(a)) setAllowed(a)
-      else setAllowed([])
+      const therapyPerms = perms?.therapy
+      const therapyLabPerms = perms?.therapyLab
+      const counsellingPerms = perms?.counselling
+
+      console.log('Permissions debug:', {
+        reception: a,
+        therapy: therapyPerms,
+        therapyLab: therapyLabPerms,
+        counselling: counsellingPerms
+      })
+
+      let combined: string[] = []
+      if (Array.isArray(a)) combined = [...combined, ...a]
+      if (Array.isArray(therapyPerms)) combined = [...combined, ...therapyPerms]
+      if (Array.isArray(therapyLabPerms)) combined = [...combined, ...therapyLabPerms]
+      if (Array.isArray(counsellingPerms)) combined = [...combined, ...counsellingPerms]
+
+      // In reception sidebar, if a user has '*' for any of these, they should see everything in those sections
+      if (a === '*' || therapyPerms === '*' || therapyLabPerms === '*' || counsellingPerms === '*') {
+          setAllowed(['*'])
+          return
+      }
+
+      console.log('Combined allowed paths:', combined)
+      setAllowed(combined)
     } catch {
       setAllowed([])
     }

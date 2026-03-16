@@ -1,7 +1,10 @@
 import { useEffect, useState } from 'react'
+import { Upload, Download } from 'lucide-react'
+import * as XLSX from 'xlsx'
 import Pharmacy_AddSupplierDialog, { type Supplier } from '../../components/pharmacy/pharmacy_AddSupplierDialog'
 import Pharmacy_SupplierDetailsDialog from '../../components/pharmacy/pharmacy_SupplierDetailsDialog'
 import Pharmacy_AssignSupplierCompaniesDialog from '../../components/pharmacy/pharmacy_AssignSupplierCompaniesDialog'
+import Pharmacy_ImportSuppliersDialog from '../../components/pharmacy/pharmacy_ImportSuppliersDialog'
 import { pharmacyApi } from '../../utils/api'
 
 export default function Pharmacy_Suppliers() {
@@ -14,6 +17,7 @@ export default function Pharmacy_Suppliers() {
   const [editOpen, setEditOpen] = useState(false)
   const [detailsOpen, setDetailsOpen] = useState(false)
   const [selected, setSelected] = useState<Supplier | null>(null)
+  const [importOpen, setImportOpen] = useState(false)
   const [assignCompaniesOpen, setAssignCompaniesOpen] = useState(false)
 
   const [suppliers, setSuppliers] = useState<Supplier[]>([])
@@ -117,6 +121,50 @@ export default function Pharmacy_Suppliers() {
     setSuppliers(prev => prev.filter(x => x.id !== id))
   }
 
+  const exportSuppliers = async () => {
+    // Fetch all suppliers without pagination limit
+    const res: any = await pharmacyApi.listSuppliers({ q: query || undefined, limit: 10000 })
+    const allSuppliers: Supplier[] = (res.items || []).map((x: any) => ({
+      id: x._id,
+      name: x.name,
+      company: x.company,
+      phone: x.phone,
+      address: x.address,
+      taxId: x.taxId,
+      status: x.status || 'Active',
+      totalPurchases: x.totalPurchases || 0,
+      paid: x.paid || 0,
+      lastOrder: x.lastOrder || '',
+    }))
+    
+    const data = allSuppliers.map(s => ({
+      'Name': s.name,
+      'Company': s.company || '-',
+      'Phone': s.phone || '-',
+      'Address': s.address || '-',
+      'Tax ID': s.taxId || '-',
+      'Status': s.status,
+      'Total Purchases': s.totalPurchases || 0,
+      'Paid': s.paid || 0,
+      'Remaining': (s.totalPurchases || 0) - (s.paid || 0),
+      'Last Order': s.lastOrder || '-',
+    }))
+    
+    const worksheet = XLSX.utils.json_to_sheet(data)
+    const workbook = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Suppliers')
+    const excelBuffer = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' })
+    const blob = new Blob([excelBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = 'suppliers_export.xlsx'
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
+  }
+
   const openDetails = (s: Supplier) => { setSelected(s); setDetailsOpen(true) }
 
   const openAssignCompanies = (s: Supplier) => { setSelected(s); setAssignCompaniesOpen(true) }
@@ -150,6 +198,8 @@ export default function Pharmacy_Suppliers() {
       <div className="flex items-center justify-between">
         <div className="text-xl font-bold text-slate-800">Supplier Management</div>
         <div className="flex items-center gap-2">
+          <button type="button" onClick={exportSuppliers} className="btn"><Download className="h-4 w-4" /> Export</button>
+          <button type="button" onClick={()=>setImportOpen(true)} className="btn"><Upload className="h-4 w-4" /> Import</button>
           <button type="button" onClick={()=>setAddOpen(true)} className="btn">+ Add Supplier</button>
         </div>
       </div>
@@ -249,6 +299,14 @@ export default function Pharmacy_Suppliers() {
       <Pharmacy_AddSupplierDialog open={editOpen} onClose={()=>setEditOpen(false)} onSave={saveEdit} initial={selected ?? undefined} title="Edit Supplier" submitLabel="Save" />
       <Pharmacy_SupplierDetailsDialog open={detailsOpen} onClose={()=>setDetailsOpen(false)} supplier={selected} />
       <Pharmacy_AssignSupplierCompaniesDialog open={assignCompaniesOpen} onClose={()=>setAssignCompaniesOpen(false)} supplier={selected} />
+      <Pharmacy_ImportSuppliersDialog 
+        open={importOpen} 
+        onClose={()=>setImportOpen(false)} 
+        onImportSuccess={()=>{
+          setImportOpen(false)
+          setReloadTick(t=>t+1)
+        }} 
+      />
     </div>
   )
 }

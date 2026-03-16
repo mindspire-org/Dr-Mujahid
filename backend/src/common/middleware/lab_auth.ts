@@ -16,6 +16,28 @@ export function labAuth(req: Request, res: Response, next: NextFunction) {
     }
     if (scope === 'hospital') {
       const role = String(payload?.role || '')
+      // Allow doctors to view results and orders (read-only access)
+      const isReadRoute = (req.path === '/results' || req.path === '/orders') && req.method === 'GET'
+      // Allow doctors to search/get patients (read-only access)
+      const isPatientRoute = (req.path === '/patients/search' || req.path === '/patients/by-mrn') && req.method === 'GET'
+      
+      if (role === 'Doctor' && (isReadRoute || isPatientRoute)) {
+        ;(req as any).user = payload
+        next()
+        return
+      }
+      
+      // Check if this is a template route - allow all hospital users for templates
+      const path = req.path || ''
+      const isTemplateRoute = path.includes('/templates')
+      
+      if (isTemplateRoute) {
+        ;(req as any).user = payload
+        next()
+        return
+      }
+      
+      // For other lab routes, require lab permissions
       const permissions = (payload?.permissions && typeof payload.permissions === 'object') ? payload.permissions : null
       const labPerm = permissions ? (permissions as any).lab : null
       const canLab = Array.isArray(labPerm) && labPerm.length > 0

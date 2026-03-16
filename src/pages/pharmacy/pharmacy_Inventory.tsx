@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
-import { RotateCw, FileDown, CalendarDays, Package, TrendingDown, AlertTriangle } from 'lucide-react'
+import { RotateCw, FileDown, CalendarDays, Package, TrendingDown, AlertTriangle, Upload } from 'lucide-react'
 import Pharmacy_InventoryTable from '../../components/pharmacy/pharmacy_InventoryTable'
 import Pharmacy_UpdateStock from '../../components/pharmacy/pharmacy_UpdateStock'
+import Pharmacy_ImportCSVDialog from '../../components/pharmacy/pharmacy_ImportCSVDialog'
 import { pharmacyApi } from '../../utils/api'
 import Pharmacy_EditInventoryItem from '../../components/pharmacy/pharmacy_EditInventoryItem'
 import Pharmacy_ConfirmDialog from '../../components/pharmacy/pharmacy_ConfirmDialog'
@@ -12,6 +13,7 @@ export default function Pharmacy_Inventory() {
   const navigate = useNavigate()
   const location = useLocation()
   const [updateStockOpen, setUpdateStockOpen] = useState(false)
+  const [importCSVOpen, setImportCSVOpen] = useState(false)
   const [editOpen, setEditOpen] = useState(false)
   const [editMedicine, setEditMedicine] = useState<string>('')
   const tabs = ['All Items','Pending Review','Low Stock','Expiring Soon','Out of Stock'] as const
@@ -242,11 +244,67 @@ export default function Pharmacy_Inventory() {
     load()
   }, [activeTab, search, refreshTick, page, limit])
 
-  function handleExport(){
+  async function handleExport(){
+    // Fetch all items without pagination limit
+    let allRows: any[] = []
+    
+    if (activeTab === 'Pending Review') {
+      const res: any = await pharmacyApi.listPurchaseDraftLines({ search: search || undefined, limit: 100000 })
+      const items: any[] = res?.items ?? res ?? []
+      allRows = (items || []).map((it: any) => ({
+        invoice: it.invoice || '-',
+        medicine: it.name || '-',
+        generic: it.genericName || '-',
+        category: it.category || '-',
+        packs: it.packs ?? '-',
+        unitsPerPack: it.unitsPerPack ?? '-',
+        unitSale: (it.unitsPerPack && it.salePerPack) ? Number((it.salePerPack / it.unitsPerPack).toFixed(3)) : '-',
+        totalItems: (it.totalItems != null) ? it.totalItems : ((it.unitsPerPack || 1) * (it.packs || 0)),
+        minStock: (it.minStock != null) ? it.minStock : '-',
+        expiry: it.expiry || '-',
+        supplier: it.supplierName || '-',
+      }))
+    } else if (activeTab === 'All Items') {
+      const res: any = await pharmacyApi.listInventoryCached({ search: search || undefined, limit: 100000 }, { ttlMs: 60_000 })
+      const items: any[] = res?.items ?? res ?? []
+      allRows = (items || []).map((it: any)=>({
+        invoice: it.lastInvoice || '-',
+        medicine: it.name || '-',
+        generic: it.genericName || it.lastGenericName || '-',
+        category: it.category || '-',
+        packs: (it.unitsPerPack && it.unitsPerPack>0) ? Math.floor((it.onHand||0) / it.unitsPerPack) : '-',
+        unitsPerPack: it.unitsPerPack ?? '-',
+        unitSale: (it.lastSalePerUnit != null) ? Number((it.lastSalePerUnit).toFixed(3)) : '-',
+        totalItems: it.onHand ?? 0,
+        minStock: (it.minStock != null) ? it.minStock : '-',
+        expiry: (String(it.lastExpiry || it.earliestExpiry || '').slice(0,10)) || '-',
+        supplier: it.lastSupplier || '-',
+      }))
+    } else {
+      // Derived tabs: Low Stock, Expiring Soon, Out of Stock
+      const status = activeTab === 'Low Stock' ? 'low' : (activeTab === 'Out of Stock' ? 'out' : 'expiring')
+      const res: any = await pharmacyApi.listInventoryFilteredCached({ status: status as any, search: search || undefined, limit: 100000 }, { ttlMs: 60_000 })
+      const itemsRaw: any[] = res?.items ?? res ?? []
+      const items: any[] = status==='expiring' ? itemsRaw.filter((it:any)=> Number(it.onHand||0) > 0) : itemsRaw
+      allRows = (items || []).map((it: any)=>({
+        invoice: it.lastInvoice || '-',
+        medicine: it.name || '-',
+        generic: it.genericName || it.lastGenericName || '-',
+        category: it.category || '-',
+        packs: (it.unitsPerPack && it.unitsPerPack>0) ? Math.floor((it.onHand||0) / it.unitsPerPack) : '-',
+        unitsPerPack: it.unitsPerPack ?? '-',
+        unitSale: (it.lastSalePerUnit != null) ? Number((it.lastSalePerUnit).toFixed(3)) : '-',
+        totalItems: it.onHand ?? 0,
+        minStock: (it.minStock != null) ? it.minStock : '-',
+        expiry: (status === 'expiring' ? String(it.earliestExpiry || '').slice(0,10) : String(it.lastExpiry || it.earliestExpiry || '').slice(0,10)) || '-',
+        supplier: it.lastSupplier || '-',
+      }))
+    }
+    
     const csvRows: string[] = []
     const headers = ['Invoice #','Medicine','Category','Packs','Units/Pack','Unit Sale','Total Items','Min Stock','Expiry','Supplier']
     csvRows.push(headers.join(','))
-    rows.forEach((r: any)=>{
+    allRows.forEach((r: any)=>{
       const vals = [r.invoice, r.medicine, r.category, r.packs, r.unitsPerPack, r.unitSale, r.totalItems, r.minStock, r.expiry, r.supplier]
       csvRows.push(vals.map(v => typeof v === 'string' ? '"'+v.replace(/"/g,'""')+'"' : String(v)).join(','))
     })
@@ -254,7 +312,7 @@ export default function Pharmacy_Inventory() {
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
-    a.download = `pharmacy_inventory_${new Date().toISOString().slice(0,10)}.csv`
+    a.download = `pharmacy_inventory_${activeTab.replace(/\s+/g, '_').toLowerCase()}_${new Date().toISOString().slice(0,10)}.csv`
     document.body.appendChild(a)
     a.click()
     document.body.removeChild(a)
@@ -321,6 +379,7 @@ export default function Pharmacy_Inventory() {
         <div className="mb-3 flex flex-wrap items-center gap-3">
           <div className="text-2xl font-extrabold text-slate-900">Inventory Control</div>
           <div className="ml-auto flex items-center gap-2">
+            <button onClick={() => setImportCSVOpen(true)} className="btn"><Upload className="h-4 w-4" /> Import CSV</button>
             <button onClick={() => setUpdateStockOpen(true)} className="btn"><RotateCw className="h-4 w-4" /> Update Stock</button>
             <button onClick={() => navigate('/pharmacy/inventory/add-invoice')} className="btn"><CalendarDays className="h-4 w-4" /> Add Invoice</button>
             <button onClick={()=>setRefreshTick(t=>t+1)} className="btn-outline-navy"><RotateCw className="h-4 w-4" /> Refresh</button>
@@ -448,6 +507,16 @@ export default function Pharmacy_Inventory() {
       </div>
 
       <Pharmacy_UpdateStock open={updateStockOpen} onClose={() => setUpdateStockOpen(false)} />
+      <Pharmacy_ImportCSVDialog
+        open={importCSVOpen}
+        onClose={() => setImportCSVOpen(false)}
+        onImportSuccess={() => {
+          setImportCSVOpen(false)
+          setRefreshTick(t => t + 1)
+          // Switch to Pending Review tab after successful import
+          setTabAndUrl('Pending Review')
+        }}
+      />
       <Pharmacy_EditInventoryItem open={editOpen} onClose={()=>{ setEditOpen(false); setRefreshTick(t=>t+1) }} medicine={editMedicine} />
       <Pharmacy_InventoryItemDetailsDialog open={detailsOpen} onClose={()=>{ setDetailsOpen(false); setDetailsKey('') }} itemKey={detailsKey} />
       <Pharmacy_ConfirmDialog

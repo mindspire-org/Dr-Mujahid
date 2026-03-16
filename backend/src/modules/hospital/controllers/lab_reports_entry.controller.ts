@@ -4,19 +4,19 @@ import { HospitalLabReportsEntry } from '../models/LabReportsEntry'
 import { HospitalToken } from '../models/Token'
 import { upsertLabReportsEntrySchema } from '../validators/lab_reports_entry'
 
-function handleError(res: Response, e: any){
+function handleError(res: Response, e: any) {
   if (e?.name === 'ZodError') return res.status(400).json({ error: e.errors?.[0]?.message || 'Invalid payload' })
   if (e?.status) return res.status(e.status).json({ error: e.error || 'Error' })
   return res.status(500).json({ error: 'Internal Server Error' })
 }
 
-async function getEncounter(encounterId: string){
+async function getEncounter(encounterId: string) {
   const enc = await HospitalEncounter.findById(encounterId)
   if (!enc) throw { status: 404, error: 'Encounter not found' }
   return enc
 }
 
-export async function getByEncounter(req: Request, res: Response){
+export async function getByEncounter(req: Request, res: Response) {
   try {
     const { encounterId } = req.params as any
     const enc = await getEncounter(String(encounterId))
@@ -27,7 +27,7 @@ export async function getByEncounter(req: Request, res: Response){
   }
 }
 
-export async function upsertByEncounter(req: Request, res: Response){
+export async function upsertByEncounter(req: Request, res: Response) {
   try {
     const { encounterId } = req.params as any
     const enc = await getEncounter(String(encounterId))
@@ -64,7 +64,7 @@ export async function upsertByEncounter(req: Request, res: Response){
   }
 }
 
-export async function listByPatient(req: Request, res: Response){
+export async function listByPatient(req: Request, res: Response) {
   try {
     const patientId = String((req.query as any)?.patientId || '')
     if (!patientId) return res.status(400).json({ error: 'patientId is required' })

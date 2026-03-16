@@ -107,6 +107,24 @@ export default function Pharmacy_AddInvoicePage() {
   const [addSupplierOpen, setAddSupplierOpen] = useState(false)
   const [addCompanyOpen, setAddCompanyOpen] = useState(false)
 
+  const [showSupplierDropdown, setShowSupplierDropdown] = useState(false)
+  const [showCompanyDropdown, setShowCompanyDropdown] = useState(false)
+
+  // Close dropdowns when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      const target = e.target as HTMLElement
+      if (!target.closest('.supplier-dropdown-container')) {
+        setShowSupplierDropdown(false)
+      }
+      if (!target.closest('.company-dropdown-container')) {
+        setShowCompanyDropdown(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
+
   const [allMedicines, setAllMedicines] = useState<Array<{ id: number; name: string }>>([])
 
   const [supplierId, setSupplierId] = useState('')
@@ -372,7 +390,7 @@ export default function Pharmacy_AddInvoicePage() {
 
     let mounted = true
 
-    pharmacyApi.listSuppliers().then((res: any) => {
+    pharmacyApi.listSuppliers({ limit: 1000 }).then((res: any) => {
 
       if (!mounted) return
 
@@ -596,7 +614,7 @@ export default function Pharmacy_AddInvoicePage() {
 
   const refreshSuppliers = async () => {
 
-    const res: any = await pharmacyApi.listSuppliers()
+    const res: any = await pharmacyApi.listSuppliers({ limit: 1000 })
 
     const list = res?.items ?? res ?? []
 
@@ -1219,109 +1237,111 @@ export default function Pharmacy_AddInvoicePage() {
 
               <div className="p-6">
 
-                <div className="grid gap-4 sm:grid-cols-4">
+                <div className="grid gap-4 sm:grid-cols-2">
 
                   <div>
-
                     <label className="mb-2 block text-sm font-medium text-slate-700">Supplier</label>
-
-                    <div className="flex gap-2">
-
-                      <select 
-
-                        value={supplierId} 
-
-                        onChange={e => { 
-
-                          setSupplierId(e.target.value)
-
-                          const s = suppliers.find((x: any) => x._id === e.target.value)
-
-                          setSupplierName(s?.name || '') 
-
-                        }} 
-
-                        className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200"
-
-                      >
-
-                        <option value="">Select supplier</option>
-
-                        {suppliers.map((s: any) => (
-                          <option key={s._id} value={s._id}>{s.name}</option>
-                        ))}
-
-                      </select>
-
+                    <div className="flex gap-2 supplier-dropdown-container">
+                      <div className="relative flex-1">
+                        <button
+                          type="button"
+                          onClick={() => setShowSupplierDropdown(!showSupplierDropdown)}
+                          className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-left focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 flex items-center justify-between"
+                        >
+                          <span className={supplierId ? 'text-slate-900' : 'text-slate-400'}>
+                            {supplierName || 'Select supplier'}
+                          </span>
+                          <ChevronDown className="h-4 w-4 text-slate-400" />
+                        </button>
+                        {showSupplierDropdown && (
+                          <div className="absolute z-50 mt-1 w-full rounded-lg border border-slate-200 bg-white shadow-lg max-h-60 overflow-y-auto">
+                            {suppliers.length === 0 ? (
+                              <div className="px-3 py-2 text-sm text-slate-500">No suppliers</div>
+                            ) : (
+                              suppliers.map((s: any) => (
+                                <button
+                                  key={s._id}
+                                  type="button"
+                                  onClick={() => {
+                                    setSupplierId(s._id)
+                                    setSupplierName(s.name || '')
+                                    setShowSupplierDropdown(false)
+                                  }}
+                                  className="w-full px-3 py-2 text-left text-sm hover:bg-slate-50 focus:bg-slate-50 focus:outline-none"
+                                >
+                                  {s.name}
+                                </button>
+                              ))
+                            )}
+                          </div>
+                        )}
+                      </div>
                       <button type="button" onClick={() => setAddSupplierOpen(true)} className="btn-outline-navy whitespace-nowrap">+ Add</button>
-
                     </div>
-
                   </div>
 
                   <div>
                     <label className="mb-2 block text-sm font-medium text-slate-700">Company</label>
-                    <div className="flex gap-2">
-                      <select
-                        value={companyId}
-                        onChange={e => {
-                          setCompanyId(e.target.value)
-                          const c = companies.find((x: any) => x._id === e.target.value)
-                          setCompanyName(c?.name || '')
-                        }}
-                        disabled={!supplierId}
-                        className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200"
-                      >
-                        <option value="">Select company</option>
-                        {supplierId && companies.length === 0 && (
-                          <option value="" disabled>No assigned companies</option>
+                    <div className="flex gap-2 company-dropdown-container">
+                      <div className="relative flex-1">
+                        <button
+                          type="button"
+                          onClick={() => setShowCompanyDropdown(!showCompanyDropdown)}
+                          disabled={!supplierId}
+                          className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-left focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 flex items-center justify-between disabled:bg-slate-100 disabled:text-slate-400"
+                        >
+                          <span className={companyId ? 'text-slate-900' : 'text-slate-400'}>
+                            {companyName || 'Select company'}
+                          </span>
+                          <ChevronDown className="h-4 w-4 text-slate-400" />
+                        </button>
+                        {showCompanyDropdown && supplierId && (
+                          <div className="absolute z-50 mt-1 w-full rounded-lg border border-slate-200 bg-white shadow-lg max-h-60 overflow-y-auto">
+                            {companies.length === 0 ? (
+                              <div className="px-3 py-2 text-sm text-slate-500">No assigned companies</div>
+                            ) : (
+                              companies.map((c: any) => (
+                                <button
+                                  key={c._id}
+                                  type="button"
+                                  onClick={() => {
+                                    setCompanyId(c._id)
+                                    setCompanyName(c.name || '')
+                                    setShowCompanyDropdown(false)
+                                  }}
+                                  className="w-full px-3 py-2 text-left text-sm hover:bg-slate-50 focus:bg-slate-50 focus:outline-none"
+                                >
+                                  {c.name}
+                                </button>
+                              ))
+                            )}
+                          </div>
                         )}
-                        {companies.map((c: any) => (
-                          <option key={c._id} value={c._id}>{c.name}</option>
-                        ))}
-                      </select>
+                      </div>
                       <button type="button" onClick={() => setAddCompanyOpen(true)} className="btn-outline-navy whitespace-nowrap">+ Add</button>
                     </div>
                   </div>
 
                   <div>
-
                     <label className="mb-2 block text-sm font-medium text-slate-700">Invoice No *</label>
-
                     <input 
-
                       value={invoiceNo} 
-
                       onChange={e => setInvoiceNo(e.target.value)} 
-
                       className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200" 
-
                       placeholder="INV-001"
-
                       required
-
                     />
-
                   </div>
 
                   <div>
-
                     <label className="mb-2 block text-sm font-medium text-slate-700">Invoice Date *</label>
-
                     <input 
-
                       type="date" 
-
                       value={invoiceDate} 
-
                       onChange={e => setInvoiceDate(e.target.value)} 
-
                       className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200" 
-
                       required
-
                     />
-
                   </div>
 
                 </div>
@@ -1777,15 +1797,10 @@ export default function Pharmacy_AddInvoicePage() {
                               <label className="mb-2 block text-sm font-medium text-slate-700">Total Items</label>
 
                               <input 
-
                                 type="number"
-
                                 value={row.totalItems ?? ((row.unitsPerPack || 1) * (row.packs || 0))} 
-
-                                onChange={e => setItems(prev => prev.map(it => it.id === row.id ? { ...it, totalItems: Number(e.target.value || 0), packs: Math.ceil(Number(e.target.value || 0) / Math.max(1, row.unitsPerPack || 1)) } : it))} 
-
+                                onChange={e => setItems(prev => prev.map(it => it.id === row.id ? { ...it, totalItems: Number(e.target.value || 0) } : it))} 
                                 className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200" 
-
                               />
 
                             </div>

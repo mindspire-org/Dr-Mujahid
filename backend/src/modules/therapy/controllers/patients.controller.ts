@@ -1,6 +1,7 @@
 import { Request, Response } from 'express'
 import { LabPatient } from '../../lab/models/Patient'
 import { LabCounter } from '../../lab/models/Counter'
+import { HospitalSettings } from '../../hospital/models/Settings'
 import { patientFindOrCreateSchema } from '../../lab/validators/patient'
 
 function normDigits(s?: string) {
@@ -10,11 +11,30 @@ function normLower(s?: string) {
   return (s || '').trim().toLowerCase().replace(/\s+/g, ' ')
 }
 
-async function nextMrn() {
+async function nextMrn(){
   const key = 'lab_mrn_mr7553'
+  
+  // Get settings to check for custom starting number
+  const settings = await HospitalSettings.findOne().lean() as any
+  const mrStart = settings?.mrStart || 1
+  
+  // Check current counter value
+  let existingCounter = await LabCounter.findById(key).lean()
+  const currentSeq = (existingCounter as any)?.seq || 0
+  
+  // If no counter exists OR current seq is less than mrStart-1, reset to mrStart-1
+  const targetSeq = Math.max(0, mrStart - 1)
+  if (!existingCounter) {
+    // Initialize counter to mrStart - 1, so first increment gives mrStart
+    await LabCounter.create({ _id: key, seq: targetSeq })
+  } else if (currentSeq < targetSeq) {
+    // Reset counter to mrStart - 1 if current is lower
+    await LabCounter.findByIdAndUpdate(key, { $set: { seq: targetSeq } })
+  }
+  
   const c = await LabCounter.findByIdAndUpdate(key, { $inc: { seq: 1 } }, { upsert: true, new: true, setDefaultsOnInsert: true })
   const seq = Number((c as any).seq || 1)
-  return `MR7553${seq}`
+  return String(seq)
 }
 
 export async function getByMrn(req: Request, res: Response) {
@@ -40,14 +60,11 @@ export async function search(req: Request, res: Response) {
 export async function update(req: Request, res: Response) {
   const { id } = req.params
   const body = (req.body || {}) as any
-  const patch: any = {}
-  if (typeof body.fullName === 'string') patch.fullName = body.fullName
-  if (typeof body.fatherName === 'string') patch.fatherName = body.fatherName
-  if (typeof body.gender === 'string') patch.gender = body.gender
-  if (typeof body.address === 'string') patch.address = body.address
-  if (typeof body.phone === 'string') patch.phoneNormalized = normDigits(body.phone)
-  if (typeof body.cnic === 'string') patch.cnicNormalized = normDigits(body.cnic)
-  if (typeof body.guardianRel === 'string') patch.guardianRel = body.guardianRel
+  const patch: any = { ...body }
+  if (body.phone) patch.phoneNormalized = normDigits(body.phone)
+  if (body.cnic) patch.cnicNormalized = normDigits(body.cnic)
+  if (body.guardianName) patch.fatherName = body.guardianName
+  
   const doc = await LabPatient.findByIdAndUpdate(id, { $set: patch }, { new: true })
   if (!doc) return res.status(404).json({ error: 'Patient not found' })
   res.json({ patient: doc })
@@ -123,7 +140,7 @@ export async function findOrCreate(req: Request, res: Response) {
 
   const mrn = await nextMrn()
   const nowIso = new Date().toISOString()
-  const pat = await LabPatient.create({
+    const pat = await LabPatient.create({
     mrn,
     fullName: (data as any).fullName,
     fatherName: (data as any).guardianName,

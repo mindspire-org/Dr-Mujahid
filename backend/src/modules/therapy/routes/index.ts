@@ -4,8 +4,13 @@ import * as Patients from '../controllers/patients.controller'
 import * as Accounts from '../controllers/accounts.controller'
 import * as Visits from '../controllers/visits.controller'
 import * as Payments from '../controllers/payments.controller'
+import * as Dashboard from '../controllers/dashboard.controller'
+import * as Appointments from '../controllers/appointments.controller'
 
 const r = Router()
+
+// Dashboard
+r.get('/dashboard/summary', Dashboard.getSummary)
 
 // Patients (shared Lab_Patient)
 r.get('/patients/search', Patients.search)
@@ -22,6 +27,15 @@ r.get('/visits', Visits.list)
 r.post('/visits', Visits.create)
 r.get('/visits/:id', Visits.getById)
 r.put('/visits/:id', Visits.update)
+r.put('/visits/:id/session-status', Visits.updateSessionStatus)
+r.post('/visits/:id/return', Visits.returnVisit)
+
+// Appointments
+r.get('/appointments', Appointments.list)
+r.post('/appointments', Appointments.create)
+r.get('/appointments/:id', Appointments.getById)
+r.put('/appointments/:id', Appointments.update)
+r.delete('/appointments/:id', Appointments.remove)
 
 // Payments (settle dues / collect advance)
 r.get('/payments', Payments.list)

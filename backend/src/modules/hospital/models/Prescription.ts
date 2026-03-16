@@ -28,9 +28,9 @@ const PrescriptionSchema = new Schema({
   therapyPlan: { type: Schema.Types.Mixed, default: {} },
   therapyMachines: { type: Schema.Types.Mixed, default: {} },
   counselling: { type: Schema.Types.Mixed, default: {} },
-  diagnosticDiscount: { type: Number, default: 0 },
-  therapyDiscount: { type: Number, default: 0 },
-  counsellingDiscount: { type: Number, default: 0 },
+  diagnosticDiscount: { type: String, default: '0' },
+  therapyDiscount: { type: String, default: '0' },
+  counsellingDiscount: { type: String, default: '0' },
   primaryComplaint: { type: String },
   primaryComplaintHistory: { type: String },
   familyHistory: { type: String },
@@ -53,6 +53,16 @@ const PrescriptionSchema = new Schema({
     bsa: { type: Number },
     spo2: { type: Number },
   },
+  // Stores doctor's edits on history fields (delta only, no duplication)
+  historyEdits: {
+    personalInfo: { type: Schema.Types.Mixed, default: null },
+    maritalStatus: { type: Schema.Types.Mixed, default: null },
+    coitus: { type: Schema.Types.Mixed, default: null },
+    health: { type: Schema.Types.Mixed, default: null },
+    sexualHistory: { type: Schema.Types.Mixed, default: null },
+    previousMedicalHistory: { type: Schema.Types.Mixed, default: null },
+    arrivalReference: { type: Schema.Types.Mixed, default: null },
+  },
   createdBy: { type: String },
 }, { timestamps: true })
 
@@ -73,9 +83,9 @@ export type HospitalPrescriptionDoc = {
   therapyPlan?: any
   therapyMachines?: any
   counselling?: any
-  diagnosticDiscount?: number
-  therapyDiscount?: number
-  counsellingDiscount?: number
+  diagnosticDiscount?: string
+  therapyDiscount?: string
+  counsellingDiscount?: string
   primaryComplaint?: string
   primaryComplaintHistory?: string
   familyHistory?: string
@@ -97,6 +107,15 @@ export type HospitalPrescriptionDoc = {
     bmi?: number
     bsa?: number
     spo2?: number
+  }
+  historyEdits?: {
+    personalInfo?: any
+    maritalStatus?: any
+    coitus?: any
+    health?: any
+    sexualHistory?: any
+    previousMedicalHistory?: any
+    arrivalReference?: any
   }
   createdBy?: string
 }

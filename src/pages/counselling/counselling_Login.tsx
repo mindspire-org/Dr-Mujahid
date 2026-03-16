@@ -40,7 +40,7 @@ export default function Counselling_Login() {
     return () => { try { window.removeEventListener('hospital:settings-updated', onUpd as any) } catch { } }
   }, [])
 
-  const fallbackLogoSrc = `${(import.meta as any).env?.BASE_URL || '/'}hospital_icon.jpeg`
+  const fallbackLogoSrc = `${(import.meta as any).env?.BASE_URL || '/'}mcclogo.png`
   const logoSrc = brand.logoDataUrl || fallbackLogoSrc
 
   const onSubmit = async (e: React.FormEvent) => {
@@ -56,7 +56,8 @@ export default function Counselling_Login() {
     try {
       const res: any = await hospitalApi.loginHospitalUser(
         username.trim(),
-        password
+        password,
+        'counselling'
       );
 
       const user = res?.user;
@@ -79,6 +80,7 @@ export default function Counselling_Login() {
       } catch { }
 
       setSuccess('Login successful')
+      navigate('/counselling')
       return
     } catch (err: any) {
       setError(err?.message || "Something went wrong");

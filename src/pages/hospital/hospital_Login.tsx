@@ -38,7 +38,7 @@ export default function Hospital_Login() {
     return () => { try { window.removeEventListener('hospital:settings-updated', onUpd as any) } catch { } }
   }, [])
 
-  const fallbackLogoSrc = `${(import.meta as any).env?.BASE_URL || '/'}hospital_icon.jpeg`
+  const fallbackLogoSrc = `${(import.meta as any).env?.BASE_URL || '/'}mcclogo.png`
   const logoSrc = brand.logoDataUrl || fallbackLogoSrc
 
   const onSubmit = async (e: React.FormEvent) => {

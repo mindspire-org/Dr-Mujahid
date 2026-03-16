@@ -8,7 +8,7 @@ type Settings = {
   address: string
   logoDataUrl?: string
   code: string
-  mrFormat: string
+  mrStart?: number
   slipFooter?: string
 }
 
@@ -21,7 +21,7 @@ export default function Hospital_Settings() {
     address: 'Hospital Address, City, Country',
     logoDataUrl: undefined,
     code: 'SAFH',
-    mrFormat: '{HOSP}/{DEPT}/{YEAR}/{MONTH}/{SERIAL}',
+    mrStart: 1,
     slipFooter: 'Powered by Hospital MIS',
   })
   const [savedBanner, setSavedBanner] = useState<string>('')
@@ -38,7 +38,7 @@ export default function Hospital_Settings() {
             address: 'Hospital Address, City, Country',
             logoDataUrl: undefined,
             code: 'SAFH',
-            mrFormat: '{HOSP}/{DEPT}/{YEAR}/{MONTH}/{SERIAL}',
+            mrStart: 1,
             slipFooter: 'Powered by Hospital MIS',
             ...s,
           }
@@ -137,9 +137,9 @@ export default function Hospital_Settings() {
               <input value={settings.code} onChange={e=>update('code', e.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-2 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-200" />
             </div>
             <div>
-              <label className="mb-1 block text-sm font-medium text-slate-700">MR Number Format</label>
-              <input value={settings.mrFormat} onChange={e=>update('mrFormat', e.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-2 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-200" />
-              <p className="mt-1 text-xs text-slate-500">Example: SAFH/OPD/2025/06/001</p>
+              <label className="mb-1 block text-sm font-medium text-slate-700">MR Starting Number</label>
+              <input type="number" value={settings.mrStart} onChange={e=>setSettings(s=>({ ...s, mrStart: Number(e.target.value) }))} className="w-full rounded-md border border-slate-300 px-3 py-2 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-200" />
+              <p className="mt-1 text-xs text-slate-500">Starting serial number for new patients (e.g., 1001)</p>
             </div>
           </div>
 

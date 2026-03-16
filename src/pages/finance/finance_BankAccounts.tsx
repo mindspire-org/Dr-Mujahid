@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { hospitalApi } from '../../utils/api'
 
 export default function Finance_BankAccounts(){
@@ -22,6 +22,7 @@ export default function Finance_BankAccounts(){
   const [editBranchCode, setEditBranchCode] = useState('')
   const [editSwift, setEditSwift] = useState('')
   const [editStatus, setEditStatus] = useState<'Active'|'Inactive'>('Active')
+  const [editResponsibleStaff, setEditResponsibleStaff] = useState('')
 
   const [txnOpen, setTxnOpen] = useState(false)
   const [txnBank, setTxnBank] = useState<any|null>(null)
@@ -32,6 +33,19 @@ export default function Finance_BankAccounts(){
 
   const [deleteItem, setDeleteItem] = useState<any|null>(null)
   const [deleteLoading, setDeleteLoading] = useState(false)
+
+  const [toastMsg, setToastMsg] = useState('')
+  const [toastOpen, setToastOpen] = useState(false)
+  const toastTimerRef = useRef<number | null>(null)
+
+  const showToast = (msg: string) => {
+    setToastMsg(msg)
+    setToastOpen(true)
+    if (toastTimerRef.current) window.clearTimeout(toastTimerRef.current)
+    toastTimerRef.current = window.setTimeout(() => {
+      setToastOpen(false)
+    }, 2500)
+  }
 
   const openTransactions = async (bank: any) => {
     setTxnBank(bank)
@@ -73,7 +87,7 @@ export default function Finance_BankAccounts(){
       await hospitalApi.createBankAccount({ bankName, accountTitle, accountNumber, branchName: branchName||undefined, branchCode: branchCode||undefined, swift: swift||undefined, responsibleStaff: responsibleStaff||undefined, status })
       setBankName(''); setAccountTitle(''); setAccountNumber(''); setBranchName(''); setBranchCode(''); setSwift(''); setResponsibleStaff(''); setStatus('Active')
       await reload()
-      alert('Bank account created')
+      showToast('Bank account created')
     } catch(e: any){ alert(e?.message || 'Failed') }
     finally { setLoading(false) }
   }
@@ -202,6 +216,18 @@ export default function Finance_BankAccounts(){
                   <option value="Inactive">Inactive</option>
                 </select>
               </div>
+              <div>
+                <label className="mb-1 block text-sm font-medium text-slate-700">Assigned User</label>
+                <select value={editResponsibleStaff} onChange={e=> setEditResponsibleStaff(e.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm">
+                  <option value="">-- Select User --</option>
+                  {users.map((u:any)=>(
+                    <option key={String(u.id)} value={String(u.username||'')}>{`${String(u.username||'')}-${String(u.role||'')}`}</option>
+                  ))}
+                  {!!editResponsibleStaff && !users.some((u:any)=> String(u.username||'') === editResponsibleStaff) && (
+                    <option value={editResponsibleStaff}>{editResponsibleStaff}</option>
+                  )}
+                </select>
+              </div>
             </div>
             <div className="mt-4 flex justify-end gap-2">
               <button className="rounded border border-slate-300 px-3 py-2 text-sm" onClick={()=> setEditItem(null)}>Cancel</button>
@@ -213,6 +239,7 @@ export default function Finance_BankAccounts(){
                     branchName: editBranchName.trim() || undefined,
                     branchCode: editBranchCode.trim() || undefined,
                     swift: editSwift.trim() || undefined,
+                    responsibleStaff: editResponsibleStaff.trim() || undefined,
                     status: editStatus,
                   })
                   setEditItem(null)
@@ -276,6 +303,7 @@ export default function Finance_BankAccounts(){
                           setEditBranchCode(a.branchCode||'');
                           setEditSwift(a.swift||'');
                           setEditStatus((a.status as any) || 'Active');
+                          setEditResponsibleStaff(a.responsibleStaff||'');
                         }}
                         aria-label="Edit"
                         title="Edit"
@@ -386,6 +414,13 @@ export default function Finance_BankAccounts(){
                 </tbody>
               </table>
             </div>
+          </div>
+        </div>
+      )}
+      {toastOpen && (
+        <div className="fixed bottom-4 right-4 z-50">
+          <div className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white shadow-lg">
+            {toastMsg}
           </div>
         </div>
       )}

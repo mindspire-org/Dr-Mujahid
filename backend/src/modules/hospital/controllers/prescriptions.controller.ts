@@ -29,7 +29,7 @@ export async function create(req: Request, res: Response){
   if (!enc) return res.status(404).json({ error: 'Encounter not found' })
   if (enc.type !== 'OPD') return res.status(400).json({ error: 'Only OPD encounters can have prescriptions' })
 
-  const medicine = (data as any).medicine || (data as any).items
+  const medicine = (data as any).medicine || (data as any).items || []
 
   const pres = await HospitalPrescription.create({
     patientId: enc.patientId,
@@ -59,6 +59,7 @@ export async function create(req: Request, res: Response){
     diagnosis: data.diagnosis,
     advice: data.advice,
     vitals: (data as any).vitals,
+    historyEdits: (data as any).historyEdits,
     createdBy: data.createdBy,
   })
 
@@ -113,6 +114,7 @@ export async function upsertByEncounter(req: Request, res: Response){
     if (data.diagnosis !== undefined) set.diagnosis = data.diagnosis
     if (data.advice !== undefined) set.advice = data.advice
     if ((data as any).vitals !== undefined) set.vitals = (data as any).vitals
+    if ((data as any).historyEdits !== undefined) set.historyEdits = (data as any).historyEdits
     if ((data as any).createdBy !== undefined) set.createdBy = (data as any).createdBy
 
     const doc = await HospitalPrescription.findOneAndUpdate(
@@ -176,6 +178,18 @@ export async function getById(req: Request, res: Response){
   res.json({ prescription: normalizePrescriptionOut(row) })
 }
 
+export async function getByHistoryTakingId(req: Request, res: Response){
+  try {
+    const { historyTakingId } = req.params as any
+    const row = await HospitalPrescription.findOne({ historyTakingId: String(historyTakingId) })
+      .populate({ path: 'encounterId', select: 'doctorId patientId startAt', populate: [{ path: 'doctorId', select: 'name' }, { path: 'patientId', select: 'fullName mrn' }] })
+      .lean()
+    res.json({ prescription: normalizePrescriptionOut(row) || null })
+  } catch (e) {
+    return handleError(res, e)
+  }
+}
+
 export async function update(req: Request, res: Response){
   const { id } = req.params as any
   const data = updatePrescriptionSchema.parse(req.body)
@@ -206,6 +220,7 @@ export async function update(req: Request, res: Response){
   if (data.diagnosis !== undefined) set.diagnosis = data.diagnosis
   if (data.advice !== undefined) set.advice = data.advice
   if ((data as any).vitals !== undefined) set.vitals = (data as any).vitals
+  if ((data as any).historyEdits !== undefined) set.historyEdits = (data as any).historyEdits
   if ((data as any).createdBy !== undefined) set.createdBy = (data as any).createdBy
   const row = await HospitalPrescription.findByIdAndUpdate(String(id), { $set: set }, { new: true })
     .populate({ path: 'encounterId', select: 'doctorId patientId startAt', populate: [{ path: 'doctorId', select: 'name' }, { path: 'patientId', select: 'fullName mrn' }] })

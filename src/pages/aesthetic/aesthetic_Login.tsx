@@ -46,7 +46,7 @@ export default function Aesthetic_Login() {
     }
   }
 
-  const logoSrc = `${(import.meta as any).env?.BASE_URL || '/'}hospital_icon.jpeg`
+  const logoSrc = `${(import.meta as any).env?.BASE_URL || '/'}mcclogo.png`
 
   return (
     <div className={theme === 'dark' ? 'aesthetic-scope dark' : 'aesthetic-scope'}>

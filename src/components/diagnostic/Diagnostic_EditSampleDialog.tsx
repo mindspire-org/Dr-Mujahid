@@ -16,7 +16,11 @@ export type EditSamplePayload = {
   }
   subtotal?: number
   discount?: number
+  discountInput?: number
+  discountType?: 'PKR' | '%'
   net?: number
+  amountReceived?: number
+  paidForToday?: number
 }
 
 export default function Diagnostic_EditSampleDialog({
@@ -40,7 +44,8 @@ export default function Diagnostic_EditSampleDialog({
   const [cnic, setCnic] = useState(order.patient?.cnic || '')
   const [guardianName, setGuardianName] = useState(order.patient?.guardianName || '')
   const [address, setAddress] = useState(order.patient?.address || '')
-  const [discount, setDiscount] = useState<number>(0)
+  const [discountInput, setDiscountInput] = useState<number>((order as any)?.discountInput || (order as any)?.discount || 0)
+  const [discountType, setDiscountType] = useState<'PKR' | '%'>((order as any)?.discountType || 'PKR')
 
   useEffect(()=>{ (async()=>{
     try { const res = await diagnosticApi.listTests({ limit: 1000 }) as any; setTests((res?.items||res||[]).map((t:any)=>({ id: String(t._id||t.id), name: t.name, price: Number(t.price||0) })))} catch { setTests([]) }
@@ -48,9 +53,39 @@ export default function Diagnostic_EditSampleDialog({
 
   useEffect(()=>{ setSelected(order.tests||[]) }, [order.id])
 
+  useEffect(()=>{
+    const savedType = (order as any)?.discountType || 'PKR'
+    setDiscountType(savedType)
+    // For PKR: use stored discount amount directly
+    // For %: use stored discountInput (original percentage) or recalculate from discount/subtotal
+    if (savedType === '%') {
+      const savedInput = (order as any)?.discountInput
+      if (savedInput != null && savedInput !== 0) {
+        setDiscountInput(savedInput)
+      } else {
+        // Recalculate percentage from stored discount amount and subtotal
+        const savedDiscount = (order as any)?.discount || 0
+        const savedSubtotal = (order as any)?.subtotal || 0
+        if (savedSubtotal > 0) {
+          setDiscountInput(Math.round((savedDiscount / savedSubtotal) * 100))
+        } else {
+          setDiscountInput(0)
+        }
+      }
+    } else {
+      setDiscountInput((order as any)?.discount || 0)
+    }
+  }, [order.id])
+
   const priceMap = useMemo(()=> Object.fromEntries(tests.map(t=>[t.id, Number(t.price||0)])), [tests])
   const subtotal = useMemo(()=> selected.reduce((s,id)=> s + Number(priceMap[id]||0), 0), [selected, priceMap])
-  const net = Math.max(0, subtotal - Number(discount||0))
+  const discountAmount = useMemo(()=> {
+    if (discountType === '%') {
+      return Math.round(subtotal * (Number(discountInput||0) / 100))
+    }
+    return Math.max(0, Number(discountInput||0))
+  }, [subtotal, discountInput, discountType])
+  const net = Math.max(0, subtotal - discountAmount)
 
   async function save(){
     if (loading) return
@@ -67,8 +102,12 @@ export default function Diagnostic_EditSampleDialog({
           cnic: cnic || undefined,
         },
         subtotal,
-        discount: Number(discount)||0,
+        discount: discountAmount,
+        discountInput: discountInput,
+        discountType,
         net,
+        amountReceived: net,
+        paidForToday: net,
       }
       const updated = await diagnosticApi.updateOrder(order.id, payload)
       onSaved(updated)
@@ -97,7 +136,7 @@ export default function Diagnostic_EditSampleDialog({
           </div>
           <div>
             <label className="mb-1 block text-xs text-slate-600">MR Number</label>
-            <input value={mrn} onChange={e=>setMrn(e.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-2" />
+            <input value={mrn} disabled readOnly className="w-full cursor-not-allowed rounded-md border border-slate-300 bg-slate-100 px-3 py-2 text-slate-600" />
           </div>
           <div>
             <label className="mb-1 block text-xs text-slate-600">CNIC</label>
@@ -134,7 +173,16 @@ export default function Diagnostic_EditSampleDialog({
           </div>
           <div className="rounded-md border border-slate-200 p-3">
             <div className="text-slate-600">Discount</div>
-            <input type="number" value={discount} onChange={e=> setDiscount(Number(e.target.value||0))} className="mt-1 w-full rounded-md border border-slate-300 px-2 py-1" />
+            <div className="flex items-center gap-2 mt-1">
+              <input type="number" value={discountInput} onChange={e=> setDiscountInput(Number(e.target.value||0))} className="w-24 rounded-md border border-slate-300 px-2 py-1 text-right" />
+              <select value={discountType} onChange={e=> setDiscountType(e.target.value as 'PKR' | '%')} className="rounded-md border border-slate-300 px-2 py-1 text-sm">
+                <option value="PKR">PKR</option>
+                <option value="%">%</option>
+              </select>
+            </div>
+            {discountType === '%' && (
+              <div className="text-xs text-slate-500 mt-1">PKR {discountAmount.toLocaleString()}</div>
+            )}
           </div>
           <div className="rounded-md border border-slate-200 p-3">
             <div className="text-slate-600">Net</div>

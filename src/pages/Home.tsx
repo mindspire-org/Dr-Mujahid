@@ -64,7 +64,7 @@ export default function Home() {
     if (el) el.style.transform = 'perspective(1000px) rotateX(0deg) rotateY(0deg)'
   }
 
-  const fallbackLogoSrc = `${(import.meta as any).env?.BASE_URL || '/'}hospital_icon.jpeg`
+  const fallbackLogoSrc = `${(import.meta as any).env?.BASE_URL || '/'}mcclogo.png`
   const logoSrc = brand.logoDataUrl || fallbackLogoSrc
 
   const modules = [

@@ -19,7 +19,7 @@ const VisitTestSchema = new Schema(
   {
     id: { type: String, required: true },
     name: { type: String, required: true },
-    price: { type: Number, default: 0 },
+    details: { type: Schema.Types.Mixed },
   },
   { _id: false }
 )
@@ -37,6 +37,7 @@ const TherapyVisitSchema = new Schema(
 
     subtotal: { type: Number, default: 0 },
     discount: { type: Number, default: 0 },
+    discountType: { type: String, enum: ['PKR', '%'], default: 'PKR' },
     net: { type: Number, default: 0 },
 
     duesBefore: { type: Number, default: 0 },
@@ -51,8 +52,16 @@ const TherapyVisitSchema = new Schema(
     duesAfter: { type: Number, default: 0 },
     advanceAfter: { type: Number, default: 0 },
 
+    paymentStatus: { type: String, enum: ['paid', 'unpaid'], default: 'paid' },
+    paymentMethod: { type: String, enum: ['Cash', 'Card'] },
+    receivedToAccountCode: { type: String },
+
     referringConsultant: { type: String },
     fromReferralId: { type: String },
+
+    status: { type: String, enum: ['active', 'cancelled', 'returned'], default: 'active' },
+    sessionStatus: { type: String, enum: ['Queued', 'Completed'], default: 'Queued' },
+    returnReason: { type: String },
 
     createdAtIso: { type: String },
     updatedAtIso: { type: String },
@@ -77,9 +86,10 @@ export type TherapyVisitDoc = {
   }
   packageId?: string
   packageName?: string
-  tests: Array<{ id: string; name: string; price?: number }>
+  tests: Array<{ id: string; name: string; details?: any }>
   subtotal: number
   discount: number
+  discountType: 'PKR' | '%'
   net: number
   duesBefore: number
   advanceBefore: number
@@ -92,8 +102,14 @@ export type TherapyVisitDoc = {
   advanceAdded: number
   duesAfter: number
   advanceAfter: number
+  paymentStatus?: 'paid' | 'unpaid'
+  paymentMethod?: 'Cash' | 'Card'
+  receivedToAccountCode?: string
   referringConsultant?: string
   fromReferralId?: string
+  status?: 'active' | 'cancelled' | 'returned'
+  sessionStatus?: 'Queued' | 'Completed'
+  returnReason?: string
   createdAtIso?: string
   updatedAtIso?: string
 }

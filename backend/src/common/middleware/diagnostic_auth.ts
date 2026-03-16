@@ -16,6 +16,14 @@ export function diagnosticAuth(req: Request, res: Response, next: NextFunction) 
     }
     if (scope === 'hospital') {
       const role = String(payload?.role || '')
+      // Allow doctors to view results and orders (read-only access)
+      const isReadRoute = (req.path === '/results' || req.path === '/orders') && req.method === 'GET'
+      if (role === 'Doctor' && isReadRoute) {
+        ;(req as any).user = payload
+        next()
+        return
+      }
+
       const permissions = (payload?.permissions && typeof payload.permissions === 'object') ? payload.permissions : null
       const diagPerm = permissions ? (permissions as any).diagnostic : null
       const canDiag = Array.isArray(diagPerm) && diagPerm.length > 0

@@ -1,7 +1,6 @@
 import { forwardRef, useEffect, useImperativeHandle, useMemo, useState } from 'react'
 import { Plus, Trash2, X } from 'lucide-react'
 import SuggestField from '../SuggestField'
-import { diagnosticApi } from '../../utils/api'
 
 type Props = {
   initialTestsText?: string
@@ -14,7 +13,7 @@ type Props = {
 type Data = {
   tests?: string[]
   notes?: string
-  discount?: number
+  discount?: string
 }
 
 type Display = {
@@ -33,8 +32,7 @@ export default forwardRef(function PrescriptionDiagnosticOrders({ initialTestsTe
   const [customTests, setCustomTests] = useState<string[]>([])
   const [removeDialog, setRemoveDialog] = useState<null | { kind: 'quick' | 'custom'; name: string }>(null)
 
-  // Billing Summary state
-  const [catalog, setCatalog] = useState<Array<{ id: string; name: string; price: number }>>([])
+  // Discount state
   const [discount, setDiscount] = useState(initialDiscount || '0')
 
   // Helpers and constants defined early to avoid initialization errors
@@ -54,39 +52,6 @@ export default forwardRef(function PrescriptionDiagnosticOrders({ initialTestsTe
   ] as const
 
   const doctorKey = (doctorId || 'anon').trim() || 'anon'
-
-  useEffect(() => {
-    let mounted = true
-      ; (async () => {
-        try {
-          const res = await diagnosticApi.listTests({ limit: 1000 }) as any
-          const arr = (res?.items || res || []).map((t: any) => ({
-            id: String(t._id || t.id),
-            name: t.name,
-            price: Number(t.price || 0)
-          }))
-          if (mounted) setCatalog(arr)
-        } catch (e) {
-          console.error('Failed to load diagnostic test catalog', e)
-        }
-      })()
-    return () => { mounted = false }
-  }, [])
-
-  const selectedTestsWithPrices = useMemo(() => {
-    const list = parseListText(testsText)
-    return list.map(name => {
-      const norm = name.trim().toLowerCase()
-      const match = catalog.find(c => c.name.trim().toLowerCase() === norm)
-      return {
-        name,
-        price: match ? match.price : 0
-      }
-    })
-  }, [testsText, catalog])
-
-  const subtotal = useMemo(() => selectedTestsWithPrices.reduce((s, t) => s + t.price, 0), [selectedTestsWithPrices])
-  const netTotal = Math.max(0, subtotal - (Number(discount) || 0))
 
   useEffect(() => {
     const key = `doctor.diagnosticOrders.hiddenQuickTests.${doctorKey}`
@@ -187,7 +152,7 @@ export default forwardRef(function PrescriptionDiagnosticOrders({ initialTestsTe
       return {
         tests: tests.length ? tests : undefined,
         notes: notes?.trim() ? notes.trim() : undefined,
-        discount: Number(discount) || 0,
+        discount: discount,
       }
     },
     getDisplay(): Display { return { testsText, notes, discount } },
@@ -312,54 +277,14 @@ export default forwardRef(function PrescriptionDiagnosticOrders({ initialTestsTe
           <SuggestField rows={2} value={notes} onChange={v => setNotes(v)} suggestions={suggestionsNotes} />
         </div>
 
-        {/* Billing Summary Section */}
-        <div className="mt-6 rounded-xl border border-slate-200 bg-slate-50/50 p-4">
-          <div className="flex items-center justify-between border-b border-slate-200 pb-2">
-            <div className="text-base font-semibold text-slate-800">Billing Summary</div>
-            <div className="text-xs text-slate-500">Prices from Diagnostic Test Catalog</div>
-          </div>
-
-          <div className="mt-3 space-y-2 text-sm">
-            {selectedTestsWithPrices.length > 0 ? (
-              <>
-                <div className="divide-y divide-slate-200">
-                  {selectedTestsWithPrices.map((t, idx) => (
-                    <div key={idx} className="flex items-center justify-between py-2">
-                      <div className="text-slate-700">{t.name}</div>
-                      <div className="font-medium text-slate-900">
-                        {t.price > 0 ? `PKR ${t.price.toLocaleString()}` : <span className="text-[10px] text-slate-400 font-normal italic">Price N/A</span>}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-
-                <div className="mt-4 space-y-2 border-t border-slate-300 pt-3">
-                  <div className="flex items-center justify-between text-slate-600">
-                    <span>Sub Total</span>
-                    <span className="font-semibold text-slate-800 text-base">PKR {subtotal.toLocaleString()}</span>
-                  </div>
-
-                  <div className="flex items-center justify-between">
-                    <span className="text-slate-600">Discount (PKR)</span>
-                    <input
-                      type="number"
-                      value={discount}
-                      onChange={e => setDiscount(e.target.value)}
-                      className="w-32 rounded-md border border-slate-300 px-3 py-1.5 text-right font-medium text-slate-900 outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
-                      placeholder="0"
-                    />
-                  </div>
-
-                  <div className="flex items-center justify-between border-t border-slate-200 pt-2 font-bold text-slate-900">
-                    <span className="text-base">Net Total</span>
-                    <span className="text-lg text-blue-900">PKR {netTotal.toLocaleString()}</span>
-                  </div>
-                </div>
-              </>
-            ) : (
-              <div className="py-4 text-center text-slate-500 italic">No tests selected</div>
-            )}
-          </div>
+        <div>
+          <label className="mb-1 block text-sm font-semibold text-slate-800">Discount</label>
+          <input
+            value={discount}
+            onChange={e => setDiscount(e.target.value)}
+            placeholder="Enter discount"
+            className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+          />
         </div>
       </div>
 
