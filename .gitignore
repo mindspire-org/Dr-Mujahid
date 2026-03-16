@@ -21,6 +21,13 @@ backend/.env
 backend/.env.*
 backend/.env.example
 
+# Ignore kashif directory
+backend/*kashif*/
+"backend/C:\\\\kashif/"
+
+# Ignore Dr-Mujahid directory
+Dr-Mujahid/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
