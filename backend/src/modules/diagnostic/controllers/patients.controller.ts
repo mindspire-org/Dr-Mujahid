@@ -1,7 +1,7 @@
 import { Request, Response } from 'express'
 import { LabPatient } from '../../lab/models/Patient'
 import { LabCounter } from '../../lab/models/Counter'
-import { HospitalSettings, HospitalSettingsDoc } from '../../hospital/models/Settings'
+import { HospitalSettings } from '../../hospital/models/Settings'
 import { patientFindOrCreateSchema } from '../../lab/validators/patient'
 
 function normDigits(s?: string){ return (s||'').replace(/\D+/g,'') }
@@ -11,7 +11,7 @@ async function nextMrn(){
   const key = 'lab_mrn_mr7553'
   
   // Get settings to check for custom starting number
-  const settings = await HospitalSettings.findOne().lean() as HospitalSettingsDoc | null
+  const settings = await HospitalSettings.findOne().lean()
   const mrStart = settings?.mrStart || 1
   
   // Check current counter value

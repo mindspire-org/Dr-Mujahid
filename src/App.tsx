@@ -487,6 +487,8 @@ export default function App() {
         <Route path="pharmacy-reports" element={<Pharmacy_Reports />} />
         <Route path="lab-reports" element={<Lab_Reports />} />
         <Route path="diagnostics-dashboard" element={<Diagnostic_Dashboard />} />
+        <Route path="counselling-dashboard" element={<Counselling_Dashboard />} />
+        <Route path="therapy-dashboard" element={<TherapyLab_Dashboard />} />
         <Route path="staff-dashboard" element={<Hospital_StaffDashboard />} />
         <Route path="hospital-dashboard" element={<Hospital_Dashboard />} />
         <Route path="manage-bank-balance" element={<Hospital_ManageBankBalance />} />

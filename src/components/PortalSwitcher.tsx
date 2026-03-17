@@ -75,20 +75,28 @@ export default function PortalSwitcher({ collapsed, onExpand }: { collapsed?: bo
                     }
 
                     // const isAdmin = roles.some(r => String(r).toLowerCase() === 'admin')
-                    
+
                     const canPortal = (key: string) => {
-                        // 1. Check for explicit session
-                        const sessionKey = sessions.find(s => s.key === key)?.storageKey
-                        if (sessionKey) {
-                            const raw = localStorage.getItem(sessionKey)
-                            if (raw) return true
-                        }
-                        
-                        // 2. Check permissions from any active session
+                        // 1. Check permissions from any active session (Highest priority)
                         const arr = allPermissions?.[key]
                         if (arr === '*') return true
                         if (Array.isArray(arr) && arr.length > 0) return true
-                        
+
+                        // 2. Check for explicit session ONLY if no permissions were found
+                        // This allows "Hospital Portal" to be hidden if permissions don't allow it,
+                        // even if hospital.session exists (which is common for shared logins)
+                        const sessionKey = sessions.find(s => s.key === key)?.storageKey
+                        if (sessionKey) {
+                            const raw = localStorage.getItem(sessionKey)
+                            if (raw) {
+                                // For hospital portal, we strictly require permissions if allPermissions is populated
+                                if (key === 'hospital' && Object.keys(allPermissions).length > 0) {
+                                    return false
+                                }
+                                return true
+                            }
+                        }
+
                         return false
                     }
 

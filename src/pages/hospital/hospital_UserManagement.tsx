@@ -99,7 +99,7 @@ export default function Hospital_UserManagement() {
     const v = permDraft?.[portalKey]
     if (!Array.isArray(v) || v.length === 0) return false
     if (v.includes('*')) return true
-    
+
     const normalizedTo = normalizePath(to)
     return v.some(x => normalizePath(String(x)) === normalizedTo)
   }
@@ -204,19 +204,13 @@ export default function Hospital_UserManagement() {
       return { pages: arr, groups: [] }
     }
 
-    if (portalKey === 'therapy') {
-      const arr = (therapyLabSidebarNav || []).map(it => mk((it as any).to, (it as any).label))
-      const receptionTherapyItems = (receptionSidebarGroups.find(g => g.label === 'Therapy')?.items || []).map(it => mk(it.to, it.label))
-      return { pages: [...arr, ...receptionTherapyItems], groups: [{ label: 'Reception Therapy', pages: receptionTherapyItems }] }
-    }
-
     if (portalKey === 'counselling') {
       const top = (counsellingSidebarNavTop || []).map(it => mk(it.to, it.label))
-      const receptionCounsellingItems = (receptionSidebarGroups.find(g => g.label === 'Counselling')?.items || []).map(it => mk(it.to, it.label))
-      return { pages: [...top, ...receptionCounsellingItems], groups: [
-        { label: 'Counselling Portal', pages: top },
-        { label: 'Reception Counselling', pages: receptionCounsellingItems }
-      ] }
+      return {
+        pages: [...top], groups: [
+          { label: 'Counselling Portal', pages: top }
+        ]
+      }
     }
 
     return { pages: [], groups: [] }
@@ -288,17 +282,17 @@ export default function Hospital_UserManagement() {
             continue
           }
           // If entries look like paths already, keep as-is
-          const allPaths = arr.every((v: any) => String(v || '').trim().startsWith('/'))
-          if (allPaths) {
-            mapped[portalKey] = arr
-            continue
-          }
-
+          // Map each item individually
           const idx = byPortalKeyToPath.get(String(portalKey))
           const out: string[] = []
           for (const k of arr) {
-            const pth = idx?.get(String(k))
-            if (pth) out.push(pth)
+            if (String(k).startsWith('/')) {
+              out.push(String(k))
+            } else {
+              const pth = idx?.get(String(k))
+              if (pth) out.push(pth)
+              else out.push(String(k)) // fallback to key itself
+            }
           }
           if (out.length > 0) mapped[portalKey] = out
         }
@@ -643,7 +637,7 @@ export default function Hospital_UserManagement() {
         </div>
 
         <div className="mt-4 space-y-4">
-          {accessTree.map(p => (
+          {accessTree.filter(p => p.portalKey !== 'therapy').map(p => (
             <div key={p.portalKey} className="rounded-lg border border-slate-200 p-3">
               <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
                 <div className="text-sm font-semibold text-slate-800">{p.portalKey}</div>
@@ -714,6 +708,7 @@ export default function Hospital_UserManagement() {
               </div>
             </div>
           )}
+
         </div>
       </div>
 

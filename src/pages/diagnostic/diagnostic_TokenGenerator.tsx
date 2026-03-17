@@ -425,9 +425,40 @@ export default function Diagnostic_TokenGenerator() {
     setMrn(p.mrn || '')
   }
 
-  // Slip modal
   const [slipOpen, setSlipOpen] = useState(false)
   const [slipData, setSlipData] = useState<DiagnosticTokenSlipData | null>(null)
+  const [shouldPrint, setShouldPrint] = useState(false)
+
+  const resetForm = () => {
+    setFullName('')
+    setPhone('')
+    setAge('')
+    setGender('')
+    setGuardianRel('')
+    setGuardianName('')
+    setCnic('')
+    setAddress('')
+    setMrn('')
+    setSelectedPatient(null)
+    setSelected([])
+    setQuery('')
+    setDiscount('0')
+    setDiscountType('PKR')
+    setAmountReceivedNow('0')
+    setPayPreviousDues(false)
+    setUseAdvance(false)
+    setCorpCompanyId('')
+    setCorpPreAuthNo('')
+    setCorpCoPayPercent('')
+    setCorpCoverageCap('')
+    setReferringConsultant('')
+    setFromReferralId('')
+    setRequestedTests([])
+    autoMrnAppliedRef.current = false
+    lastPhonePromptRef.current = null
+    lastPromptKeyRef.current = null
+    skipLookupKeyRef.current = null
+  }
 
   async function lookupExistingByPhoneAndName(source: 'phone' | 'name' = 'phone') {
     const digits = (phone || '').replace(/\D+/g, '')
@@ -582,6 +613,8 @@ export default function Diagnostic_TokenGenerator() {
       }
       setSlipData(data)
       setSlipOpen(true)
+      setShouldPrint(true)
+      resetForm()
     } catch (e: any) {
       alert(e?.message || 'Failed to create order')
     }
@@ -888,8 +921,9 @@ export default function Diagnostic_TokenGenerator() {
       {slipOpen && slipData && (
         <Diagnostic_TokenSlip
           open={slipOpen}
-          onClose={() => setSlipOpen(false)}
+          onClose={() => { setSlipOpen(false); setShouldPrint(false) }}
           data={slipData}
+          autoPrint={shouldPrint}
           user={(() => {
             try {
               const raw = localStorage.getItem('reception.session') || localStorage.getItem('hospital.session') || localStorage.getItem('diagnostic.user')

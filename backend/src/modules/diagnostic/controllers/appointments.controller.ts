@@ -3,7 +3,7 @@ import { DiagnosticAppointment } from '../models/Appointment'
 import { diagnosticAppointmentCreateSchema, diagnosticAppointmentQuerySchema, diagnosticAppointmentUpdateSchema } from '../validators/appointment'
 import { LabPatient } from '../../lab/models/Patient'
 import { LabCounter } from '../../lab/models/Counter'
-import { HospitalSettings, HospitalSettingsDoc } from '../../hospital/models/Settings'
+import { HospitalSettings } from '../../hospital/models/Settings'
 
 function handleError(res: Response, e: any){
   if (e?.name === 'ZodError') return res.status(400).json({ error: e.errors?.[0]?.message || 'Invalid payload' })
@@ -19,7 +19,7 @@ async function nextMrn(){
   const key = 'lab_mrn_mr7553'
   
   // Get settings to check for custom starting number
-  const settings = await HospitalSettings.findOne().lean() as HospitalSettingsDoc | null
+  const settings = await HospitalSettings.findOne().lean()
   const mrStart = settings?.mrStart || 1
   
   // Check current counter value
@@ -41,7 +41,7 @@ async function nextMrn(){
   return String(seq)
 }
 
-async function resolvePatient(data: any){
+async function resolvePatient(data: any, createIfMissing: boolean = true){
   if (data.patientId){
     const patient = await LabPatient.findById(data.patientId)
     if (!patient) throw { status: 404, error: 'Patient not found' }
@@ -88,6 +88,8 @@ async function resolvePatient(data: any){
   }
 
   if (!name) throw { status: 400, error: 'patientName required' }
+
+  if (!createIfMissing) return null
 
   const mrn = await nextMrn()
   const patient = await LabPatient.create({
@@ -164,7 +166,7 @@ export async function getById(req: Request, res: Response){
 export async function create(req: Request, res: Response){
   try {
     const data = diagnosticAppointmentCreateSchema.parse(req.body)
-    const patient = await resolvePatient(data)
+    const patient = await resolvePatient(data, false)
 
     const paymentStatus = (data as any).paymentStatus || 'paid'
     const paymentMethod = paymentStatus === 'paid' ? (data as any).paymentMethod : undefined
@@ -173,30 +175,30 @@ export async function create(req: Request, res: Response){
 
     const doc = await DiagnosticAppointment.create({
       ...data,
-      patientId: patient?._id,
-      patientMrn: patient?.mrn,
-      patientName: String((patient as any)?.fullName || (data as any).patientName || '').trim(),
-      patientPhone: (data as any).patientPhone || (patient as any)?.phoneNormalized,
-      patientAge: (data as any).patientAge || (patient as any)?.age,
-      patientGender: (data as any).patientGender || (patient as any)?.gender,
-      guardianRel: (data as any).guardianRel || (patient as any)?.guardianRel,
-      guardianName: (data as any).guardianName || (patient as any)?.fatherName,
-      cnic: (data as any).cnic || (patient as any)?.cnicNormalized,
-      address: (data as any).address || (patient as any)?.address,
+      patientId: patient?._id || undefined,
+      patientMrn: patient?.mrn || undefined,
+      patientName: String(patient?.fullName || (data as any).patientName || '').trim(),
+      patientPhone: (data as any).patientPhone || patient?.phoneNormalized,
+      patientAge: (data as any).patientAge || patient?.age,
+      patientGender: (data as any).patientGender || patient?.gender,
+      guardianRel: (data as any).guardianRel || patient?.guardianRel,
+      guardianName: (data as any).guardianName || patient?.fatherName,
+      cnic: (data as any).cnic || patient?.cnicNormalized,
+      address: (data as any).address || patient?.address,
       paymentStatus,
       paymentMethod,
       accountNumberIban,
       receivedToAccountCode,
       patientSnapshot: {
         mrn: patient?.mrn,
-        fullName: String((patient as any)?.fullName || ''),
-        phone: (data as any).patientPhone || (patient as any)?.phoneNormalized,
-        age: (data as any).patientAge || (patient as any)?.age,
-        gender: (data as any).patientGender || (patient as any)?.gender,
-        address: (data as any).address || (patient as any)?.address,
-        guardianRelation: (data as any).guardianRel || (patient as any)?.guardianRel,
-        guardianName: (data as any).guardianName || (patient as any)?.fatherName,
-        cnic: (data as any).cnic || (patient as any)?.cnicNormalized,
+        fullName: String(patient?.fullName || (data as any).patientName || ''),
+        phone: (data as any).patientPhone || patient?.phoneNormalized,
+        age: (data as any).patientAge || patient?.age,
+        gender: (data as any).patientGender || patient?.gender,
+        address: (data as any).address || patient?.address,
+        guardianRelation: (data as any).guardianRel || patient?.guardianRel,
+        guardianName: (data as any).guardianName || patient?.fatherName,
+        cnic: (data as any).cnic || patient?.cnicNormalized,
       },
     })
 

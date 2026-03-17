@@ -31,6 +31,18 @@ export const financeSidebarGroups: Group[] = [
     ],
   },
   {
+    label: 'Counselling',
+    items: [
+      { to: '/finance/counselling-dashboard', label: 'Counselling Dashboard', icon: LayoutDashboard },
+    ],
+  },
+  {
+    label: 'Therapy',
+    items: [
+      { to: '/finance/therapy-dashboard', label: 'Therapy Dashboard', icon: LayoutDashboard },
+    ],
+  },
+  {
     label: 'Accounts',
     items: [
       { to: '/finance/bank-accounts', label: 'Bank Accounts', icon: Banknote },

@@ -13,7 +13,7 @@ export type CounsellingCreditPaymentSlipData = {
   advanceAdded: number
   duesAfter: number
   advanceAfter: number
-  paymentMethod: 'Cash'|'Card'
+  paymentMethod: 'Cash'|'Card'|'Insurance'
   accountNumberIban?: string
   receivedToAccountCode: string
   receptionistName?: string
@@ -52,11 +52,11 @@ export default function Counselling_CreditPaymentSlip({ open, onClose, data, aut
         const s = await counsellingApi.getSettings() as any
         if (!mounted) return
         setSettings({
-          name: s?.counsellingName || 'Counselling Center',
+          name: s?.counsellingName || s?.hospitalName || s?.name || 'Counselling Center',
           phone: s?.phone || '',
           address: s?.address || '',
           logoDataUrl: s?.logoDataUrl || '',
-          slipFooter: s?.reportFooter || 'Powered by HealthSpire',
+          slipFooter: s?.reportFooter || s?.slipFooter || 'Powered by HealthSpire',
         })
       } catch {}
     })()

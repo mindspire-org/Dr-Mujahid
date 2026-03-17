@@ -31,7 +31,7 @@ export async function postTherapyTokenJournal(args: {
   // Idempotency: avoid duplicate posting for same visit
   const existing = await FinanceJournal.findOne({ refType: 'therapy_token', refId: args.visitId }).lean()
   if (existing) {
-    console.log('Existing journal found for therapy_token:', (existing as any)._id);
+    console.log('Existing journal found for therapy_token:', existing._id);
     return existing as any
   }
 

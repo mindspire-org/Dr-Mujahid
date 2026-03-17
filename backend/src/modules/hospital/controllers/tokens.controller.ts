@@ -9,7 +9,7 @@ import { HospitalDoctorSchedule } from '../models/DoctorSchedule'
 import { LabPatient } from '../../lab/models/Patient'
 import { CorporateCompany } from '../../corporate/models/Company'
 import { LabCounter } from '../../lab/models/Counter'
-import { HospitalSettings, HospitalSettingsDoc } from '../models/Settings'
+import { HospitalSettings } from '../models/Settings'
 import { HospitalAuditLog } from '../models/AuditLog'
 import { postOpdTokenJournal, reverseJournalByRef, reverseOpdTokenAsReturn } from './finance_ledger'
 import { resolveOPDPrice } from '../../corporate/utils/price'
@@ -92,7 +92,7 @@ async function nextMrn(){
   const key = 'lab_mrn_mr7553'
   
   // Get settings to check for custom starting number
-  const settings = await HospitalSettings.findOne().lean() as HospitalSettingsDoc | null
+  const settings = await HospitalSettings.findOne().lean()
   const mrStart = settings?.mrStart || 1
   
   // Check current counter value

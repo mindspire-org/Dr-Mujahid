@@ -10,26 +10,26 @@ export async function getSummary(req: Request, res: Response) {
     if (from || to) {
       const f: any = {}
       if (from) {
-        // Create date in local time for the start of the day
-        const fromDate = new Date(String(from) + 'T00:00:00')
-        f.$gte = fromDate.toISOString()
+        f.$gte = new Date(String(from) + 'T00:00:00')
       }
       if (to) {
-        // Create date in local time for the end of the day
-        const toDate = new Date(String(to) + 'T23:59:59.999')
-        f.$lte = toDate.toISOString()
+        f.$lte = new Date(String(to) + 'T23:59:59.999')
       }
-      // Check both createdAtIso and createdAt
       filter.$or = [
-        { createdAtIso: f },
+        { createdAtIso: { $gte: from ? String(from) + 'T00:00:00' : undefined, $lte: to ? String(to) + 'T23:59:59.999' : undefined } },
         { createdAt: f }
       ]
+      // Clean up undefined from $or
+      if (filter.$or[0].createdAtIso.$gte === undefined) delete filter.$or[0].createdAtIso.$gte
+      if (filter.$or[0].createdAtIso.$lte === undefined) delete filter.$or[0].createdAtIso.$lte
     }
 
+    console.log('Therapy Dashboard Filter:', JSON.stringify(filter, null, 2))
     const [visits, packageCount] = await Promise.all([
       TherapyVisit.find(filter).lean(),
       TherapyPackage.countDocuments({ status: 'active' })
     ])
+    console.log('Therapy Dashboard Visits Found:', visits.length)
 
     const summary = {
       visits: visits.length,

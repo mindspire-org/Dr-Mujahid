@@ -6,6 +6,7 @@ import * as Visits from '../controllers/visits.controller'
 import * as Payments from '../controllers/payments.controller'
 import * as Dashboard from '../controllers/dashboard.controller'
 import * as Appointments from '../controllers/appointments.controller'
+import * as CreditPatients from '../controllers/credit_patients.controller'
 
 const r = Router()
 
@@ -20,7 +21,9 @@ r.put('/patients/:id', Patients.update)
 
 // Accounts (Dues/Advance)
 r.get('/accounts', Accounts.list)
+r.get('/accounts/credit', CreditPatients.listCreditPatients)
 r.get('/accounts/:patientId', Accounts.getByPatientId)
+r.post('/accounts/:patientId/pay', CreditPatients.payCreditPatient)
 
 // Visits (Therapy sessions)
 r.get('/visits', Visits.list)

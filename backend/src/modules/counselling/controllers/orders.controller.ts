@@ -165,25 +165,30 @@ export const getDashboardSummary = async (req: Request, res: Response) => {
     const filter: any = {}
 
     if (from || to) {
-      filter.createdAt = {}
+      const f: any = {}
       if (from) {
-        const start = new Date(String(from))
-        start.setUTCHours(0, 0, 0, 0)
-        filter.createdAt.$gte = start
+        f.$gte = new Date(String(from) + 'T00:00:00')
       }
       if (to) {
-        const end = new Date(String(to))
-        end.setUTCHours(23, 59, 59, 999)
-        filter.createdAt.$lte = end
+        f.$lte = new Date(String(to) + 'T23:59:59.999')
       }
+      filter.$or = [
+        { createdAtIso: { $gte: from ? String(from) + 'T00:00:00' : undefined, $lte: to ? String(to) + 'T23:59:59.999' : undefined } },
+        { createdAt: f }
+      ]
+      // Clean up undefined from $or
+      if (filter.$or[0].createdAtIso.$gte === undefined) delete filter.$or[0].createdAtIso.$gte
+      if (filter.$or[0].createdAtIso.$lte === undefined) delete filter.$or[0].createdAtIso.$lte
     }
 
+    console.log('Counselling Dashboard Filter:', JSON.stringify(filter, null, 2))
     const [orders, pending, completed, returned] = await Promise.all([
       CounsellingOrder.countDocuments({ ...filter, status: { $ne: 'cancelled' } }),
       CounsellingOrder.countDocuments({ ...filter, status: 'active', sessionStatus: 'Queued' }),
       CounsellingOrder.countDocuments({ ...filter, status: 'active', sessionStatus: 'Completed' }),
       CounsellingOrder.countDocuments({ ...filter, status: 'returned' }),
     ])
+    console.log('Counselling Dashboard Orders Found:', orders)
 
     const revenueData = await CounsellingOrder.aggregate([
       { $match: { ...filter, status: 'active' } },

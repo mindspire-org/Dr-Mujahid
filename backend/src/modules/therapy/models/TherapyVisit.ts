@@ -114,4 +114,4 @@ export type TherapyVisitDoc = {
   updatedAtIso?: string
 }
 
-export const TherapyVisit = models.Therapy_Visit || model('Therapy_Visit', TherapyVisitSchema)
+export const TherapyVisit = models.TherapyVisit || model('TherapyVisit', TherapyVisitSchema)

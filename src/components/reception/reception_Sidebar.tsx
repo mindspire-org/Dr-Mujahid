@@ -1,4 +1,4 @@
-import { NavLink, useLocation, useNavigate } from 'react-router-dom'
+import { NavLink, useNavigate } from 'react-router-dom'
 import { LogOut, Ticket, ListChecks, Search, Wallet, LayoutDashboard, FileText, ScrollText, CalendarDays, Bell, PlusCircle, Users, History } from 'lucide-react'
 import { hospitalApi } from '../../utils/api'
 import { useEffect, useState } from 'react'
@@ -70,7 +70,6 @@ export default function Reception_Sidebar({
   onCloseMobile?: () => void
 }) {
   const navigate = useNavigate()
-  const { pathname } = useLocation()
   const [logoutConfirmOpen, setLogoutConfirmOpen] = useState(false)
   const [allowed, setAllowed] = useState<string[] | null>(null)
   const width = collapsed ? 'md:w-16' : 'md:w-64'
@@ -120,13 +119,6 @@ export default function Reception_Sidebar({
       const therapyLabPerms = perms?.therapyLab
       const counsellingPerms = perms?.counselling
 
-      console.log('Permissions debug:', {
-        reception: a,
-        therapy: therapyPerms,
-        therapyLab: therapyLabPerms,
-        counselling: counsellingPerms
-      })
-
       let combined: string[] = []
       if (Array.isArray(a)) combined = [...combined, ...a]
       if (Array.isArray(therapyPerms)) combined = [...combined, ...therapyPerms]
@@ -135,16 +127,15 @@ export default function Reception_Sidebar({
 
       // In reception sidebar, if a user has '*' for any of these, they should see everything in those sections
       if (a === '*' || therapyPerms === '*' || therapyLabPerms === '*' || counsellingPerms === '*') {
-          setAllowed(['*'])
-          return
+        setAllowed(['*'])
+        return
       }
 
-      console.log('Combined allowed paths:', combined)
       setAllowed(combined)
     } catch {
       setAllowed([])
     }
-  }, [pathname])
+  }, [])
 
   const renderNav = ({ isCollapsed }: { isCollapsed: boolean }) => (
     <nav className="hospital-sidebar-scroll flex-1 min-h-0 overflow-y-auto p-3 space-y-1">

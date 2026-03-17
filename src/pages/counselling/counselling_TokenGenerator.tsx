@@ -829,7 +829,7 @@ export default function Counselling_TokenGenerator() {
           </div>
 
           <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-3">
-            <div className="mb-2 text-sm font-semibold text-slate-800">Payment Detail</div>
+            <div className="mb-2 text-sm font-semibold text-slate-800">Settlement Preview</div>
             <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
               <div>
                 <div className="text-xs font-medium text-slate-600">Previous Dues</div>

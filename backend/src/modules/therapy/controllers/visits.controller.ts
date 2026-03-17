@@ -51,27 +51,27 @@ export async function list(req: Request, res: Response) {
   if (mrn) filter['patient.mrn'] = String(mrn)
   if (phone) filter['patient.phone'] = new RegExp(normDigits(String(phone)))
   if (name) filter['patient.fullName'] = new RegExp(String(name).trim(), 'i')
-    if (from || to) {
-      const f: any = {}
-      if (from) {
-        const fromDate = new Date(String(from))
-        fromDate.setUTCHours(0, 0, 0, 0)
-        f.$gte = fromDate.toISOString()
-      }
-      if (to) {
-        const toDate = new Date(String(to))
-        toDate.setUTCHours(23, 59, 59, 999)
-        f.$lte = toDate.toISOString()
-      }
-      // Check both createdAtIso and createdAt
-      filter.$and = filter.$and || []
-      filter.$and.push({
-        $or: [
-          { createdAtIso: f },
-          { createdAt: f }
-        ]
-      })
+  if (from || to) {
+    const f: any = {}
+    if (from) {
+      const fromDate = new Date(String(from))
+      fromDate.setUTCHours(0, 0, 0, 0)
+      f.$gte = fromDate.toISOString()
     }
+    if (to) {
+      const toDate = new Date(String(to))
+      toDate.setUTCHours(23, 59, 59, 999)
+      f.$lte = toDate.toISOString()
+    }
+    // Check both createdAtIso and createdAt
+    filter.$and = filter.$and || []
+    filter.$and.push({
+      $or: [
+        { createdAtIso: f },
+        { createdAt: f }
+      ]
+    })
+  }
 
   const lim = Math.min(1000, Number(limit || 50))
   const pg = Math.max(1, Number(page || 1))

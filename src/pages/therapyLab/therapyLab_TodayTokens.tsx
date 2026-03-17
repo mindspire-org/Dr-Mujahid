@@ -91,7 +91,7 @@ export default function TherapyLab_TodayTokens() {
     return () => document.removeEventListener('click', handleClickOutside)
   }, [])
 
-  useEffect(() => { 
+  useEffect(() => {
     load()
   }, [])
 
@@ -99,63 +99,62 @@ export default function TherapyLab_TodayTokens() {
     if (payToLoadedRef.current) return
     payToLoadedRef.current = true
     let mounted = true
-    ;(async () => {
-      try {
-        const [mineRes, bankRes, pettyRes] = await Promise.all([
-          hospitalApi.myPettyCash(),
-          hospitalApi.listBankAccounts(),
-          hospitalApi.listPettyCashAccounts(),
-        ]) as any
+      ; (async () => {
+        try {
+          const [mineRes, bankRes, pettyRes] = await Promise.all([
+            hospitalApi.myPettyCash(),
+            hospitalApi.listBankAccounts(),
+            hospitalApi.listPettyCashAccounts(),
+          ]) as any
 
-        const opts: Array<{ code: string; label: string }> = []
-        const seen = new Set<string>()
-        const add = (code?: string, label?: string) => {
-          const c = String(code || '').trim().toUpperCase()
-          if (!c) return
-          if (seen.has(c)) return
-          seen.add(c)
-          opts.push({ code: c, label: String(label || c) })
-        }
+          const opts: Array<{ code: string; label: string }> = []
+          const seen = new Set<string>()
+          const add = (code?: string, label?: string) => {
+            const c = String(code || '').trim().toUpperCase()
+            if (!c) return
+            if (seen.has(c)) return
+            seen.add(c)
+            opts.push({ code: c, label: String(label || c) })
+          }
 
-        const myCode = String(mineRes?.account?.code || '').trim().toUpperCase()
-        if (myCode) {
-          add(myCode, `${mineRes?.account?.name || 'My Petty Cash'} (${myCode})`)
-        }
+          const myCode = String(mineRes?.account?.code || '').trim().toUpperCase()
+          if (myCode) {
+            add(myCode, `${mineRes?.account?.name || 'My Petty Cash'} (${myCode})`)
+          }
 
-        const petty: any[] = pettyRes?.accounts || []
-        for (const p of petty) {
-          const code = String(p?.code || '').trim().toUpperCase()
-          if (!code) continue
-          const rs = String(p?.responsibleStaff || '').trim()
-          if (rs) continue
-          if (String(p?.status || 'Active') !== 'Active') continue
-          add(code, `${String(p?.name || code).trim()} (${code})`)
-        }
+          const petty: any[] = pettyRes?.accounts || []
+          for (const p of petty) {
+            const code = String(p?.code || '').trim().toUpperCase()
+            if (!code) continue
+            const rs = String(p?.responsibleStaff || '').trim()
+            if (rs) continue
+            if (String(p?.status || 'Active') !== 'Active') continue
+            add(code, `${String(p?.name || code).trim()} (${code})`)
+          }
 
-        const banks: any[] = bankRes?.accounts || []
-        for (const b of banks) {
-          const an = String(b?.accountNumber || '')
-          const last4 = an ? an.slice(-4) : ''
-          const code = String(b?.financeAccountCode || (last4 ? `BANK_${last4}` : '')).trim().toUpperCase()
-          if (!code) continue
-          const bankLabel = `${String(b?.bankName || '').trim()} - ${String(b?.accountTitle || '').trim()}${last4 ? ` (${last4})` : ''}`.trim()
-          add(code, bankLabel ? `${bankLabel} (${code})` : code)
-        }
+          const banks: any[] = bankRes?.accounts || []
+          for (const b of banks) {
+            const an = String(b?.accountNumber || '')
+            const last4 = an ? an.slice(-4) : ''
+            const code = String(b?.financeAccountCode || (last4 ? `BANK_${last4}` : '')).trim().toUpperCase()
+            if (!code) continue
+            const bankLabel = `${String(b?.bankName || '').trim()} - ${String(b?.accountTitle || '').trim()}${last4 ? ` (${last4})` : ''}`.trim()
+            add(code, bankLabel ? `${bankLabel} (${code})` : code)
+          }
 
-        if (mounted) {
-          setPayToAccounts(opts)
+          if (mounted) {
+            setPayToAccounts(opts)
+          }
+        } catch {
+          if (mounted) setPayToAccounts([])
         }
-      } catch {
-        if (mounted) setPayToAccounts([])
-      }
-    })()
+      })()
     return () => { mounted = false }
   }, [])
 
   async function load() {
     const today = new Date().toISOString().slice(0, 10)
     const res = await therapyApi.listVisits({ from: today, to: today }) as any
-    console.log('Today Tokens API Response:', res)
     const rawItems = res.items || res.visits || []
     const items: TokenRow[] = rawItems.map((t: any) => ({
       _id: t._id,
@@ -300,7 +299,7 @@ export default function TherapyLab_TodayTokens() {
         const n = parseFloat(x)
         return isFinite(n) ? n : 0
       }
-      
+
       const subtotal = cleanNum(editForm.amount)
       const discount = cleanNum(editForm.discount)
       const net = editForm.discountType === '%' ? subtotal * (1 - discount / 100) : subtotal - discount
@@ -478,7 +477,7 @@ export default function TherapyLab_TodayTokens() {
                       <ChevronDown size={14} />
                     </button>
                     {packagesMenuOpen === r._id && (
-                      <div 
+                      <div
                         className="absolute left-0 z-50 mt-1 w-64 rounded-md border border-slate-200 bg-white py-1 shadow-lg ring-1 ring-black/5"
                         onClick={(e) => e.stopPropagation()}
                       >
@@ -487,7 +486,7 @@ export default function TherapyLab_TodayTokens() {
                           r.tests.map((p, i) => {
                             const details = p.details || {}
                             const selectedTypes: string[] = []
-                            
+
                             // Handle fixed machine types
                             Object.entries(details).forEach(([key, val]) => {
                               if (val === true) selectedTypes.push(key.toUpperCase())
@@ -539,15 +538,14 @@ export default function TherapyLab_TodayTokens() {
                         e.stopPropagation()
                         setStatusMenuOpen(statusMenuOpen === r._id ? null : r._id)
                       }}
-                      className={`flex items-center gap-1 rounded px-2 py-0.5 text-xs font-medium transition-colors ${
-                        r.sessionStatus === 'Completed' ? 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200' : 'bg-blue-100 text-blue-700 hover:bg-blue-200'
-                      }`}
+                      className={`flex items-center gap-1 rounded px-2 py-0.5 text-xs font-medium transition-colors ${r.sessionStatus === 'Completed' ? 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200' : 'bg-blue-100 text-blue-700 hover:bg-blue-200'
+                        }`}
                     >
                       {r.sessionStatus}
                       <ChevronDown size={14} />
                     </button>
                     {statusMenuOpen === r._id && (
-                      <div 
+                      <div
                         className="absolute left-0 z-50 mt-1 w-32 rounded-md border border-slate-200 bg-white py-1 shadow-lg ring-1 ring-black/5"
                         onClick={(e) => e.stopPropagation()}
                       >
@@ -556,9 +554,8 @@ export default function TherapyLab_TodayTokens() {
                             key={s}
                             disabled={actioningId === r._id}
                             onClick={() => updateStatus(r._id, s)}
-                            className={`block w-full px-4 py-2 text-left text-xs hover:bg-slate-50 ${
-                              r.sessionStatus === s ? 'font-bold text-slate-900' : 'text-slate-600'
-                            }`}
+                            className={`block w-full px-4 py-2 text-left text-xs hover:bg-slate-50 ${r.sessionStatus === s ? 'font-bold text-slate-900' : 'text-slate-600'
+                              }`}
                           >
                             {s}
                           </button>
@@ -618,11 +615,11 @@ export default function TherapyLab_TodayTokens() {
       </div>
 
       {showSlip && slipData && (
-        <TherapyLab_TokenSlip 
-          open={showSlip} 
-          onClose={() => setShowSlip(false)} 
-          data={slipData} 
-          autoPrint={false} 
+        <TherapyLab_TokenSlip
+          open={showSlip}
+          onClose={() => setShowSlip(false)}
+          data={slipData}
+          autoPrint={false}
         />
       )}
 

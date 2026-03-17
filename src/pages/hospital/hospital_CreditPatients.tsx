@@ -72,7 +72,7 @@ function PayDialog({ open, onClose, row, payToAccounts, onPaid }: { open: boolea
     setAmount(String(clamp0(row.dues)))
     setPaymentMethod('Cash')
     setAccountNumberIban('')
-    setReceivedToAccountCode('')
+    setReceivedToAccountCode(localStorage.getItem('last_selected_pay_account') || '')
     setReceptionistName('')
     setNote('')
   }, [open, row?.patientId])
@@ -338,13 +338,18 @@ export default function Hospital_CreditPatients(){
         }
 
         const petty: any[] = pettyRes?.accounts || []
+        let userPettyCode = ''
+        const sessionRaw = localStorage.getItem('hospital.session')
+        const currentUser = sessionRaw ? JSON.parse(sessionRaw)?.username : ''
+
         for (const p of petty){
           const code = String(p?.code || '').trim().toUpperCase()
           if (!code) continue
           const rs = String(p?.responsibleStaff || '').trim()
-          if (rs) continue
+          if (rs && rs !== currentUser) continue
           if (String(p?.status || 'Active') !== 'Active') continue
           add(code, `${String(p?.name || code).trim()} (${code})`)
+          if (rs === currentUser) userPettyCode = code
         }
 
         const banks: any[] = bankRes?.accounts || []
@@ -357,7 +362,12 @@ export default function Hospital_CreditPatients(){
           add(code, bankLabel ? `${bankLabel} (${code})` : code)
         }
 
-        if (mounted) setPayToAccounts(opts)
+        if (mounted) {
+          setPayToAccounts(opts)
+          if (userPettyCode) {
+            localStorage.setItem('last_selected_pay_account', userPettyCode)
+          }
+        }
       } catch {
         if (mounted) setPayToAccounts([])
       }

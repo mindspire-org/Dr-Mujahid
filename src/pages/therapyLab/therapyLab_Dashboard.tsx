@@ -87,7 +87,7 @@ export default function TherapyLab_Dashboard() {
   }, [effFrom, effTo, from8w, todayStr])
 
   const cards = [
-    { title: 'Total Revenue', value: `PKR ${Number(revenueTotal || 0).toFixed(0)}`, tone: 'border-green-200 ', bg: 'bg-green-50 ', icon: DollarSign },
+    { title: 'Total Revenue', value: `Rs ${Number(revenueTotal || 0).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`, tone: 'border-green-200 ', bg: 'bg-green-50 ', icon: DollarSign },
     { title: isFiltered ? 'Tokens (range)' : "Today's Tokens", value: String(tokensToday), tone: 'border-emerald-200', bg: 'bg-emerald-50', icon: Activity },
     { title: 'Completed', value: String(completedCount), tone: 'border-violet-200', bg: 'bg-violet-50', icon: CheckCircle },
     { title: 'Returned', value: String(returnedCount), tone: 'border-rose-200', bg: 'bg-rose-50 ', icon: RotateCcw },

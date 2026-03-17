@@ -1,6 +1,6 @@
 import { NavLink, useNavigate } from 'react-router-dom'
 import { useEffect, useState } from 'react'
-import { LogOut, ScrollText, Ticket, Package, ClipboardList, Wallet, Bell, X, ChevronDown, ChevronRight, History, CreditCard, LayoutDashboard } from 'lucide-react'
+import { LogOut, ScrollText, Ticket, Package, ClipboardList, Wallet, Bell, X, History, CreditCard, LayoutDashboard } from 'lucide-react'
 import { hospitalApi } from '../../utils/api'
 import PortalSwitcher from '../../components/PortalSwitcher'
 
@@ -32,7 +32,6 @@ export default function TherapyLab_Sidebar({
   onCloseMobile?: () => void
 }) {
   const navigate = useNavigate()
-  const [open, setOpen] = useState<Record<string, boolean>>({})
   const [logoutConfirmOpen, setLogoutConfirmOpen] = useState(false)
   const [allowed, setAllowed] = useState<string[] | null>(null)
   const width = collapsed ? 'md:w-16' : 'md:w-64'
@@ -49,17 +48,22 @@ export default function TherapyLab_Sidebar({
       const s = raw ? JSON.parse(raw) : null
       const perms = s?.permissions
       const a = perms?.therapyLab
-      if (Array.isArray(a)) setAllowed(a)
-      else setAllowed(null)
+      const b = perms?.therapy
+
+      if (a === '*' || b === '*' || s?.role?.toLowerCase() === 'admin') {
+        setAllowed(['*'])
+        return
+      }
+
+      let combined: string[] = []
+      if (Array.isArray(a)) combined = [...combined, ...a]
+      if (Array.isArray(b)) combined = [...combined, ...b]
+
+      setAllowed(combined.length > 0 ? combined : [])
     } catch {
-      setAllowed(null)
+      setAllowed([])
     }
   }, [])
-
-  useEffect(() => {
-    if (collapseSignal == null) return
-    setOpen({})
-  }, [collapseSignal])
 
   async function logout() {
     try {

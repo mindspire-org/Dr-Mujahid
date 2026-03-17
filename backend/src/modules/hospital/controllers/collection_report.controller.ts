@@ -102,7 +102,7 @@ function findTagValueFromLines(j: any, key: string) {
       const s = String(v ?? '').trim()
       if (s) return s
     }
-  } catch {}
+  } catch { }
   return ''
 }
 
@@ -154,7 +154,7 @@ function inferCounterparty(line: any, j: any) {
   if (supplierName) return { kind: 'supplier' as const, name: supplierName }
   if (String(tags?.staffId || '').trim()) return { kind: 'supplier' as const, name: supplierName || 'Staff' }
 
-  if (rt === 'hospital_credit_patient_payment') {
+  if (rt === 'hospital_credit_patient_payment' || rt === 'therp_credit_rev' || rt === 'couns_credit_rev') {
     const parts = memo.split('—')
     const nm = parts.length > 1 ? String(parts.slice(1).join('—')).trim() : ''
     return { kind: 'customer' as const, name: nm }
@@ -171,6 +171,8 @@ function inferDepartmentFromJournal(j: any, pettyDept?: string) {
   const fromAcct = normDept(pettyDept)
   if (fromAcct) return fromAcct
   if (rt === 'opd_token' || rt.includes('hospital_credit_patient_payment')) return 'OPD'
+  if (rt === 'therp_credit_rev') return 'Therapy'
+  if (rt === 'couns_credit_rev') return 'Counselling'
   if (rt.startsWith('diag_')) return 'Diagnostics'
 
   const lines: any[] = Array.isArray(j?.lines) ? j.lines : (Array.isArray(j?.allLines) ? j.allLines : [])
@@ -196,6 +198,8 @@ function inferTransactionType(j: any) {
   if (rt === 'opd_token') return 'OPD_Rev'
   if (rt === 'opd_return') return 'OPD_Return'
   if (rt === 'hospital_credit_patient_payment') return 'OPD_Credit_Rev'
+  if (rt === 'therp_credit_rev') return 'Therp_Credit_Rev'
+  if (rt === 'couns_credit_rev') return 'Couns_Credit_Rev'
 
   if (rt === 'diag_order' || rt === 'diag_order_payment') return hasArCredit ? 'Diag_Credit_Rev' : 'Diagnostics_Rev'
   if (rt === 'diag_credit_payment') return 'Diag_Credit_Rev'
@@ -540,7 +544,11 @@ export async function collectionReport(req: Request, res: Response) {
       inferredTxnType === 'Diagnostics_Rev' ||
       inferredTxnType === 'Diag_Credit_Rev' ||
       inferredTxnType === 'OPD_Rev' ||
-      inferredTxnType === 'OPD_Credit_Rev'
+      inferredTxnType === 'OPD_Credit_Rev' ||
+      inferredTxnType === 'Therapy_Rev' ||
+      inferredTxnType === 'Counselling_Rev' ||
+      inferredTxnType === 'Therp_Credit_Rev' ||
+      inferredTxnType === 'Couns_Credit_Rev'
     ) {
       invoiceNo = ''
     }
@@ -556,6 +564,8 @@ export async function collectionReport(req: Request, res: Response) {
     let dept = inferDepartmentFromJournal(jForInfer, acct?.department) || inferDepartment(jForInfer, acct?.department)
     if (inferredTxnType === 'Diagnostics_Rev' || inferredTxnType === 'Diag_Credit_Rev') dept = 'Diagnostics'
     if (inferredTxnType === 'OPD_Rev' || inferredTxnType === 'OPD_Credit_Rev') dept = 'OPD'
+    if (inferredTxnType === 'Therapy_Rev' || inferredTxnType === 'Therp_Credit_Rev') dept = 'Therapy'
+    if (inferredTxnType === 'Counselling_Rev' || inferredTxnType === 'Couns_Credit_Rev') dept = 'Counselling'
     if (inferredTxnType === 'OPD_Return') dept = 'OPD'
     if (inferredTxnType === 'Doc_Payout' || inferredTxnType === 'Expense' || String(inferredTxnType).startsWith('Expense-')) dept = 'OPD'
     if (inferredTxnType === 'Salary') {

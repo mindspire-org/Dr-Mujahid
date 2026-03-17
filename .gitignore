@@ -12,22 +12,6 @@ dist
 dist-ssr
 *.local
 
-# VPS/Environment specific settings (do not track, allow VPS to keep its own)
-*.env.*
-.env
-.env.*
-.env.example
-backend/.env
-backend/.env.*
-backend/.env.example
-
-# Ignore kashif directory
-backend/*kashif*/
-"backend/C:\\\\kashif/"
-
-# Ignore Dr-Mujahid directory
-Dr-Mujahid/
-
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
@@ -38,3 +22,7 @@ Dr-Mujahid/
 *.njsproj
 *.sln
 *.sw?
+.env
+*.env
+env.*
+*.env. *

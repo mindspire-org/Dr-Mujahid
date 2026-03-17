@@ -57,9 +57,8 @@ function Info({ label, value }: { label: string; value: string }) {
 }
 
 function PayDialog({ open, onClose, row, payToAccounts, onPaid }: { open: boolean; onClose: () => void; row: CreditPatientRow | null; payToAccounts: Array<{ code: string; label: string }>; onPaid: (slip: CounsellingCreditPaymentSlipData) => void }) {
-  const [currentDues, setCurrentDues] = useState('')
   const [amount, setAmount] = useState('')
-  const [paymentMethod, setPaymentMethod] = useState<'Cash' | 'Card'>('Cash')
+  const [paymentMethod, setPaymentMethod] = useState<'Cash' | 'Card' | 'Insurance'>('Cash')
   const [accountNumberIban, setAccountNumberIban] = useState('')
   const [receivedToAccountCode, setReceivedToAccountCode] = useState('')
   const [receptionistName, setReceptionistName] = useState('')
@@ -68,17 +67,16 @@ function PayDialog({ open, onClose, row, payToAccounts, onPaid }: { open: boolea
 
   useEffect(() => {
     if (!open || !row) return
-    setCurrentDues(String(clamp0(row.dues)))
     setAmount(String(clamp0(row.dues)))
     setPaymentMethod('Cash')
     setAccountNumberIban('')
-    setReceivedToAccountCode('')
+    setReceivedToAccountCode(localStorage.getItem('last_selected_pay_account') || '')
     setReceptionistName('')
     setNote('')
   }, [open, row?.patientId])
 
   const preview = useMemo(() => {
-    const duesBefore = clamp0(currentDues)
+    const duesBefore = clamp0(row?.dues)
     const advBefore = clamp0(row?.advance)
     const amt = clamp0(amount)
     const duesPaid = Math.min(duesBefore, amt)
@@ -86,7 +84,7 @@ function PayDialog({ open, onClose, row, payToAccounts, onPaid }: { open: boolea
     const advAdded = Math.max(0, amt - duesPaid)
     const advAfter = advBefore + advAdded
     return { duesBefore, advBefore, amt, duesPaid, duesAfter, advAdded, advAfter }
-  }, [currentDues, amount, row?.advance])
+  }, [amount, row?.dues, row?.advance])
 
   async function submit() {
     if (!row) return
@@ -97,10 +95,10 @@ function PayDialog({ open, onClose, row, payToAccounts, onPaid }: { open: boolea
       setBusy(true)
       const res: any = await counsellingApi.payCreditPatient(row.patientId, {
         amount: amt,
-        currentDues: clamp0(currentDues),
+        currentDues: clamp0(row.dues),
         paymentMethod,
         receivedToAccountCode,
-        accountNumberIban: paymentMethod === 'Card' ? (accountNumberIban || undefined) : undefined,
+        accountNumberIban: (paymentMethod === 'Card' || paymentMethod === 'Insurance') ? (accountNumberIban || undefined) : undefined,
         receptionistName: receptionistName || undefined,
         note: note || undefined,
       })
@@ -117,7 +115,7 @@ function PayDialog({ open, onClose, row, payToAccounts, onPaid }: { open: boolea
         advanceAdded: clamp0(r.advanceAdded),
         duesAfter: clamp0(r.duesAfter),
         advanceAfter: clamp0(r.advanceAfter),
-        paymentMethod: (String(r.paymentMethod || paymentMethod) === 'Card' ? 'Card' : 'Cash'),
+        paymentMethod: (r.paymentMethod || paymentMethod) as any,
         accountNumberIban: String(r.accountNumberIban || ''),
         receivedToAccountCode: String(r.receivedToAccountCode || receivedToAccountCode),
         receptionistName: String(r.receptionistName || receptionistName || ''),
@@ -138,7 +136,7 @@ function PayDialog({ open, onClose, row, payToAccounts, onPaid }: { open: boolea
       <div className="w-full max-w-xl max-h-[90vh] overflow-y-auto rounded-xl bg-white shadow-2xl ring-1 ring-black/5" onClick={(e) => e.stopPropagation()}>
         <div className="sticky top-0 z-10 flex items-center justify-between border-b border-slate-200 bg-white px-5 py-4">
           <div>
-            <div className="text-lg font-semibold text-slate-900">Pay Dues</div>
+            <div className="text-lg font-semibold text-slate-900">Credit Payment</div>
             <div className="mt-0.5 text-sm text-slate-600">{row.fullName || '-'}{row.mrn ? ` • ${row.mrn}` : ''}</div>
           </div>
           <button onClick={onClose} className="rounded-md p-2 text-slate-500 hover:bg-slate-100" aria-label="Close">
@@ -149,26 +147,35 @@ function PayDialog({ open, onClose, row, payToAccounts, onPaid }: { open: boolea
         <div className="p-5 space-y-4">
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div>
-              <label className="mb-1 block text-sm text-slate-700">Current Dues</label>
-              <input value={currentDues} onChange={(e) => setCurrentDues(e.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
+              <label className="mb-1 block text-sm font-medium text-slate-700">Total Dues</label>
+              <div className="w-full rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-semibold text-slate-900">
+                PKR {clamp0(row.dues).toLocaleString()}
+              </div>
             </div>
             <div>
-              <label className="mb-1 block text-sm text-slate-700">Amount</label>
-              <input value={amount} onChange={(e) => setAmount(e.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
+              <label className="mb-1 block text-sm font-medium text-slate-700">Amount to Pay</label>
+              <input 
+                type="number"
+                value={amount} 
+                onChange={(e) => setAmount(e.target.value)} 
+                className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500" 
+                placeholder="0.00"
+              />
             </div>
           </div>
 
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div>
-              <label className="mb-1 block text-sm text-slate-700">Pay. Method</label>
-              <select value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value === 'Card' ? 'Card' : 'Cash')} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm">
+              <label className="mb-1 block text-sm font-medium text-slate-700">Payment Method</label>
+              <select value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value as any)} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500">
                 <option value="Cash">Cash</option>
                 <option value="Card">Card</option>
+                <option value="Insurance">Insurance</option>
               </select>
             </div>
             <div>
-              <label className="mb-1 block text-sm text-slate-700">Payed to</label>
-              <select value={selected} onChange={(e) => setReceivedToAccountCode(e.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm">
+              <label className="mb-1 block text-sm font-medium text-slate-700">Payed to Account</label>
+              <select value={selected} onChange={(e) => setReceivedToAccountCode(e.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500">
                 <option value="">Select account</option>
                 {payToAccounts.map(a => (
                   <option key={a.code} value={a.code}>{a.label}</option>
@@ -177,40 +184,48 @@ function PayDialog({ open, onClose, row, payToAccounts, onPaid }: { open: boolea
             </div>
           </div>
 
-          {paymentMethod === 'Card' && (
+          {(paymentMethod === 'Card' || paymentMethod === 'Insurance') && (
             <div>
-              <label className="mb-1 block text-sm text-slate-700">Account#/IBAN</label>
-              <input value={accountNumberIban} onChange={(e) => setAccountNumberIban(e.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
+              <label className="mb-1 block text-sm font-medium text-slate-700">
+                {paymentMethod === 'Card' ? 'Account#/IBAN' : 'Policy/Reference No'}
+              </label>
+              <input value={accountNumberIban} onChange={(e) => setAccountNumberIban(e.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500" />
             </div>
           )}
 
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div>
-              <label className="mb-1 block text-sm text-slate-700">Receptionist</label>
-              <input value={receptionistName} onChange={(e) => setReceptionistName(e.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
+              <label className="mb-1 block text-sm font-medium text-slate-700">Receptionist</label>
+              <input value={receptionistName} onChange={(e) => setReceptionistName(e.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500" />
             </div>
             <div>
-              <label className="mb-1 block text-sm text-slate-700">Note</label>
-              <input value={note} onChange={(e) => setNote(e.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
+              <label className="mb-1 block text-sm font-medium text-slate-700">Note</label>
+              <input value={note} onChange={(e) => setNote(e.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500" />
             </div>
           </div>
 
           <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
-            <div className="text-sm font-semibold text-slate-800">Preview</div>
+            <div className="text-sm font-semibold text-slate-800">Payment Breakdown</div>
             <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2 text-sm">
               <div className="flex items-center justify-between"><span className="text-slate-600">Prev. Dues</span><span className="font-medium">PKR {preview.duesBefore.toLocaleString()}</span></div>
               <div className="flex items-center justify-between"><span className="text-slate-600">Prev. Adv.</span><span className="font-medium">PKR {preview.advBefore.toLocaleString()}</span></div>
-              <div className="flex items-center justify-between"><span className="text-slate-600">Dues Paid</span><span className="font-medium">PKR {preview.duesPaid.toLocaleString()}</span></div>
-              <div className="flex items-center justify-between"><span className="text-slate-600">Adv. Added</span><span className="font-medium">PKR {preview.advAdded.toLocaleString()}</span></div>
-              <div className="flex items-center justify-between"><span className="text-slate-600">Dues After</span><span className="font-medium">PKR {preview.duesAfter.toLocaleString()}</span></div>
-              <div className="flex items-center justify-between"><span className="text-slate-600">Adv. After</span><span className="font-medium">PKR {preview.advAfter.toLocaleString()}</span></div>
+              <div className="flex items-center justify-between text-emerald-700 font-semibold"><span className="">Dues Paid</span><span>PKR {preview.duesPaid.toLocaleString()}</span></div>
+              <div className="flex items-center justify-between text-blue-700 font-semibold"><span className="">Adv. Added</span><span>PKR {preview.advAdded.toLocaleString()}</span></div>
+              <div className="flex items-center justify-between pt-2 border-t border-slate-200"><span className="text-slate-600">Dues After</span><span className="font-bold">PKR {preview.duesAfter.toLocaleString()}</span></div>
+              <div className="flex items-center justify-between pt-2 border-t border-slate-200"><span className="text-slate-600">Adv. After</span><span className="font-bold">PKR {preview.advAfter.toLocaleString()}</span></div>
             </div>
           </div>
         </div>
 
         <div className="flex justify-end gap-2 border-t border-slate-200 px-5 py-4">
           <button onClick={onClose} className="rounded-md border border-slate-300 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50">Cancel</button>
-          <button disabled={busy || !clamp0(amount) || !receivedToAccountCode || (paymentMethod === 'Card' && !accountNumberIban)} onClick={submit} className="rounded-md border border-emerald-600 px-4 py-2 text-sm font-medium text-emerald-700 hover:bg-emerald-50 disabled:opacity-50">{busy ? 'Paying...' : 'Pay'}</button>
+          <button 
+            disabled={busy || !clamp0(amount) || !receivedToAccountCode || ((paymentMethod === 'Card' || paymentMethod === 'Insurance') && !accountNumberIban)} 
+            onClick={submit} 
+            className="rounded-md bg-emerald-600 px-6 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-50 shadow-sm"
+          >
+            {busy ? 'Processing...' : 'Confirm & Pay'}
+          </button>
         </div>
       </div>
     </div>
@@ -332,8 +347,10 @@ export default function Counselling_CreditPatients() {
           hospitalApi.listBankAccounts(),
           hospitalApi.listPettyCashAccounts(),
         ]) as any
-        let mineRes: any = null
-        try { mineRes = await hospitalApi.myPettyCash() as any } catch { mineRes = null }
+        
+        let userPettyCode = ''
+        const sessionRaw = localStorage.getItem('hospital.session')
+        const currentUser = sessionRaw ? JSON.parse(sessionRaw)?.username : ''
 
         const opts: Array<{ code: string; label: string }> = []
         const seen = new Set<string>()
@@ -345,19 +362,15 @@ export default function Counselling_CreditPatients() {
           opts.push({ code: c, label: String(label || c) })
         }
 
-        const myCode = String(mineRes?.account?.code || '').trim().toUpperCase()
-        if (myCode) {
-          add(myCode, `${mineRes?.account?.name || 'My Petty Cash'} (${myCode})`)
-        }
-
         const petty: any[] = pettyRes?.accounts || []
         for (const p of petty) {
           const code = String(p?.code || '').trim().toUpperCase()
           if (!code) continue
           const rs = String(p?.responsibleStaff || '').trim()
-          if (rs) continue
+          if (rs && rs !== currentUser) continue
           if (String(p?.status || 'Active') !== 'Active') continue
           add(code, `${String(p?.name || code).trim()} (${code})`)
+          if (rs === currentUser) userPettyCode = code
         }
 
         const banks: any[] = bankRes?.accounts || []
@@ -370,7 +383,12 @@ export default function Counselling_CreditPatients() {
           add(code, bankLabel ? `${bankLabel} (${code})` : code)
         }
 
-        if (mounted) setPayToAccounts(opts)
+        if (mounted) {
+          setPayToAccounts(opts)
+          if (userPettyCode) {
+            localStorage.setItem('last_selected_pay_account', userPettyCode)
+          }
+        }
       } catch {
         if (mounted) setPayToAccounts([])
       }

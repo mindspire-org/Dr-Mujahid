@@ -87,12 +87,6 @@ export default function Hospital_TokenGenerator() {
           if (mounted) {
             setPayToAccounts(opts)
             setForm(prev => {
-              const existing = String((prev as any).receivedToAccountCode || '').trim()
-              if (existing) return prev as any
-              let stored = ''
-              try { stored = String(localStorage.getItem(payToStorageKey) || '').trim().toUpperCase() } catch {}
-              if (stored) return { ...(prev as any), receivedToAccountCode: stored }
-              
               // Get current user info from session
               let currentUsername = ''
               try {
@@ -100,21 +94,27 @@ export default function Hospital_TokenGenerator() {
                 currentUsername = String(session?.username || '').trim()
               } catch {}
               
+              const myCode = String(mineRes?.account?.code || '').trim().toUpperCase()
+              
+              // Priority 1: User's own petty cash account (if user has it)
+              if (myCode) {
+                return { ...(prev as any), receivedToAccountCode: myCode }
+              }
+
+              const existing = String((prev as any).receivedToAccountCode || '').trim()
+              if (existing) return prev as any
+              let stored = ''
+              try { stored = String(localStorage.getItem(payToStorageKey) || '').trim().toUpperCase() } catch {}
+              if (stored) return { ...(prev as any), receivedToAccountCode: stored }
+              
               // Find user's bank account (where responsibleStaff matches current user)
               const myBankAccount = banks.find((b: any) => {
                 const rs = String(b?.responsibleStaff || '').trim().toLowerCase()
                 return rs && rs === currentUsername.toLowerCase()
               })
               
-              // Determine which account to auto-select
-              const hasPettyCash = !!myCode
-              const hasBankAccount = !!myBankAccount
-              
-              if (hasPettyCash) {
-                // Priority 1: Petty cash (if user has it)
-                return { ...(prev as any), receivedToAccountCode: myCode }
-              } else if (hasBankAccount) {
-                // Priority 2: Bank account (if user has only bank account)
+              // Priority 2: Bank account (if user has only bank account)
+              if (myBankAccount) {
                 const an = String(myBankAccount?.accountNumber || '')
                 const last4 = an ? an.slice(-4) : ''
                 const bankCode = String(myBankAccount?.financeAccountCode || (last4 ? `BANK_${last4}` : '')).trim().toUpperCase()
@@ -313,7 +313,10 @@ export default function Hospital_TokenGenerator() {
 
   const reset = () => {
     let keepPayTo = ''
-    try { keepPayTo = String(localStorage.getItem(payToStorageKey) || '').trim().toUpperCase() } catch {}
+    try { 
+      keepPayTo = String(localStorage.getItem(payToStorageKey) || '').trim().toUpperCase()
+      localStorage.removeItem(phoneStorageKey)
+    } catch {}
     setForm({
       phone: '',
       patientId: '',
