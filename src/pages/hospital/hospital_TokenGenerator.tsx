@@ -87,12 +87,40 @@ export default function Hospital_TokenGenerator() {
           if (mounted) {
             setPayToAccounts(opts)
             setForm(prev => {
+              // Get current user info from session
+              let currentUsername = ''
+              try {
+                const session = JSON.parse(localStorage.getItem('hospital.session') || '{}')
+                currentUsername = String(session?.username || '').trim()
+              } catch {}
+              
+              const myCode = String(mineRes?.account?.code || '').trim().toUpperCase()
+              
+              // Priority 1: User's own petty cash account (if user has it)
+              if (myCode) {
+                return { ...(prev as any), receivedToAccountCode: myCode }
+              }
+
               const existing = String((prev as any).receivedToAccountCode || '').trim()
               if (existing) return prev as any
               let stored = ''
               try { stored = String(localStorage.getItem(payToStorageKey) || '').trim().toUpperCase() } catch {}
               if (stored) return { ...(prev as any), receivedToAccountCode: stored }
-              if (myCode) return { ...(prev as any), receivedToAccountCode: myCode }
+              
+              // Find user's bank account (where responsibleStaff matches current user)
+              const myBankAccount = banks.find((b: any) => {
+                const rs = String(b?.responsibleStaff || '').trim().toLowerCase()
+                return rs && rs === currentUsername.toLowerCase()
+              })
+              
+              // Priority 2: Bank account (if user has only bank account)
+              if (myBankAccount) {
+                const an = String(myBankAccount?.accountNumber || '')
+                const last4 = an ? an.slice(-4) : ''
+                const bankCode = String(myBankAccount?.financeAccountCode || (last4 ? `BANK_${last4}` : '')).trim().toUpperCase()
+                return { ...(prev as any), receivedToAccountCode: bankCode }
+              }
+              
               return prev as any
             })
           }
@@ -121,6 +149,8 @@ export default function Hospital_TokenGenerator() {
     paymentStatus: 'paid',
     consultationFee: '',
     discount: '0',
+    discountType: 'PKR' as 'PKR' | '%',
+    mrn: '',
   })
 
   function clamp0(n: any){
@@ -159,9 +189,16 @@ export default function Hospital_TokenGenerator() {
   const finalFee = useMemo(() => {
     const fee = parseFloat(form.consultationFee || '0')
     const discount = parseFloat(form.discount || '0')
-    const f = Math.max(fee - discount, 0)
+    const discountType = form.discountType
+    let discountAmount = 0
+    if (discountType === '%') {
+      discountAmount = fee * (discount / 100)
+    } else {
+      discountAmount = discount
+    }
+    const f = Math.max(fee - discountAmount, 0)
     return isNaN(f) ? 0 : f
-  }, [form.consultationFee, form.discount])
+  }, [form.consultationFee, form.discount, form.discountType])
 
   const [account, setAccount] = useState<{ dues: number; advance: number } | null>(null)
   const [accountLoading, setAccountLoading] = useState(false)
@@ -276,7 +313,10 @@ export default function Hospital_TokenGenerator() {
 
   const reset = () => {
     let keepPayTo = ''
-    try { keepPayTo = String(localStorage.getItem(payToStorageKey) || '').trim().toUpperCase() } catch {}
+    try { 
+      keepPayTo = String(localStorage.getItem(payToStorageKey) || '').trim().toUpperCase()
+      localStorage.removeItem(phoneStorageKey)
+    } catch {}
     setForm({
       phone: '',
       patientId: '',
@@ -296,6 +336,8 @@ export default function Hospital_TokenGenerator() {
       paymentStatus: 'paid',
       consultationFee: '',
       discount: '0',
+      discountType: 'PKR',
+      mrn: '',
     })
     setAmountReceivedNow('0')
     setPayPreviousDues(false)
@@ -403,6 +445,7 @@ export default function Hospital_TokenGenerator() {
       age: p.age || prev.age,
       phone: p.phoneNormalized || prev.phone,
       cnic: p.cnicNormalized || p.cnic || prev.cnic,
+      mrn: p.mrn || prev.mrn || '',
     }))
   }
 
@@ -562,6 +605,7 @@ export default function Hospital_TokenGenerator() {
           departmentId: form.departmentId,
           doctorId: form.doctor || undefined,
           discount: Number(form.discount) || 0,
+          discountType: form.discountType || 'PKR',
           paymentStatus: (form as any).paymentStatus || 'paid',
           receptionistName: (form as any).receptionistName || undefined,
           paymentMethod: (form as any).billingType || undefined,
@@ -608,7 +652,8 @@ export default function Hospital_TokenGenerator() {
           paymentMethod: String((res?.token?.paymentMethod ?? (form as any).billingType) || ''),
           accountNumberIban: String((res?.token?.accountNumberIban ?? (form as any).accountNumberIban) || ''),
           amount: isNaN(depAmt) ? 0 : depAmt,
-          discount: 0,
+          discount: Number(form.discount) || 0,
+          discountType: form.discountType || 'PKR',
           payable: isNaN(depAmt) ? 0 : depAmt,
           createdAt: res?.token?.createdAt,
         }
@@ -622,6 +667,7 @@ export default function Hospital_TokenGenerator() {
         departmentId: form.departmentId,
         doctorId: form.doctor || undefined,
         discount: Number(form.discount) || 0,
+        discountType: form.discountType || 'PKR',
         paymentStatus: (form as any).paymentStatus || 'paid',
         receptionistName: (form as any).receptionistName || undefined,
         paymentMethod: (form as any).billingType || undefined,
@@ -669,6 +715,7 @@ export default function Hospital_TokenGenerator() {
         accountNumberIban: String((res?.token?.accountNumberIban ?? (form as any).accountNumberIban) || ''),
         amount: Number((tok.amount ?? tok.fee ?? 0) || 0),
         discount: Number((tok.discount ?? 0) || 0),
+        discountType: (tok.discountType || 'PKR'),
         payable: Number((tok.fee ?? 0) || 0),
         amountReceived: paymentPreview.amountReceived,
         payPreviousDues: paymentPreview.payPreviousDues,
@@ -700,6 +747,10 @@ export default function Hospital_TokenGenerator() {
           <div className="rounded-lg border border-slate-200 bg-white p-4">
             <h3 className="mb-3 text-sm font-semibold text-slate-700">Patient Information</h3>
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              <div className="md:col-span-2">
+                <label className="mb-1 block text-sm font-medium text-slate-700">MR #</label>
+                <input className="w-full rounded-md border border-slate-300 px-3 py-2 bg-slate-50 text-slate-600 outline-none" value={form.mrn || 'auto'} disabled readOnly />
+              </div>
               <div className="md:col-span-2">
                 <label className="mb-1 block text-sm font-medium text-slate-700">Phone</label>
                 <input className="w-full rounded-md border border-slate-300 px-3 py-2 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-200" placeholder="Enter 11-digit phone" value={form.phone} onChange={e => { update('phone', e.target.value); skipLookupKeyRef.current = null; lastPromptKeyRef.current = null; lastPhonePromptRef.current = null; schedulePhoneLookup(e.target.value, { open: true }) }} onBlur={onPhoneBlur} ref={phoneRef} />
@@ -856,12 +907,22 @@ export default function Hospital_TokenGenerator() {
               </div>
               <div className="flex items-center justify-between py-2">
                 <div className="text-slate-600">Discount</div>
-                <input
-                  className="w-40 rounded-md border border-slate-300 px-3 py-1.5 text-right"
-                  placeholder="0"
-                  value={form.discount}
-                  onChange={e => update('discount', e.target.value)}
-                />
+                <div className="flex items-center gap-2">
+                  <input
+                    className="w-24 rounded-md border border-slate-300 px-3 py-1.5 text-right"
+                    placeholder="0"
+                    value={form.discount}
+                    onChange={e => update('discount', e.target.value)}
+                  />
+                  <select
+                    value={form.discountType}
+                    onChange={e => update('discountType', e.target.value)}
+                    className="rounded-md border border-slate-300 px-2 py-1.5 text-sm"
+                  >
+                    <option value="PKR">PKR</option>
+                    <option value="%">%</option>
+                  </select>
+                </div>
               </div>
               <div className="flex items-center justify-between py-2 font-semibold">
                 <div>Net Fee</div>
@@ -1008,6 +1069,7 @@ export default function Hospital_TokenGenerator() {
                     age: p.age || prev.age,
                     phone: p.phoneNormalized || prev.phone,
                     cnic: p.cnicNormalized || prev.cnic,
+                    mrn: p.mrn || prev.mrn || '',
                   }))
                 } finally { if (confirmPatient) skipLookupKeyRef.current = confirmPatient.key; setConfirmPatient(null) }
               }} className="rounded-md bg-violet-700 px-3 py-1.5 text-sm font-medium text-white">Apply</button>

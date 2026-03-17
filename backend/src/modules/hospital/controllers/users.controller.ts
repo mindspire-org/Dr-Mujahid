@@ -247,6 +247,15 @@ export async function login(req: Request, res: Response) {
     } catch { }
   }
 
+  // Check if user has permission for the requested portal (if scope/portal is specified)
+  const requestedPortal = req.body.portal || 'hospital' // default to hospital for backward compatibility
+  if (requestedPortal && requestedPortal !== 'any') {
+    const hasPortalAccess = Object.prototype.hasOwnProperty.call(rawPermissions, requestedPortal)
+    if (!hasPortalAccess) {
+      return res.status(403).json({ error: `You do not have permission to access the ${requestedPortal} portal.` })
+    }
+  }
+
   // Normalize permissions against the DB-driven access catalog.
   // During migration:
   // - `permissions` remains route-based so existing frontends keep working.

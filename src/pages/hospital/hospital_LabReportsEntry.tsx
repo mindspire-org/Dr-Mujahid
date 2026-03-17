@@ -6,6 +6,7 @@ import { hospitalApi } from '../../utils/api'
 
 type Token = {
   id: string
+  tokenNo: string
   createdAt: string
   patientName: string
   mrNo: string
@@ -198,7 +199,18 @@ export default function Hospital_LabReportsEntry() {
   const [tokens, setTokens] = useState<Token[]>([])
   const [labSavedTokenIds, setLabSavedTokenIds] = useState<string[]>([])
   const [patientKey, setPatientKey] = useState<string>('')
-  const [hxBy, setHxBy] = useState<string>('')
+  const currentUser = useMemo(() => {
+    try {
+      const raw = localStorage.getItem('hospital.session') || localStorage.getItem('user')
+      if (raw) {
+        const u = JSON.parse(raw)
+        return String(u?.username || u?.fullName || u?.name || '').trim()
+      }
+    } catch { }
+    return ''
+  }, [])
+
+  const [hxBy, setHxBy] = useState<string>(currentUser)
   const [hxDate, setHxDate] = useState<string>(todayIso)
   const [saving, setSaving] = useState(false)
   const [toast, setToast] = useState<null | { type: 'success' | 'error'; message: string }>(null)
@@ -215,7 +227,7 @@ export default function Hospital_LabReportsEntry() {
     setPatientKey('')
     setPrevEntryId('')
     setPrevEntries([])
-    setHxBy('')
+    setHxBy(currentUser)
     setHxDate(todayIso)
     setLabInformation(EMPTY_LAB_INFORMATION)
     setSemenAnalysis(EMPTY_SEMEN_ANALYSIS)
@@ -230,11 +242,12 @@ export default function Hospital_LabReportsEntry() {
   const [semenAnalysis, setSemenAnalysis] = useState<SemenAnalysis>(EMPTY_SEMEN_ANALYSIS)
 
   useEffect(() => {
-    ;(async () => {
+    ; (async () => {
       try {
         const res: any = await hospitalApi.listTokens({ from: from || undefined, to: to || undefined })
         const items: Token[] = (res?.tokens || []).map((t: any) => ({
           id: String(t._id || t.id),
+          tokenNo: String(t.tokenNo || ''),
           createdAt: String(t.createdAt || ''),
           patientName: String(t.patientId?.fullName || t.patientName || '-'),
           mrNo: String(t.patientId?.mrn || t.mrn || '-'),
@@ -251,28 +264,28 @@ export default function Hospital_LabReportsEntry() {
 
   useEffect(() => {
     let cancelled = false
-    ;(async () => {
-      try {
-        if (String(from || '') !== todayIso || String(to || '') !== todayIso) { setLabSavedTokenIds([]); return }
-        const mine = tokens.filter(t => !!t.encounterId)
-        const checks = await Promise.all(
-          mine.map(async (t) => {
-            try {
-              const res: any = await hospitalApi.getLabReportsEntry(String(t.encounterId))
-              const doc = res?.labReportsEntry
-              const has = !!(doc?._id) && (doc?.tests != null || doc?.labInformation != null || doc?.semenAnalysis != null || doc?.hxBy != null || doc?.hxDate != null)
-              return has ? String(t.id) : ''
-            } catch {
-              return ''
-            }
-          })
-        )
-        const ids = checks.filter(Boolean)
-        if (!cancelled) setLabSavedTokenIds(ids)
-      } catch {
-        if (!cancelled) setLabSavedTokenIds([])
-      }
-    })()
+      ; (async () => {
+        try {
+          if (String(from || '') !== todayIso || String(to || '') !== todayIso) { setLabSavedTokenIds([]); return }
+          const mine = tokens.filter(t => !!t.encounterId)
+          const checks = await Promise.all(
+            mine.map(async (t) => {
+              try {
+                const res: any = await hospitalApi.getLabReportsEntry(String(t.encounterId))
+                const doc = res?.labReportsEntry
+                const has = !!(doc?._id) && (doc?.tests != null || doc?.labInformation != null || doc?.semenAnalysis != null || doc?.hxBy != null || doc?.hxDate != null)
+                return has ? String(t.id) : ''
+              } catch {
+                return ''
+              }
+            })
+          )
+          const ids = checks.filter(Boolean)
+          if (!cancelled) setLabSavedTokenIds(ids)
+        } catch {
+          if (!cancelled) setLabSavedTokenIds([])
+        }
+      })()
     return () => { cancelled = true }
   }, [tokens, from, to, todayIso])
 
@@ -295,7 +308,7 @@ export default function Hospital_LabReportsEntry() {
       const key = t.id
       if (!key) continue
       if (savedSet.has(String(key))) continue
-      const label = `${t.patientName} • ${t.mrNo}`
+      const label = `${t.tokenNo} - ${t.patientName} • ${t.mrNo}`
       if (!map.has(key)) map.set(key, { key, label })
     }
     return Array.from(map.values())
@@ -312,7 +325,7 @@ export default function Hospital_LabReportsEntry() {
     setPatientKey('')
     setPrevEntryId('')
     setPrevEntries([])
-    setHxBy('')
+    setHxBy(currentUser)
     setHxDate(todayIso)
     setLabInformation(EMPTY_LAB_INFORMATION)
     setSemenAnalysis(EMPTY_SEMEN_ANALYSIS)
@@ -322,56 +335,56 @@ export default function Hospital_LabReportsEntry() {
   useEffect(() => {
     const encId = selectedEncounterId
     if (!encId) return
-    ;(async () => {
-      try {
-        const res: any = await hospitalApi.getLabReportsEntry(encId)
-        const doc = res?.labReportsEntry
+      ; (async () => {
+        try {
+          const res: any = await hospitalApi.getLabReportsEntry(encId)
+          const doc = res?.labReportsEntry
 
-        if (doc) {
-          setHxBy(String(doc.hxBy || ''))
-          setHxDate(String(doc.hxDate || todayIso))
-          setLabInformation({ ...EMPTY_LAB_INFORMATION, ...(doc.labInformation || {}) })
-          setSemenAnalysis({ ...EMPTY_SEMEN_ANALYSIS, ...(doc.semenAnalysis || {}) })
-          const list = Array.isArray(doc.tests) ? doc.tests : []
-          setTests(list.length ? (list as any) : [{ testName: '', normalValue: '', result: '', status: '' }])
-        } else {
-          setLabInformation(EMPTY_LAB_INFORMATION)
-          setSemenAnalysis(EMPTY_SEMEN_ANALYSIS)
-          setTests([{ testName: '', normalValue: '', result: '', status: '' }])
+          if (doc) {
+            setHxBy(String(doc.hxBy || ''))
+            setHxDate(String(doc.hxDate || todayIso))
+            setLabInformation({ ...EMPTY_LAB_INFORMATION, ...(doc.labInformation || {}) })
+            setSemenAnalysis({ ...EMPTY_SEMEN_ANALYSIS, ...(doc.semenAnalysis || {}) })
+            const list = Array.isArray(doc.tests) ? doc.tests : []
+            setTests(list.length ? (list as any) : [{ testName: '', normalValue: '', result: '', status: '' }])
+          } else {
+            setLabInformation(EMPTY_LAB_INFORMATION)
+            setSemenAnalysis(EMPTY_SEMEN_ANALYSIS)
+            setTests([{ testName: '', normalValue: '', result: '', status: '' }])
+          }
+        } catch {
+          // keep current state
         }
-      } catch {
-        // keep current state
-      }
-    })()
+      })()
   }, [selectedEncounterId])
 
   useEffect(() => {
     let cancelled = false
-    ;(async () => {
-      try {
-        setPrevEntries([])
-        setPrevEntryId('')
-        const pid = selectedToken?.patientId
-        if (!pid) return
-        const res: any = await hospitalApi.listLabReportsEntries({ patientId: pid, limit: 100 })
-        const rows: PrevLabReportsEntry[] = (res?.labReportsEntries || []).map((r: any) => ({
-          _id: String(r._id || r.id || ''),
-          submittedAt: r.submittedAt ? String(r.submittedAt) : undefined,
-          createdAt: r.createdAt ? String(r.createdAt) : undefined,
-          hxBy: r.hxBy != null ? String(r.hxBy) : undefined,
-          hxDate: r.hxDate != null ? String(r.hxDate) : undefined,
-          labInformation: r.labInformation,
-          semenAnalysis: r.semenAnalysis,
-          tests: r.tests,
-        })).filter((x: PrevLabReportsEntry) => !!x._id)
-        if (!cancelled) setPrevEntries(rows)
-      } catch {
-        if (!cancelled) {
+      ; (async () => {
+        try {
           setPrevEntries([])
           setPrevEntryId('')
+          const pid = selectedToken?.patientId
+          if (!pid) return
+          const res: any = await hospitalApi.listLabReportsEntries({ patientId: pid, limit: 100 })
+          const rows: PrevLabReportsEntry[] = (res?.labReportsEntries || []).map((r: any) => ({
+            _id: String(r._id || r.id || ''),
+            submittedAt: r.submittedAt ? String(r.submittedAt) : undefined,
+            createdAt: r.createdAt ? String(r.createdAt) : undefined,
+            hxBy: r.hxBy != null ? String(r.hxBy) : undefined,
+            hxDate: r.hxDate != null ? String(r.hxDate) : undefined,
+            labInformation: r.labInformation,
+            semenAnalysis: r.semenAnalysis,
+            tests: r.tests,
+          })).filter((x: PrevLabReportsEntry) => !!x._id)
+          if (!cancelled) setPrevEntries(rows)
+        } catch {
+          if (!cancelled) {
+            setPrevEntries([])
+            setPrevEntryId('')
+          }
         }
-      }
-    })()
+      })()
     return () => { cancelled = true }
   }, [selectedToken?.patientId, selectedToken?.id])
 
@@ -462,7 +475,7 @@ export default function Hospital_LabReportsEntry() {
           <div>
             <label className="mb-1 block text-sm text-slate-700">Reports Entered By</label>
             <div className="flex flex-wrap items-end gap-2">
-              <input value={hxBy} onChange={e => setHxBy(e.target.value)} className="min-w-[180px] flex-1 rounded-md border border-slate-300 px-3 py-2 text-sm" />
+              <input value={hxBy} disabled className="min-w-[180px] flex-1 rounded-md border border-slate-300 bg-slate-100 px-3 py-2 text-sm text-slate-600" />
               <div>
                 <label className="mb-1 block text-sm text-slate-700">Reports Entered at</label>
                 <input type="date" value={hxDate} onChange={e => setHxDate(e.target.value)} className="w-40 rounded-md border border-slate-300 px-3 py-2 text-sm" />
@@ -630,7 +643,7 @@ export default function Hospital_LabReportsEntry() {
                     const missing: string[] = []
                     const encId = selectedEncounterId
                     if (!encId) missing.push('Patient')
-                    if (!hxBy.trim()) missing.push('Reports Entered By')
+                    if (!hxBy.trim()) missing.push('User not authenticated')
                     if (!hxDate.trim()) missing.push('Reports Entered at')
 
                     if (missing.length) {

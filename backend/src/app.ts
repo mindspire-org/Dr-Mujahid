@@ -10,7 +10,14 @@ const app = express()
 
 const corsOrigin = env.NODE_ENV === 'development' ? true : env.CORS_ORIGIN
 app.use(cors({ origin: corsOrigin as any, credentials: true }))
-app.use(express.json({ limit: '100mb' }))
+
+// Skip JSON body parsing for file upload routes (multer handles these)
+app.use((req, res, next) => {
+  if (req.path === '/api/hospital/patients/import-excel' || req.path === '/api/hospital/patients/preview-excel') {
+    return next()
+  }
+  express.json({ limit: '100mb' })(req, res, next)
+})
 app.use(express.urlencoded({ extended: true }))
 app.use(morgan('dev'))
 

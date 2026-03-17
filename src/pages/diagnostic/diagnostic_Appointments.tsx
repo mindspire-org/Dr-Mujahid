@@ -55,6 +55,7 @@ type AppointmentForm = {
   guardianName: string
   cnic: string
   address: string
+  mrn: string
 
   appointmentDate: string
   appointmentTime: string
@@ -87,6 +88,7 @@ function emptyForm(): AppointmentForm {
     guardianName: '',
     cnic: '',
     address: '',
+    mrn: '',
 
     appointmentDate: '',
     appointmentTime: '',
@@ -177,6 +179,14 @@ function AppointmentDialog({
   const [form, setForm] = useState<AppointmentForm>(initial)
   const readonly = mode === 'view'
 
+  // Phone lookup state
+  const [selectPatientOpen, setSelectPatientOpen] = useState(false)
+  const [phoneMatches, setPhoneMatches] = useState<any[]>([])
+  const [phoneLookupLoading, setPhoneLookupLoading] = useState(false)
+  const phoneLookupTimerRef = useRef<any>(null)
+  const phoneLookupSeqRef = useRef(0)
+  const phoneRef = useRef<HTMLInputElement>(null)
+
   const [query, setQuery] = useState('')
   const [showTestDropdown, setShowTestDropdown] = useState(false)
   const testPickerRef = useRef<HTMLDivElement | null>(null)
@@ -186,7 +196,16 @@ function AppointmentDialog({
     setForm(initial)
     setQuery('')
     setShowTestDropdown(false)
+    setPhoneMatches([])
+    setSelectPatientOpen(false)
   }, [open, initial])
+
+  // Cleanup timer on unmount
+  useEffect(() => {
+    return () => {
+      if (phoneLookupTimerRef.current) clearTimeout(phoneLookupTimerRef.current)
+    }
+  }, [])
 
   useEffect(() => {
     function onDown(e: MouseEvent) {
@@ -210,6 +229,61 @@ function AppointmentDialog({
   if (!open) return null
 
   const update = (k: keyof AppointmentForm, v: string) => setForm(prev => ({ ...prev, [k]: v }))
+
+  async function runPhoneLookup(digits: string, { open }: { open: boolean }) {
+    const d = String(digits || '').replace(/\D+/g, '')
+    if (!d || d.length < 10) {
+      setPhoneMatches([])
+      setPhoneLookupLoading(false)
+      if (open) setSelectPatientOpen(false)
+      return
+    }
+    setPhoneLookupLoading(true)
+    const seq = ++phoneLookupSeqRef.current
+    try {
+      const r: any = await diagnosticApi.searchPatients({ phone: d, limit: 25 })
+      if (seq !== phoneLookupSeqRef.current) return
+      const list: any[] = Array.isArray(r?.patients) ? r.patients : []
+      setPhoneMatches(list)
+      if (open) setSelectPatientOpen(list.length >= 1)
+    } catch {
+      if (seq !== phoneLookupSeqRef.current) return
+      setPhoneMatches([])
+      if (open) setSelectPatientOpen(false)
+    } finally {
+      if (seq !== phoneLookupSeqRef.current) return
+      setPhoneLookupLoading(false)
+    }
+  }
+
+  function schedulePhoneLookup(rawPhone: string, { open }: { open: boolean }) {
+    const digits = String(rawPhone || '').replace(/\D+/g, '')
+    if (phoneLookupTimerRef.current) clearTimeout(phoneLookupTimerRef.current)
+    if (!digits || digits.length < 10) {
+      setPhoneMatches([])
+      setPhoneLookupLoading(false)
+      if (open) setSelectPatientOpen(false)
+      return
+    }
+    phoneLookupTimerRef.current = setTimeout(() => {
+      runPhoneLookup(digits, { open })
+    }, 250)
+  }
+
+  function applyPatientToForm(p: any) {
+    setForm(prev => ({
+      ...prev,
+      patientName: p.fullName || prev.patientName,
+      patientPhone: p.phoneNormalized || p.phone || prev.patientPhone,
+      patientAge: p.age != null ? String(p.age) : prev.patientAge,
+      patientGender: p.gender || prev.patientGender,
+      guardianRel: p.guardianRel || prev.guardianRel,
+      guardianName: p.fatherName || prev.guardianName,
+      cnic: p.cnicNormalized || p.cnic || prev.cnic,
+      address: p.address || prev.address,
+      mrn: p.mrn || '',
+    }))
+  }
 
   const getEffectivePrice = (id: string): number => {
     const base = Number((tests.find(t => t.id === id)?.price) || 0)
@@ -274,13 +348,21 @@ function AppointmentDialog({
             <div className="rounded-lg border border-slate-200 bg-white p-4">
               <div className="text-sm font-semibold text-slate-800">Patient Details</div>
               <div className="mt-4 grid gap-4 md:grid-cols-3">
+                <div>
+                  <label className="mb-1 block text-sm text-slate-700">MR Number</label>
+                  <input
+                    value={form.mrn || 'New Patient, MR not found'}
+                    disabled
+                    className="w-full rounded-md border border-slate-300 bg-slate-100 px-3 py-2 text-sm text-slate-600"
+                  />
+                </div>
                 <div className="md:col-span-2">
                   <label className="mb-1 block text-sm text-slate-700">Patient Name</label>
                   <input value={form.patientName} onChange={e => update('patientName', e.target.value)} disabled={readonly} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" required />
                 </div>
                 <div>
                   <label className="mb-1 block text-sm text-slate-700">Phone</label>
-                  <input value={form.patientPhone} onChange={e => update('patientPhone', e.target.value)} disabled={readonly} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
+                  <input value={form.patientPhone} onChange={e => { update('patientPhone', e.target.value); schedulePhoneLookup(e.target.value, { open: true }) }} disabled={readonly} ref={phoneRef} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
                 </div>
                 <div>
                   <label className="mb-1 block text-sm text-slate-700">Age</label>
@@ -318,6 +400,77 @@ function AppointmentDialog({
                 </div>
               </div>
             </div>
+
+            {/* Patient Selection Modal */}
+            {selectPatientOpen && (
+              <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 px-4">
+                <div className="w-full max-w-2xl overflow-hidden rounded-xl bg-white shadow-2xl ring-1 ring-black/5">
+                  <div className="flex items-center justify-between border-b border-slate-200 px-5 py-3">
+                    <div className="text-base font-semibold text-slate-800">Select Patient</div>
+                    <button
+                      onClick={() => { setSelectPatientOpen(false); setPhoneMatches([]); }}
+                      className="rounded-md border border-slate-300 px-3 py-1.5 text-sm"
+                    >
+                      Close
+                    </button>
+                  </div>
+
+                  <div className="max-h-[60vh] overflow-y-auto p-4">
+                    <div className="mb-3 text-sm text-slate-600">
+                      {phoneLookupLoading
+                        ? `Searching registered patients...`
+                        : (phoneMatches.length > 0
+                            ? `Found ${phoneMatches.length} patients on this phone number. Select one to autofill.`
+                            : `No registered patients found.`)
+                      }
+                    </div>
+
+                    {!phoneLookupLoading && phoneMatches.length === 0 && (
+                      <div className="rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
+                        You can continue by entering a new patient.
+                      </div>
+                    )}
+
+                    {phoneMatches.length > 0 && (
+                      <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                        {phoneMatches.map((p, idx) => (
+                          <button
+                            key={p._id || p.mrn || idx}
+                            type="button"
+                            onClick={() => {
+                              applyPatientToForm(p)
+                              setSelectPatientOpen(false)
+                              setPhoneMatches([])
+                            }}
+                            className="w-full rounded-lg border border-slate-200 p-4 text-left hover:border-violet-300 hover:bg-violet-50"
+                          >
+                            <div className="text-sm font-semibold text-slate-800">{p.fullName || 'Unnamed'}</div>
+                            <div className="mt-1 text-xs text-slate-600">MRN: {p.mrn || '-'}</div>
+                            <div className="mt-1 text-xs text-slate-600">Phone: {p.phoneNormalized || form.patientPhone}</div>
+                            {(p.age != null || p.gender) && (
+                              <div className="mt-1 text-xs text-slate-600">
+                                {p.age != null ? `Age: ${p.age}` : ''}{p.age != null && p.gender ? ' • ' : ''}{p.gender ? `Gender: ${p.gender}` : ''}
+                              </div>
+                            )}
+                            {p.address && <div className="mt-1 line-clamp-2 text-xs text-slate-600">Address: {p.address}</div>}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="flex items-center justify-end gap-2 border-t border-slate-200 px-5 py-3">
+                    <button
+                      type="button"
+                      onClick={() => { setSelectPatientOpen(false); setPhoneMatches([]); }}
+                      className="rounded-md border border-slate-300 px-3 py-1.5 text-sm"
+                    >
+                      Enter New Patient
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
 
             <div className="rounded-lg border border-slate-200 bg-white p-4">
               <div className="text-sm font-semibold text-slate-800">Tests Details</div>
@@ -461,6 +614,7 @@ export default function Diagnostic_Appointments() {
       guardianName: r.guardianName || '',
       cnic: r.cnic || '',
       address: r.address || '',
+      mrn: (r.patientId as any)?.mrn || '',
       appointmentDate: r.appointmentDate || '',
       appointmentTime: r.appointmentTime || '',
       referringConsultant: r.referringConsultant || '',

@@ -16,6 +16,7 @@ export default function Diagnostic_TokenGenerator() {
   const [guardianName, setGuardianName] = useState('')
   const [cnic, setCnic] = useState('')
   const [address, setAddress] = useState('')
+  const [mrn, setMrn] = useState('')
 
   // Selected existing patient (from Lab_Patient collection)
   const [selectedPatient, setSelectedPatient] = useState<any | null>(null)
@@ -103,6 +104,7 @@ export default function Diagnostic_TokenGenerator() {
                 }
                 setAddress(pat.address || '')
                 setCnic(pat.cnicNormalized || pat.cnic || '')
+                setMrn(pat.mrn || '')
                 autoMrnAppliedRef.current = true
               } catch { }
             })()
@@ -149,7 +151,14 @@ export default function Diagnostic_TokenGenerator() {
   const selectedTests = useMemo(() => selected.map(id => tests.find(t => t.id === id)).filter(Boolean) as Test[], [selected, tests])
   const subtotal = useMemo(() => selectedTests.reduce((s, t) => s + getEffectivePrice(t.id), 0), [selectedTests, corpCompanyId, corpTestPriceMap])
   const [discount, setDiscount] = useState('0')
-  const net = Math.max(0, subtotal - (Number(discount) || 0))
+  const [discountType, setDiscountType] = useState<'PKR' | '%'>('PKR')
+  const calculatedDiscount = useMemo(() => {
+    if (discountType === '%') {
+      return subtotal * (Number(discount) / 100)
+    }
+    return Number(discount) || 0
+  }, [subtotal, discount, discountType])
+  const net = Math.max(0, subtotal - calculatedDiscount)
 
   const [account, setAccount] = useState<{ dues: number; advance: number } | null>(null)
   const [accountLoading, setAccountLoading] = useState(false)
@@ -287,7 +296,38 @@ export default function Diagnostic_TokenGenerator() {
 
           if (mounted) {
             setPayToAccounts(opts)
-            setReceivedToAccountCode(prev => prev || myCode || '')
+            
+            // Determine auto-selection based on user's accounts
+            const existing = String(receivedToAccountCode || '').trim()
+            if (!existing) {
+              // Get current user info from session
+              let currentUsername = ''
+              try {
+                const session = JSON.parse(localStorage.getItem('hospital.session') || '{}')
+                currentUsername = String(session?.username || '').trim()
+              } catch {}
+              
+              // Find user's bank account (where responsibleStaff matches current user)
+              const myBankAccount = banks.find((b: any) => {
+                const rs = String(b?.responsibleStaff || '').trim().toLowerCase()
+                return rs && rs === currentUsername.toLowerCase()
+              })
+              
+              // Determine which account to auto-select
+              const hasPettyCash = !!myCode
+              const hasBankAccount = !!myBankAccount
+              
+              if (hasPettyCash) {
+                // Priority 1: Petty cash (if user has it)
+                setReceivedToAccountCode(myCode)
+              } else if (hasBankAccount) {
+                // Priority 2: Bank account (if user has only bank account)
+                const an = String(myBankAccount?.accountNumber || '')
+                const last4 = an ? an.slice(-4) : ''
+                const bankCode = String(myBankAccount?.financeAccountCode || (last4 ? `BANK_${last4}` : '')).trim().toUpperCase()
+                setReceivedToAccountCode(bankCode)
+              }
+            }
           }
         } catch {
           if (mounted) setPayToAccounts([])
@@ -382,11 +422,43 @@ export default function Diagnostic_TokenGenerator() {
     }
     setAddress(p.address || '')
     setCnic(p.cnicNormalized || p.cnic || '')
+    setMrn(p.mrn || '')
   }
 
-  // Slip modal
   const [slipOpen, setSlipOpen] = useState(false)
   const [slipData, setSlipData] = useState<DiagnosticTokenSlipData | null>(null)
+  const [shouldPrint, setShouldPrint] = useState(false)
+
+  const resetForm = () => {
+    setFullName('')
+    setPhone('')
+    setAge('')
+    setGender('')
+    setGuardianRel('')
+    setGuardianName('')
+    setCnic('')
+    setAddress('')
+    setMrn('')
+    setSelectedPatient(null)
+    setSelected([])
+    setQuery('')
+    setDiscount('0')
+    setDiscountType('PKR')
+    setAmountReceivedNow('0')
+    setPayPreviousDues(false)
+    setUseAdvance(false)
+    setCorpCompanyId('')
+    setCorpPreAuthNo('')
+    setCorpCoPayPercent('')
+    setCorpCoverageCap('')
+    setReferringConsultant('')
+    setFromReferralId('')
+    setRequestedTests([])
+    autoMrnAppliedRef.current = false
+    lastPhonePromptRef.current = null
+    lastPromptKeyRef.current = null
+    skipLookupKeyRef.current = null
+  }
 
   async function lookupExistingByPhoneAndName(source: 'phone' | 'name' = 'phone') {
     const digits = (phone || '').replace(/\D+/g, '')
@@ -482,6 +554,7 @@ export default function Diagnostic_TokenGenerator() {
         tests: testIds,
         subtotal,
         discount: Number(discount) || 0,
+        discountType: discountType || 'PKR',
         net,
         payPreviousDues: paymentStatus === 'unpaid' ? false : payPreviousDues,
         useAdvance: paymentStatus === 'unpaid' ? false : useAdvance,
@@ -518,6 +591,7 @@ export default function Diagnostic_TokenGenerator() {
         tests: slipRows,
         subtotal,
         discount: Number(discount) || 0,
+        discountType: discountType || 'PKR',
         payable: net,
         paymentStatus,
         amountReceived: paymentStatus === 'unpaid' ? 0 : Math.max(0, Number(amountReceivedNow || 0)),
@@ -539,6 +613,8 @@ export default function Diagnostic_TokenGenerator() {
       }
       setSlipData(data)
       setSlipOpen(true)
+      setShouldPrint(true)
+      resetForm()
     } catch (e: any) {
       alert(e?.message || 'Failed to create order')
     }
@@ -551,6 +627,10 @@ export default function Diagnostic_TokenGenerator() {
         <div className="text-base font-semibold text-slate-800">Patient Details</div>
         <div className="text-xs text-slate-500">Fill all required details to generate a token</div>
         <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <div className="sm:col-span-2">
+            <label className="mb-1 block text-xs font-medium text-slate-600">MR #</label>
+            <input value={mrn || 'auto'} disabled readOnly className="w-full rounded-md border border-slate-300 bg-slate-100 px-3 py-2 text-sm text-slate-600 cursor-not-allowed" />
+          </div>
           <div>
             <label className="mb-1 block text-xs font-medium text-slate-600">Phone *</label>
             <input value={phone} onChange={e => { setPhone(e.target.value); skipLookupKeyRef.current = null; lastPromptKeyRef.current = null; lastPhonePromptRef.current = null }} ref={phoneRef} onBlur={onPhoneBlur} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" placeholder="03XXXXXXXXX" />
@@ -714,7 +794,22 @@ export default function Diagnostic_TokenGenerator() {
           </div>
           <div className="flex flex-wrap items-center justify-between py-2 gap-2">
             <div className="text-slate-600">Discount</div>
-            <input value={discount} onChange={e => setDiscount(e.target.value)} className="w-full sm:w-40 rounded-md border border-slate-300 px-3 py-1.5 text-right" placeholder="0" />
+            <div className="flex items-center gap-2">
+              <input
+                value={discount}
+                onChange={e => setDiscount(e.target.value)}
+                className="w-24 rounded-md border border-slate-300 px-3 py-1.5 text-right"
+                placeholder="0"
+              />
+              <select
+                value={discountType}
+                onChange={e => setDiscountType(e.target.value as 'PKR' | '%')}
+                className="rounded-md border border-slate-300 px-2 py-1.5 text-sm"
+              >
+                <option value="PKR">PKR</option>
+                <option value="%">%</option>
+              </select>
+            </div>
           </div>
           <div className="flex items-center justify-between py-2 font-bold text-lg text-slate-900 border-t border-slate-300 mt-1 pt-3">
             <div>Net Amount</div>
@@ -826,8 +921,9 @@ export default function Diagnostic_TokenGenerator() {
       {slipOpen && slipData && (
         <Diagnostic_TokenSlip
           open={slipOpen}
-          onClose={() => setSlipOpen(false)}
+          onClose={() => { setSlipOpen(false); setShouldPrint(false) }}
           data={slipData}
+          autoPrint={shouldPrint}
           user={(() => {
             try {
               const raw = localStorage.getItem('reception.session') || localStorage.getItem('hospital.session') || localStorage.getItem('diagnostic.user')
@@ -914,6 +1010,7 @@ export default function Diagnostic_TokenGenerator() {
                   if (p.guardianRel) setGuardianRel(String(p.guardianRel))
                   setAddress(p.address || '')
                   setCnic(p.cnicNormalized || p.cnic || '')
+                  setMrn(p.mrn || '')
                 } finally { if (confirmPatient) skipLookupKeyRef.current = confirmPatient.key; setConfirmPatient(null) }
               }} className="rounded-md bg-violet-700 px-3 py-1.5 text-sm font-medium text-white">Apply</button>
             </div>

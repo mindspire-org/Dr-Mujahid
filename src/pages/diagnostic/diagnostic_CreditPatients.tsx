@@ -72,7 +72,7 @@ function PayDialog({ open, onClose, row, payToAccounts, onPaid }: { open: boolea
     setAmount(String(clamp0(row.dues)))
     setPaymentMethod('Cash')
     setAccountNumberIban('')
-    setReceivedToAccountCode('')
+    setReceivedToAccountCode(localStorage.getItem('last_selected_pay_account') || '')
     setReceptionistName('')
     setNote('')
   }, [open, row?.patientId])
@@ -332,8 +332,10 @@ export default function Diagnostic_CreditPatients() {
             hospitalApi.listBankAccounts(),
             hospitalApi.listPettyCashAccounts(),
           ]) as any
-          let mineRes: any = null
-          try { mineRes = await hospitalApi.myPettyCash() as any } catch { mineRes = null }
+          
+          let userPettyCode = ''
+          const sessionRaw = localStorage.getItem('hospital.session')
+          const currentUser = sessionRaw ? JSON.parse(sessionRaw)?.username : ''
 
           const opts: Array<{ code: string; label: string }> = []
           const seen = new Set<string>()
@@ -345,19 +347,15 @@ export default function Diagnostic_CreditPatients() {
             opts.push({ code: c, label: String(label || c) })
           }
 
-          const myCode = String(mineRes?.account?.code || '').trim().toUpperCase()
-          if (myCode) {
-            add(myCode, `${mineRes?.account?.name || 'My Petty Cash'} (${myCode})`)
-          }
-
           const petty: any[] = pettyRes?.accounts || []
           for (const p of petty) {
             const code = String(p?.code || '').trim().toUpperCase()
             if (!code) continue
             const rs = String(p?.responsibleStaff || '').trim()
-            if (rs) continue
+            if (rs && rs !== currentUser) continue
             if (String(p?.status || 'Active') !== 'Active') continue
             add(code, `${String(p?.name || code).trim()} (${code})`)
+            if (rs === currentUser) userPettyCode = code
           }
 
           const banks: any[] = bankRes?.accounts || []
@@ -370,7 +368,12 @@ export default function Diagnostic_CreditPatients() {
             add(code, bankLabel ? `${bankLabel} (${code})` : code)
           }
 
-          if (mounted) setPayToAccounts(opts)
+          if (mounted) {
+            setPayToAccounts(opts)
+            if (userPettyCode) {
+              localStorage.setItem('last_selected_pay_account', userPettyCode)
+            }
+          }
         } catch {
           if (mounted) setPayToAccounts([])
         }

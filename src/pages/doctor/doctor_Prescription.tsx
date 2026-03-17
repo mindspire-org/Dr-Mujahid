@@ -1,14 +1,16 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Plus, Trash2, X } from 'lucide-react'
+import { Plus, Trash2, X, Eye, BookmarkPlus } from 'lucide-react'
 import { hospitalApi, labApi, pharmacyApi } from '../../utils/api'
 import { previewPrescriptionPdf } from '../../utils/prescriptionPdf'
 import type { PrescriptionPdfTemplate } from '../../utils/prescriptionPdf'
+import { mergeHistoryWithEdits, collectAllHistoryEdits, type HistorySection } from '../../utils/historyEdits'
 import Doctor_IpdReferralForm from '../../components/doctor/Doctor_IpdReferralForm'
 import { previewIpdReferralPdf } from '../../utils/ipdReferralPdf'
 import PrescriptionPrint from '../../components/doctor/PrescriptionPrint'
 import SuggestField from '../../components/SuggestField'
 import PrescriptionDiagnosticOrders from '../../components/doctor/PrescriptionDiagnosticOrders'
 import { useLocation } from 'react-router-dom'
+import { AddTemplateDialog, ViewTemplatesDialog, type LabTemplate } from '../../components/doctor/LabTemplateDialogs'
 
 type DoctorSession = { id: string; name: string; username: string }
 
@@ -262,7 +264,18 @@ export default function Doctor_Prescription() {
   const [prefillTokenId, setPrefillTokenId] = useState<string>('')
   const [prefillEncounterId, setPrefillEncounterId] = useState<string>('')
 
-  const [hxBy, setHxBy] = useState<string>('')
+  const currentUser = useMemo(() => {
+    try {
+      const raw = localStorage.getItem('hospital.session') || localStorage.getItem('user')
+      if (raw) {
+        const u = JSON.parse(raw)
+        return String(u?.username || u?.fullName || u?.name || '').trim()
+      }
+    } catch { }
+    return ''
+  }, [])
+
+  const [hxBy, setHxBy] = useState<string>(currentUser)
   const [hxDate, setHxDate] = useState<string>(today)
   const [historyTakingId, setHistoryTakingId] = useState<string>('')
   const [labReportsEntryId, setLabReportsEntryId] = useState<string>('')
@@ -308,6 +321,8 @@ export default function Doctor_Prescription() {
     stressful: false,
   })
   const emptyMarriage = {
+    status: '' as '' | 'Married' | 'To Go',
+    timePeriod: '',
     years: '',
     months: '',
     divorce: '',
@@ -333,6 +348,7 @@ export default function Doctor_Prescription() {
   }
   const [maritalStatus, setMaritalStatus] = useState({
     status: '' as '' | 'Married' | 'To Go' | 'Single',
+    timePeriod: '',
     marriages: [emptyMarriage],
   })
   const [coitus, setCoitus] = useState({
@@ -346,21 +362,7 @@ export default function Doctor_Prescription() {
     previousFrequency: '',
   })
   const [health, setHealth] = useState({
-    conditions: {
-      ihd: false,
-      epiL: false,
-      giPu: false,
-      ky: false,
-      liv: false,
-      hrd: false,
-      thy: false,
-      accident: false,
-      surgery: false,
-      obesity: false,
-      penileTruma: false,
-      otherChecked: false,
-      otherText: '',
-    },
+    selectedConditions: [] as string[],
     diabetes: { me: false, father: false, mother: false, since: '', medicineTaking: '' },
     hypertension: { me: false, father: false, mother: false, since: '', medicineTaking: '' },
     drugHistory: { wine: false, weed: false, tobacco: false, gutka: false, naswar: false, pan: false, other: '', quit: '' },
@@ -384,9 +386,12 @@ export default function Doctor_Prescription() {
       other: '',
     },
     pe: {
-      preJustType: '' as '' | 'Pre' | 'Just',
-      preJustValue: '',
-      preJustUnit: '' as '' | 'Sec' | 'JK' | 'Min',
+      pre: false,
+      preValue: '',
+      preUnit: '' as '' | 'Sec' | 'JK' | 'Min',
+      just: false,
+      justValue: '',
+      justUnit: '' as '' | 'Sec' | 'JK' | 'Min',
       sinceValue: '',
       sinceUnit: '' as '' | 'Year' | 'Month' | 'Week' | 'Day',
       other: '',
@@ -397,15 +402,27 @@ export default function Doctor_Prescription() {
       onThoughts: false,
       pornAddiction: false,
       other: '',
-      status: '' as '' | 'No issue' | 'ER↓' | 'Weakness',
+      status: {
+        noIssue: false,
+        erDown: false,
+        weakness: false,
+      },
     },
     ud: {
       status: '' as '' | 'Yes' | 'No',
       other: '',
     },
     pSize: {
-      status: '' as '' | 'Small' | 'Shrink' | 'Bent',
-      bentSide: '' as '' | 'Left' | 'Right',
+      bent: false,
+      bentLeft: false,
+      bentRight: false,
+      small: false,
+      smallHead: false,
+      smallBody: false,
+      smallTip: false,
+      smallMid: false,
+      smallBase: false,
+      shrink: false,
       boeing: '' as '' | 'Yes' | 'No',
     },
     inf: {
@@ -426,7 +443,9 @@ export default function Doctor_Prescription() {
       others: '',
     },
     oeMuscle: {
-      status: '' as '' | 'OK' | 'Semi' | 'FL',
+      ok: false,
+      semi: false,
+      fl: false,
     },
     oe: {
       disease: {
@@ -443,8 +462,8 @@ export default function Doctor_Prescription() {
       varicocele: {
         right: false,
         left: false,
-        rightGrades: { g1: false, g2: false, g3: false },
-        leftGrades: { g1: false, g2: false, g3: false },
+        rightGrades: { g1: false, g2: false, g3: false, g4: false },
+        leftGrades: { g1: false, g2: false, g3: false, g4: false },
       },
     },
     uss: {
@@ -563,6 +582,59 @@ export default function Doctor_Prescription() {
   const [therapyMachineAddOptions, setTherapyMachineAddOptions] = useState<string[]>([''])
   const [therapyMachineAddFields, setTherapyMachineAddFields] = useState<string[]>([''])
 
+  // Text color picker for history taking
+  const [selectedColor, _setSelectedColor] = useState<'black' | 'blue' | 'red' | 'green'>('black')
+  const colorClasses = {
+    black: 'text-black',
+    blue: 'text-blue-600',
+    red: 'text-red-600',
+    green: 'text-green-600',
+  }
+
+  // Health conditions management (like hospital portal)
+  const defaultHealthConditions = [
+    'IHD',
+    'Epi.L',
+    'GI/PU',
+    'KY',
+    'LIV',
+    'HrD',
+    'Thy',
+    'Accident',
+    'Surgery',
+    'Obesity',
+    'Penile Truma',
+  ] as const
+
+  const [hiddenHealthConditions, setHiddenHealthConditions] = useState<string[]>(() => {
+    try {
+      const saved = localStorage.getItem('doctor.historyTaking_hiddenHealthConditions')
+      if (saved) {
+        const parsed = JSON.parse(saved)
+        if (Array.isArray(parsed)) return parsed
+      }
+    } catch { /* ignore */ }
+    return []
+  })
+  const [customHealthConditions, setCustomHealthConditions] = useState<string[]>(() => {
+    try {
+      const saved = localStorage.getItem('doctor.historyTaking_customHealthConditions')
+      if (saved) {
+        const parsed = JSON.parse(saved)
+        if (Array.isArray(parsed)) return parsed
+      }
+    } catch { /* ignore */ }
+    return []
+  })
+
+  // Dialog states for Add Condition
+  const [isAddConditionDialogOpen, setIsAddConditionDialogOpen] = useState(false)
+  const [addConditionInputs, setAddConditionInputs] = useState<string[]>([''])
+
+  // Dialog states for Delete Confirmation
+  const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false)
+  const [deleteConfirmItem, setDeleteConfirmItem] = useState<{ type: 'default' | 'custom'; value: string } | null>(null)
+
   const [counselling, setCounselling] = useState({
     lcc: '' as '' | 'Yes' | 'No',
     lccMonth: '',
@@ -606,12 +678,36 @@ export default function Doctor_Prescription() {
   const diagRef = useRef<any>(null)
   const [sugVersion, setSugVersion] = useState(0)
   const [medNameSuggestions, setMedNameSuggestions] = useState<string[]>([])
+
+  // Preload medicines from pharmacy inventory on mount
+  useEffect(() => {
+    ;(async () => {
+      try {
+        const res: any = await pharmacyApi.getAllMedicines()
+        const list: string[] = Array.isArray(res?.medicines)
+          ? res.medicines.map((m: any) => String(m.name || '').trim()).filter(Boolean)
+          : Array.isArray(res?.suggestions)
+            ? res.suggestions.map((m: any) => String(m.name || '').trim()).filter(Boolean)
+            : []
+        setMedNameSuggestions(list)
+      } catch {
+        // Silently fail - will use empty suggestions until user searches
+      }
+    })()
+  }, [])
+
   const [labTestsInput, setLabTestsInput] = useState<string>('')
   const [isLabOrderDialogOpen, setIsLabOrderDialogOpen] = useState(false)
   const [labOrderDraft, setLabOrderDraft] = useState('')
   const [hiddenLabQuickTests, setHiddenLabQuickTests] = useState<string[]>([])
   const [customLabOrderTests, setCustomLabOrderTests] = useState<string[]>([])
   const [labOrderRemoveDialog, setLabOrderRemoveDialog] = useState<null | { kind: 'quick' | 'custom'; name: string }>(null)
+
+  // Lab Template states
+  const [isAddTemplateDialogOpen, setIsAddTemplateDialogOpen] = useState(false)
+  const [isViewTemplatesDialogOpen, setIsViewTemplatesDialogOpen] = useState(false)
+  const [labTemplates, setLabTemplates] = useState<LabTemplate[]>([])
+  const [isLoadingTemplates, setIsLoadingTemplates] = useState(false)
 
   useEffect(() => {
     const key = `doctor.therapyMachines.hidden.${doc?.id || 'anon'}`
@@ -703,7 +799,56 @@ export default function Doctor_Prescription() {
   }
 
   const checkboxCardLabelCls = (checked: boolean) =>
-    `flex items-center gap-2 rounded-md border ${checked ? 'border-blue-800' : 'border-slate-200'} bg-white px-3 py-2 text-sm text-slate-700 hover:border-blue-800`
+    `flex items-center gap-2 rounded-md border ${checked ? 'border-blue-800' : 'border-slate-200'} bg-white px-3 py-2 text-sm ${inputColorCls()} hover:border-blue-800`
+
+  // Helper to get text color class for inputs
+  const inputColorCls = () => colorClasses[selectedColor]
+
+  const hiddenHealthConditionsSet = useMemo(() => new Set(hiddenHealthConditions.map(s => String(s || '').trim()).filter(Boolean)), [hiddenHealthConditions])
+
+  const addHealthCondition = (vRaw: string, autoSelect: boolean = false) => {
+    const v = String(vRaw || '').trim()
+    if (!v) return
+    if (!(defaultHealthConditions as readonly string[]).includes(v)) {
+      setCustomHealthConditions(prev => [...prev, v])
+    }
+    if (autoSelect && !health.selectedConditions.includes(v)) {
+      setHealth(s => ({ ...s, selectedConditions: [...s.selectedConditions, v] }))
+    }
+  }
+
+  const removeHealthCondition = (vRaw: string) => {
+    const v = String(vRaw || '').trim()
+    if (!v) return
+    setHealth(s => ({ ...s, selectedConditions: s.selectedConditions.filter(x => x !== v) }))
+  }
+
+  const toggleHealthCondition = (v: string) => {
+    const checked = health.selectedConditions.includes(v)
+    if (checked) {
+      setHealth(s => ({ ...s, selectedConditions: s.selectedConditions.filter(x => x !== v) }))
+    } else {
+      setHealth(s => ({ ...s, selectedConditions: [...s.selectedConditions, v] }))
+    }
+  }
+
+  // Save custom health conditions to localStorage whenever they change
+  useEffect(() => {
+    try {
+      localStorage.setItem('doctor.historyTaking_customHealthConditions', JSON.stringify(customHealthConditions))
+    } catch {
+      // Ignore localStorage errors
+    }
+  }, [customHealthConditions])
+
+  // Save hidden health conditions to localStorage whenever they change
+  useEffect(() => {
+    try {
+      localStorage.setItem('doctor.historyTaking_hiddenHealthConditions', JSON.stringify(hiddenHealthConditions))
+    } catch {
+      // Ignore localStorage errors
+    }
+  }, [hiddenHealthConditions])
 
   const ord = (n: number) => {
     const j = n % 10
@@ -1120,13 +1265,19 @@ export default function Doctor_Prescription() {
   }, [tokens, doc, presEncounterIds])
 
   const allPatients = useMemo(() => {
+    const presSet = new Set(presEncounterIds.filter(Boolean))
     const list = [...myPatients]
     if (forcedToken) {
       const exists = list.some(t => String(t.encounterId) === String(forcedToken.encounterId))
       if (!exists) list.unshift(forcedToken)
     }
-    return list
-  }, [myPatients, forcedToken])
+    // Final safety filter to ensure no already-prescribed patients appear in the dropdown
+    // unless it's a forced token (e.g. editing an existing one)
+    return list.filter(t => {
+      if (forcedToken && String(t.encounterId) === String(forcedToken.encounterId)) return true
+      return !t.encounterId || !presSet.has(String(t.encounterId))
+    })
+  }, [myPatients, forcedToken, presEncounterIds])
 
   useEffect(() => {
     if (!prefillTokenId) return
@@ -1148,8 +1299,13 @@ export default function Doctor_Prescription() {
     try {
       if (!q || q.trim().length < 2) { setMedNameSuggestions([]); return }
       const res: any = await pharmacyApi.searchMedicines(q.trim())
-      const list: string[] = Array.isArray(res?.medicines) ? res.medicines.map((m: any) => String(m.name || m.genericName || '').trim()).filter(Boolean) :
-        Array.isArray(res) ? res.map((m: any) => String(m.name || m.genericName || m || '').trim()).filter(Boolean) : []
+      const list: string[] = Array.isArray(res?.suggestions)
+        ? res.suggestions.map((m: any) => String(m.name || '').trim()).filter(Boolean)
+        : Array.isArray(res?.medicines)
+          ? res.medicines.map((m: any) => String(m.name || m.genericName || '').trim()).filter(Boolean)
+          : Array.isArray(res)
+            ? res.map((m: any) => String(m.name || m.genericName || m || '').trim()).filter(Boolean)
+            : []
       const uniq = Array.from(new Set(list))
       setMedNameSuggestions(uniq.slice(0, 20))
     } catch { setMedNameSuggestions([]) }
@@ -1347,6 +1503,7 @@ export default function Doctor_Prescription() {
   const [showPrevPrescriptionsDlg, setShowPrevPrescriptionsDlg] = useState(false)
 
   const [prevHistoryViewId, setPrevHistoryViewId] = useState<string>('')
+  const [prevHistoryViewPrescription, setPrevHistoryViewPrescription] = useState<any>(null)
   const [prevLabEntryViewId, setPrevLabEntryViewId] = useState<string>('')
 
   const openPreviousPrescriptionPdf = async (prescriptionId: string) => {
@@ -1558,6 +1715,27 @@ export default function Doctor_Prescription() {
     return () => { cancelled = true }
   }, [sel?.mrNo])
 
+  // Fetch prescription for history view to get historyEdits
+  useEffect(() => {
+    if (!prevHistoryViewId) {
+      setPrevHistoryViewPrescription(null)
+      return
+    }
+    let cancelled = false
+    ;(async () => {
+      try {
+        // Use historyTakingId to find the correct prescription
+        const res: any = await hospitalApi.getPrescriptionByHistoryTakingId(prevHistoryViewId)
+        if (!cancelled && res?.prescription) {
+          setPrevHistoryViewPrescription(res.prescription)
+        }
+      } catch {
+        if (!cancelled) setPrevHistoryViewPrescription(null)
+      }
+    })()
+    return () => { cancelled = true }
+  }, [prevHistoryViewId])
+
   useEffect(() => {
     if (!previousVisitOpen) return
     if (!sel?.mrNo) {
@@ -1664,32 +1842,33 @@ export default function Doctor_Prescription() {
 
   const getEmptyMaritalStatus = () => ({
     status: '' as '' | 'Married' | 'To Go' | 'Single',
-    marriages: [
-      {
-        years: '',
-        months: '',
-        divorce: '',
-        separation: '',
-        reas: '',
-        ageOfWife: '',
-        educationOfWife: '',
-        marriageType: {
-          loveMarriage: false,
-          arrangeMarriage: false,
-          like: false,
-        },
-        mutualSatisfaction: '' as '' | 'Satisfactory' | 'Non-Satisfactory',
-        mutualCooperation: '' as '' | 'Cooperative' | 'Non Cooperative',
-        childStatus: '' as '' | 'No Plan' | 'Trying',
-        childStatus2: {
-          minors: false,
-          pregnant: false,
-          abortion: false,
-          male: '',
-          female: '',
-        },
+    timePeriod: '',
+    marriages: [{
+      status: '' as '' | 'Married' | 'To Go',
+      timePeriod: '',
+      years: '',
+      months: '',
+      divorce: '',
+      separation: '',
+      reas: '',
+      ageOfWife: '',
+      educationOfWife: '',
+      marriageType: {
+        loveMarriage: false,
+        arrangeMarriage: false,
+        like: false,
       },
-    ],
+      mutualSatisfaction: '' as '' | 'Satisfactory' | 'Non-Satisfactory',
+      mutualCooperation: '' as '' | 'Cooperative' | 'Non Cooperative',
+      childStatus: '' as '' | 'No Plan' | 'Trying',
+      childStatus2: {
+        minors: false,
+        pregnant: false,
+        abortion: false,
+        male: '',
+        female: '',
+      },
+    }],
   })
 
   const getEmptyCoitus = () => ({
@@ -1704,21 +1883,7 @@ export default function Doctor_Prescription() {
   })
 
   const getEmptyHealth = () => ({
-    conditions: {
-      ihd: false,
-      epiL: false,
-      giPu: false,
-      ky: false,
-      liv: false,
-      hrd: false,
-      thy: false,
-      accident: false,
-      surgery: false,
-      obesity: false,
-      penileTruma: false,
-      otherChecked: false,
-      otherText: '',
-    },
+    selectedConditions: [] as string[],
     diabetes: { me: false, father: false, mother: false, since: '', medicineTaking: '' },
     hypertension: { me: false, father: false, mother: false, since: '', medicineTaking: '' },
     drugHistory: { wine: false, weed: false, tobacco: false, gutka: false, naswar: false, pan: false, other: '', quit: '' },
@@ -1743,9 +1908,12 @@ export default function Doctor_Prescription() {
       other: '',
     },
     pe: {
-      preJustType: '' as '' | 'Pre' | 'Just',
-      preJustValue: '',
-      preJustUnit: '' as '' | 'Sec' | 'JK' | 'Min',
+      pre: false,
+      preValue: '',
+      preUnit: '' as '' | 'Sec' | 'JK' | 'Min',
+      just: false,
+      justValue: '',
+      justUnit: '' as '' | 'Sec' | 'JK' | 'Min',
       sinceValue: '',
       sinceUnit: '' as '' | 'Year' | 'Month' | 'Week' | 'Day',
       other: '',
@@ -1756,15 +1924,27 @@ export default function Doctor_Prescription() {
       onThoughts: false,
       pornAddiction: false,
       other: '',
-      status: '' as '' | 'No issue' | 'ER↓' | 'Weakness',
+      status: {
+        noIssue: false,
+        erDown: false,
+        weakness: false,
+      },
     },
     ud: {
       status: '' as '' | 'Yes' | 'No',
       other: '',
     },
     pSize: {
-      status: '' as '' | 'Small' | 'Shrink' | 'Bent',
-      bentSide: '' as '' | 'Left' | 'Right',
+      bent: false,
+      bentLeft: false,
+      bentRight: false,
+      small: false,
+      smallHead: false,
+      smallBody: false,
+      smallTip: false,
+      smallMid: false,
+      smallBase: false,
+      shrink: false,
       boeing: '' as '' | 'Yes' | 'No',
     },
     inf: {
@@ -1785,7 +1965,9 @@ export default function Doctor_Prescription() {
       others: '',
     },
     oeMuscle: {
-      status: '' as '' | 'OK' | 'Semi' | 'FL',
+      ok: false,
+      semi: false,
+      fl: false,
     },
     oe: {
       disease: {
@@ -1802,8 +1984,8 @@ export default function Doctor_Prescription() {
       varicocele: {
         right: false,
         left: false,
-        rightGrades: { g1: false, g2: false, g3: false },
-        leftGrades: { g1: false, g2: false, g3: false },
+        rightGrades: { g1: false, g2: false, g3: false, g4: false },
+        leftGrades: { g1: false, g2: false, g3: false, g4: false },
       },
     },
     uss: {
@@ -1890,7 +2072,7 @@ export default function Doctor_Prescription() {
 
   const resetAllTabs = (opts?: { keepPatientKey?: string | number }) => {
     const keepPatientKey = opts?.keepPatientKey == null ? '' : String(opts.keepPatientKey)
-    setHxBy('')
+    setHxBy(currentUser)
     setHxDate(today)
     setHistoryTakingId('')
     historyTakingBaselineRef.current = ''
@@ -1995,9 +2177,33 @@ export default function Doctor_Prescription() {
         duration: (m.durationText && m.durationText.trim()) ? m.durationText.trim() : (m.days ? `${m.days} ${m.durationUnit || 'day(s)'}` : undefined),
         notes: (m.route || m.instruction) ? [m.route ? `Route: ${m.route}` : null, m.instruction ? `Instruction: ${m.instruction}` : null].filter(Boolean).join('; ') : undefined,
       }))
-    if (!items.length) { alert('Add at least one medicine'); return }
     const labTests = form.labTestsText.split(/\n|,/).map(s => s.trim()).filter(Boolean)
     const therapyTests = String((form as any).therapyTestsText || '').split(/\n|,/).map(s => s.trim()).filter(Boolean)
+
+    // Collect latest diagnostic and therapy data for validation
+    let dRaw: any = undefined
+    try { dRaw = diagRef.current?.getData?.() } catch { }
+    let diagTests = Array.isArray(dRaw?.tests) && dRaw?.tests?.length ? dRaw?.tests : undefined
+    let diagNotes = dRaw?.notes || undefined
+    if ((!diagTests || !diagTests.length) && !diagNotes) {
+      const dd = (form as any).diagDisplay || {}
+      const tests = String(dd.testsText || '').split(/\n|,/).map((s: string) => s.trim()).filter(Boolean)
+      diagTests = tests.length ? tests : undefined
+      diagNotes = String(dd.notes || '').trim() || undefined
+    }
+
+    // Validation: At least one of the 5 required sections must have data
+    const hasLab = labTests.length > 0 || (form.labNotes || '').trim().length > 0
+    const hasDiag = (diagTests && diagTests.length > 0) || (diagNotes || '').trim().length > 0
+    const hasTherapy = therapyTests.length > 0 || ((form as any).therapyNotes || '').trim().length > 0 || (therapyPlan?.months || therapyPlan?.days || therapyPlan?.packages) ? true : false
+    const hasMedicine = items.length > 0
+    const hasCounselling = !!(counselling?.lcc || counselling?.lccMonth || counselling?.package?.d4 || counselling?.package?.r4 || counselling?.note)
+
+    if (!hasLab && !hasDiag && !hasTherapy && !hasMedicine && !hasCounselling) {
+      showToast('error', 'Please enter data in at least one tab (Lab, Diagnostic, Therapy, Medicine, or Counselling)')
+      return
+    }
+
     try {
       if (saving) return
       setSaving(true)
@@ -2045,17 +2251,24 @@ export default function Doctor_Prescription() {
         ...labSnapshotObj,
         submittedBy: doc?.name || undefined,
       }
+    const isLabEmpty = !labReportsHxBy.trim() &&
+        !labReportsLabInformation.labName.trim() &&
+        !labReportsLabInformation.mrNo.trim() &&
+        !labReportsLabInformation.date.trim() &&
+        !Object.values(labReportsSemenAnalysis).some(v => String(v || '').trim()) &&
+        labReportsTests.every(t => !t.testName.trim() && !t.result.trim())
+
       const labSnapshot = stableStringify(labSnapshotObj)
       const labDirty = labSnapshot !== labReportsBaselineRef.current
       let lrId = labReportsEntryId
-      if (!lrId || labDirty) {
-        if (!labReportsHxBy.trim()) { showToast('error', 'Reports Entered by is required'); return }
-        if (!labReportsHxDate.trim()) { showToast('error', 'Reports Entered on is required'); return }
+      if (!isLabEmpty && (!lrId || labDirty)) {
         const r: any = await hospitalApi.upsertLabReportsEntry(encounterId, labPayload)
         lrId = String(r?.labReportsEntry?._id || '')
         if (!lrId) { showToast('error', 'Failed to save Lab Reports Entry'); return }
         setLabReportsEntryId(lrId)
         labReportsBaselineRef.current = labSnapshot
+      } else if (isLabEmpty) {
+        lrId = undefined
       }
 
       let vRaw = undefined as any
@@ -2084,13 +2297,11 @@ export default function Doctor_Prescription() {
       try { dRaw = diagRef.current?.getData?.() } catch { }
       let diagnosticTests = Array.isArray(dRaw?.tests) && dRaw?.tests?.length ? dRaw?.tests : undefined
       let diagnosticNotes = dRaw?.notes || undefined
-      let diagnosticDiscount = Number(dRaw?.discount) || 0
-      if ((!diagnosticTests || !diagnosticTests.length) && !diagnosticNotes && !diagnosticDiscount) {
-        const dd = (form as any).diagDisplay || {}
-        const tests = String(dd.testsText || '').split(/\n|,/).map((s: string) => s.trim()).filter(Boolean)
-        diagnosticTests = tests.length ? tests : undefined
-        diagnosticNotes = String(dd.notes || '').trim() || undefined
-        diagnosticDiscount = Number(dd.discount) || 0
+      let diagnosticDiscount = dRaw?.discount
+      if (diagnosticDiscount === undefined || diagnosticDiscount === null || diagnosticDiscount === '') {
+        diagnosticDiscount = (form as any).diagDisplay?.discount || '0'
+      }
+      if ((!diagnosticTests || !diagnosticTests.length) && !diagnosticNotes && (diagnosticDiscount === '0' || !diagnosticDiscount)) {
       }
       const therapyMachinesPayload: any = {
         ...(therapyMachines || {}),
@@ -2100,22 +2311,38 @@ export default function Doctor_Prescription() {
         },
       }
 
+      // Collect doctor's edits on history fields for color coding
+      const originalHistory = prevHistories.find(h => String(h._id) === String(prevHistoryId))?.data || {}
+      const historyEdits = collectAllHistoryEdits(originalHistory, {
+        personalInfo,
+        maritalStatus,
+        coitus,
+        health,
+        sexualHistory,
+        previousMedicalHistory,
+        arrivalReference,
+      })
+
+      const parseDiscount = (val: any) => {
+        return String(val || '0').trim()
+      }
+
       await hospitalApi.upsertPrescriptionByEncounter(encounterId, {
         historyTakingId: htId,
         labReportsEntryId: lrId,
-        medicine: items,
+        medicine: items.length ? items : undefined,
         labTests: labTests.length ? labTests : undefined,
         labNotes: form.labNotes || undefined,
         therapyTests: therapyTests.length ? therapyTests : undefined,
         therapyNotes: (form as any).therapyNotes || undefined,
-        therapyDiscount: Number((form as any).therapyDiscount) || 0,
+        therapyDiscount: parseDiscount((form as any).therapyDiscount),
         therapyPlan,
         therapyMachines: therapyMachinesPayload,
         diagnosticTests,
         diagnosticNotes,
-        diagnosticDiscount,
+        diagnosticDiscount: parseDiscount(diagnosticDiscount),
         counselling,
-        counsellingDiscount: Number((form as any).counsellingDiscount) || 0,
+        counsellingDiscount: parseDiscount((form as any).counsellingDiscount),
         primaryComplaint: form.primaryComplaint || undefined,
         primaryComplaintHistory: form.primaryComplaintHistory || undefined,
         familyHistory: form.familyHistory || undefined,
@@ -2127,6 +2354,7 @@ export default function Doctor_Prescription() {
         advice: form.advice || undefined,
         createdBy: doc.name,
         vitals,
+        historyEdits: historyEdits || undefined,
       })
       // Save new suggestions locally
       addOne('primaryComplaint', form.primaryComplaint)
@@ -2280,10 +2508,10 @@ export default function Doctor_Prescription() {
     const labNotes = presDb ? (presDb.labNotes || '') : form.labNotes
     const therapyTests = presDb ? (presDb.therapyTests || []) : String((form as any).therapyTestsText || '').split(/\n|,/).map(s => s.trim()).filter(Boolean)
     const therapyNotes = presDb ? (presDb.therapyNotes || '') : ((form as any).therapyNotes || '')
-    const therapyDiscount = presDb ? (presDb.therapyDiscount || 0) : Number((form as any).therapyDiscount || 0)
+    const therapyDiscount = presDb ? (presDb.therapyDiscount || '0') : ((form as any).therapyDiscount || '0')
     const counsellingPrint = presDb ? presDb.counselling : counselling
-    const counsellingDiscount = presDb ? (presDb.counsellingDiscount || 0) : Number((form as any).counsellingDiscount || 0)
-    const diagnosticDiscount = presDb ? (presDb.diagnosticDiscount || 0) : dPrint.discount || 0
+    const counsellingDiscount = presDb ? (presDb.counsellingDiscount || '0') : ((form as any).counsellingDiscount || '0')
+    const diagnosticDiscount = presDb ? (presDb.diagnosticDiscount || '0') : (dPrint.discount || '0')
     await previewPrescriptionPdf({ doctor, settings: settingsNorm, patient, items, historyTaking, vitals, labTests, labNotes, therapyTests, therapyNotes, therapyDiscount, diagnosticTests: Array.isArray(dPrint.tests) ? dPrint.tests : [], diagnosticNotes: dPrint.notes || '', diagnosticDiscount, counselling: counsellingPrint, counsellingDiscount, createdAt: presDb?.createdAt || new Date() }, tpl)
   }
 
@@ -2302,24 +2530,17 @@ export default function Doctor_Prescription() {
   }
 
 
-  // Always read patient details from DB for printing/header (same behavior as prescription history)
+  // Patient details from selected token (for print header)
   useEffect(() => {
-    ; (async () => {
-      try {
-        if (!sel?.mrNo) { setPat(null); return }
-        const resp: any = await labApi.getPatientByMrn(sel.mrNo)
-        const p = resp?.patient
-        if (!p) { setPat(null); return }
-        let ageTxt = ''
-        try {
-          if (p.age != null) ageTxt = String(p.age)
-          else if (p.dob) { const dob = new Date(p.dob); if (!isNaN(dob.getTime())) ageTxt = String(Math.max(0, Math.floor((Date.now() - dob.getTime()) / 31557600000))) }
-        } catch { }
-        setPat({ gender: p.gender || '-', fatherName: p.fatherName || '-', phone: p.phoneNormalized || '-', address: p.address || '-', age: ageTxt })
-      } catch {
-        setPat(null)
-      }
-    })()
+    if (!sel?.mrNo) { setPat(null); return }
+    // Use patient data from token selection
+    setPat({ 
+      gender: '-', 
+      fatherName: '-', 
+      phone: '-', 
+      address: '-', 
+      age: '' 
+    })
   }, [sel?.mrNo])
 
   // Suggestions: store per-doctor in localStorage
@@ -2408,12 +2629,88 @@ export default function Doctor_Prescription() {
     })
   }
 
+  // Lab Template functions
+  const loadLabTemplates = async () => {
+    if (!doc?.id) return
+    setIsLoadingTemplates(true)
+    try {
+      const res = await labApi.listTemplates(doc.id) as { templates: LabTemplate[] }
+      setLabTemplates(res?.templates || [])
+    } catch (e: any) {
+      console.error('Failed to load lab templates:', e)
+    } finally {
+      setIsLoadingTemplates(false)
+    }
+  }
+
+  const getDoctorId = () => {
+    // Try to get doctor ID from multiple sources
+    if (doc?.id) return doc.id
+
+    // Try hospital session
+    try {
+      const hospitalSession = localStorage.getItem('hospital.session')
+      if (hospitalSession) {
+        const parsed = JSON.parse(hospitalSession)
+        if (parsed?.id || parsed?._id) return parsed.id || parsed._id
+      }
+    } catch { }
+
+    // Try user
+    try {
+      const user = localStorage.getItem('user')
+      if (user) {
+        const parsed = JSON.parse(user)
+        if (parsed?.id || parsed?._id) return parsed.id || parsed._id
+      }
+    } catch { }
+
+    return ''
+  }
+
+  const saveLabTemplate = async (template: Omit<LabTemplate, '_id' | 'createdAt' | 'updatedAt'>) => {
+    const doctorId = getDoctorId()
+    if (!doctorId) {
+      throw new Error('Doctor ID is missing. Please log in again.')
+    }
+    const res = await labApi.createTemplate({ ...template, doctorId }) as { template: LabTemplate }
+    if (res?.template) {
+      setLabTemplates(prev => [res.template, ...prev])
+    }
+  }
+
+  const deleteLabTemplate = async (templateId: string) => {
+    await labApi.deleteTemplate(templateId)
+    setLabTemplates(prev => prev.filter(t => t._id !== templateId))
+  }
+
+  const applyLabTemplate = (template: LabTemplate) => {
+    setForm(f => {
+      const current = parseListText(f.labTestsText)
+      const currentSet = new Set(current)
+      // Add all tests from template
+      template.tests.forEach(test => currentSet.add(test))
+      return { ...f, labTestsText: Array.from(currentSet).join('\n') }
+    })
+    // Add any custom tests from template to the custom tests list
+    const newCustomTests = template.tests.filter(t => !(labQuickTests as readonly string[]).includes(t) && !customLabOrderTests.includes(t))
+    if (newCustomTests.length) {
+      saveCustomLabOrderTests([...customLabOrderTests, ...newCustomTests])
+    }
+  }
+
   useEffect(() => {
     const selectedCustom = parseListText(form.labTestsText).filter(t => !(labQuickTests as readonly string[]).includes(t))
     if (selectedCustom.length) {
       saveCustomLabOrderTests([...customLabOrderTests, ...selectedCustom])
     }
   }, [form.labTestsText])
+
+  useEffect(() => {
+    if (isViewTemplatesDialogOpen && doc?.id) {
+      loadLabTemplates()
+    }
+  }, [isViewTemplatesDialogOpen, doc?.id])
 
   async function printReferral() {
     try {
@@ -2590,7 +2887,19 @@ export default function Doctor_Prescription() {
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-3 sm:p-6" onClick={() => setShowPrevHistoriesDlg(false)}>
             <div className="w-full max-w-4xl overflow-hidden rounded-2xl bg-white shadow-2xl" onClick={(e) => e.stopPropagation()}>
               <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3 sm:px-6">
-                <div className="text-base font-semibold text-slate-900">Previous Histories</div>
+                <div>
+                  <div className="text-base font-semibold text-slate-900">Previous Histories</div>
+                  <div className="mt-1 flex items-center gap-3 text-xs">
+                    <div className="flex items-center gap-1">
+                      <span className="inline-block h-2 w-2 rounded-full bg-slate-900"></span>
+                      <span className="text-slate-600">History Taker</span>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <span className="inline-block h-2 w-2 rounded-full bg-blue-600"></span>
+                      <span className="text-blue-600">Doctor Edited</span>
+                    </div>
+                  </div>
+                </div>
                 <button type="button" className="rounded-md p-2 text-slate-600 hover:bg-slate-100" onClick={() => setShowPrevHistoriesDlg(false)} aria-label="Close">
                   <X className="h-5 w-5" />
                 </button>
@@ -2598,15 +2907,34 @@ export default function Doctor_Prescription() {
               <div className="max-h-[80vh] overflow-y-auto px-4 py-4 sm:px-6">
                 {(() => {
                   const selected = prevHistories.find(x => String(x._id) === String(prevHistoryViewId))
-                  const data = (selected as any)?.data || {}
-                  const sections: Array<{ title: string; value: any }> = [
-                    { title: 'Personal Information', value: data?.personalInfo },
-                    { title: 'Marital Status', value: data?.maritalStatus },
-                    { title: 'Coitus', value: data?.coitus },
-                    { title: 'Health', value: data?.health },
-                    { title: 'Sexual History', value: data?.sexualHistory },
-                    { title: 'Previous Medical History', value: data?.previousMedicalHistory },
-                    { title: 'Arrival Reference', value: data?.arrivalReference },
+                  const originalData = (selected as any)?.data || {}
+                  
+                  // Merge with doctor's edits if available
+                  const historyEdits = prevHistoryViewPrescription?.historyEdits || {}
+                  const sectionsList: HistorySection[] = [
+                    'personalInfo', 'maritalStatus', 'coitus', 'health', 
+                    'sexualHistory', 'previousMedicalHistory', 'arrivalReference'
+                  ]
+                  const mergedData: any = {}
+                  const allEditedPaths = new Set<string>()
+                  for (const section of sectionsList) {
+                    const { data, editedPaths } = mergeHistoryWithEdits(
+                      originalData[section],
+                      historyEdits[section],
+                      section
+                    )
+                    mergedData[section] = data
+                    editedPaths.forEach(p => allEditedPaths.add(`${section}.${p}`))
+                  }
+                  
+                  const sections: Array<{ title: string; key: HistorySection; value: any }> = [
+                    { title: 'Personal Information', key: 'personalInfo', value: mergedData?.personalInfo },
+                    { title: 'Marital Status', key: 'maritalStatus', value: mergedData?.maritalStatus },
+                    { title: 'Coitus', key: 'coitus', value: mergedData?.coitus },
+                    { title: 'Health', key: 'health', value: mergedData?.health },
+                    { title: 'Sexual History', key: 'sexualHistory', value: mergedData?.sexualHistory },
+                    { title: 'Previous Medical History', key: 'previousMedicalHistory', value: mergedData?.previousMedicalHistory },
+                    { title: 'Arrival Reference', key: 'arrivalReference', value: mergedData?.arrivalReference },
                   ]
 
                   const toLabel = (key: string) =>
@@ -2668,22 +2996,176 @@ export default function Doctor_Prescription() {
                     try { return String(v).trim() } catch { return '' }
                   }
 
-                  const renderPairs = (obj: any) => {
+                  const renderPairs = (obj: any, editedPaths?: Set<string>, basePath?: string) => {
                     if (!obj || typeof obj !== 'object') return null
+
+                    const isEditedExact = (fullPath: string): boolean => {
+                      if (!editedPaths) return false
+                      return editedPaths.has(fullPath)
+                    }
+
+                    const renderArrayPrimitiveChips = (arr: any[], fullPath: string) => {
+                      const parts = arr
+                        .map(v => (v == null ? '' : String(v).trim()))
+                        .filter(Boolean)
+                      if (!parts.length) return null
+                      return (
+                        <div className="mt-1 flex flex-wrap gap-2">
+                          {parts.map((t) => {
+                            // Prefer exact leaf tracking. If only parent array path exists (legacy/older data), treat all chips as edited.
+                            const edited = isEditedExact(`${fullPath}.${t}`) || isEditedExact(fullPath)
+                            return (
+                              <span
+                                key={t}
+                                className={`rounded-md border px-2 py-0.5 text-sm font-semibold ${edited ? 'border-blue-200 bg-blue-50 text-blue-600' : 'border-slate-200 bg-slate-50 text-slate-900'}`}
+                                title={edited ? 'Edited by doctor' : 'Entered by history taker'}
+                              >
+                                {t}
+                              </span>
+                            )
+                          })}
+                        </div>
+                      )
+                    }
+
                     const keys = Object.keys(obj || {})
                     const rows = keys
                       .map(k => ({ k, v: (obj as any)[k] }))
                       .map(it => ({ ...it, txt: formatValue(it.v) }))
                       .filter(it => !!it.txt)
                     if (!rows.length) return null
+
+                    const isMaritalStatus = basePath === 'maritalStatus'
                     return (
-                      <div className="mt-2 grid gap-2 sm:grid-cols-2">
-                        {rows.map(({ k, txt }) => (
-                          <div key={k} className="rounded-lg border border-slate-200 bg-slate-50 p-3">
-                            <div className="text-xs text-slate-500">{toLabel(k)}</div>
-                            <div className="mt-0.5 text-sm font-semibold text-slate-900">{txt}</div>
-                          </div>
-                        ))}
+                      <div className={`mt-2 grid gap-2 ${isMaritalStatus ? 'grid-cols-1' : 'sm:grid-cols-2'}`}>
+                        {rows.map(({ k, txt }) => {
+                          const fullPath = basePath ? `${basePath}.${k}` : k
+                          const v = (obj as any)[k]
+                          // Do not paint the whole card as edited for nested changes.
+                          // Only paint it when this exact field was edited.
+                          const isEdited = isEditedExact(fullPath)
+                          const isArray = Array.isArray(v)
+                          const isPrimitiveArray = isArray && (v as any[]).every(x => x == null || typeof x !== 'object')
+                          const isObjectValue = !isArray && v != null && typeof v === 'object'
+                          const isArrayOfObjects = isArray && !isPrimitiveArray
+
+                          const renderArrayOfObjects = (arr: any[], path: string) => {
+                            if (!Array.isArray(arr) || !arr.length) return null
+                            return (
+                              <div className="mt-2 space-y-3">
+                                {arr.map((item, idx) => {
+                                  const itemPath = `${path}.${idx}`
+                                  const itemKeys = Object.keys(item || {}).filter(ik => ik !== '_id' && ik !== 'id')
+                                  if (!itemKeys.length) return null
+                                  return (
+                                    <div key={idx} className="rounded-lg border border-slate-200 bg-white p-3 shadow-sm">
+                                      <div className="mb-2 text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                                        {toLabel(path.split('.').pop() || '')} #{idx + 1}
+                                      </div>
+                                      <div className="grid grid-cols-2 gap-2">
+                                        {itemKeys.map(ik => {
+                                          const leafPath = `${itemPath}.${ik}`
+                                          const val = item[ik]
+                                          if (val == null) return null
+                                          
+                                          if (typeof val === 'object' && !Array.isArray(val)) {
+                                            return (
+                                              <div key={ik} className="rounded-md border border-slate-100 bg-slate-50 p-2">
+                                                <div className="text-[10px] font-medium text-slate-500">{toLabel(ik)}</div>
+                                                {renderObjectValue(val, leafPath)}
+                                              </div>
+                                            )
+                                          }
+
+                                          const txt = formatValue(val)
+                                          if (!txt) return null
+                                          const edited = isEditedExact(leafPath)
+                                          return (
+                                            <div key={ik} className={`rounded-md border border-slate-100 p-2 ${edited ? 'bg-blue-50' : 'bg-slate-50'}`}>
+                                              <div className="text-[10px] text-slate-500">{toLabel(ik)}</div>
+                                              <div className={`mt-0.5 text-xs font-semibold ${edited ? 'text-blue-600' : 'text-slate-900'}`}>
+                                                {txt}
+                                              </div>
+                                            </div>
+                                          )
+                                        })}
+                                      </div>
+                                    </div>
+                                  )
+                                })}
+                              </div>
+                            )
+                          }
+
+                          const renderObjectValue = (val: any, path: string) => {
+                            if (!val || typeof val !== 'object' || Array.isArray(val)) return null
+                            const keys2 = Object.keys(val || {})
+                            const boolItems: Array<{ key: string; label: string; edited: boolean }> = []
+                            const parts2: Array<{ key: string; text: string; edited: boolean }> = []
+                            
+                            const collectLeaves = (v: any, currentPath: string, prefixLabel: string = '') => {
+                              if (v == null) return
+                              if (typeof v === 'boolean') {
+                                if (v) boolItems.push({ key: currentPath, label: prefixLabel.trim(), edited: isEditedExact(currentPath) })
+                              } else if (typeof v === 'object' && !Array.isArray(v)) {
+                                Object.keys(v).forEach(k => {
+                                  collectLeaves(v[k], `${currentPath}.${k}`, `${prefixLabel} ${toLabel(k)}`)
+                                })
+                              } else {
+                                const t = formatValue(v)
+                                if (t) parts2.push({ key: currentPath, text: `${prefixLabel.trim()}: ${t}`, edited: isEditedExact(currentPath) })
+                              }
+                            }
+
+                            for (const kk of keys2) {
+                              collectLeaves((val as any)[kk], `${path}.${kk}`, toLabel(kk))
+                            }
+                            if (!boolItems.length && !parts2.length) return null
+                            return (
+                              <div className="mt-0.5">
+                                {!!boolItems.length && (
+                                  <div className="flex flex-wrap gap-2">
+                                    {boolItems.map((b) => (
+                                      <span
+                                        key={b.key}
+                                        className={`rounded-md border px-2 py-0.5 text-sm font-semibold ${b.edited ? 'border-blue-200 bg-blue-50 text-blue-600' : 'border-slate-200 bg-slate-50 text-slate-900'}`}
+                                        title={b.edited ? 'Edited by doctor' : 'Entered by history taker'}
+                                      >
+                                        {b.label}
+                                      </span>
+                                    ))}
+                                  </div>
+                                )}
+                                {!!parts2.length && (
+                                  <div className="mt-1 text-sm font-semibold">
+                                    {parts2.map((p, idx) => (
+                                      <span key={p.key}>
+                                        {idx > 0 ? <span className="text-slate-400"> • </span> : null}
+                                        <span className={p.edited ? 'text-blue-600' : 'text-slate-900'}>{p.text}</span>
+                                      </span>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                            )
+                          }
+                          return (
+                            <div key={k} className={`rounded-lg border border-slate-200 p-3 ${isEdited ? 'bg-blue-50' : 'bg-slate-50'}`}>
+                              <div className="text-xs text-slate-500">{toLabel(k)}</div>
+                              {isPrimitiveArray ? (
+                                renderArrayPrimitiveChips(v as any[], fullPath)
+                              ) : isArrayOfObjects ? (
+                                renderArrayOfObjects(v as any[], fullPath)
+                              ) : isObjectValue ? (
+                                renderObjectValue(v, fullPath)
+                              ) : (
+                                <div className={`mt-0.5 text-sm font-semibold ${isEdited ? 'text-blue-600' : 'text-slate-900'}`}>
+                                  {txt}
+                                </div>
+                              )}
+                            </div>
+                          )
+                        })}
                       </div>
                     )
                   }
@@ -2722,7 +3204,7 @@ export default function Doctor_Prescription() {
                       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                         <div>
                           <div className="text-sm font-semibold text-slate-900">{sel?.patientName || '-'} <span className="text-xs font-normal text-slate-500">(MR: {sel?.mrNo || '-'})</span></div>
-                          <div className="mt-1 text-xs text-slate-600">Hx By: {String((selected as any)?.hxBy || data?.hxBy || '-')} • Hx Date: {String((selected as any)?.hxDate || data?.hxDate || '-')}</div>
+                          <div className="mt-1 text-xs text-slate-600">Hx By: {String((selected as any)?.hxBy || originalData?.hxBy || '-')} • Hx Date: {String((selected as any)?.hxDate || originalData?.hxDate || '-')}</div>
                         </div>
                         <button type="button" className="rounded-md border border-blue-800 px-3 py-2 text-sm font-semibold text-blue-800 hover:bg-blue-50" onClick={() => setPrevHistoryViewId('')}>Back</button>
                       </div>
@@ -2761,7 +3243,7 @@ export default function Doctor_Prescription() {
                             const merged = [statusTxt, otherTxt].filter(Boolean).join(' • ')
                             const rest: any = { ...src }
                             try { delete rest.status; delete rest.other } catch { }
-                            const restContent = renderPairs(rest)
+                            const restContent = renderPairs(rest, allEditedPaths, s.key)
                             if (!merged && !restContent) return null
                             return (
                               <div key={s.title} className="rounded-xl border border-slate-200 bg-white p-4">
@@ -2779,7 +3261,7 @@ export default function Doctor_Prescription() {
                             )
                           }
 
-                          const content = renderPairs(s.value)
+                          const content = renderPairs(s.value, allEditedPaths, s.key)
                           if (!content) return null
                           return (
                             <div key={s.title} className="rounded-xl border border-slate-200 bg-white p-4">
@@ -3170,7 +3652,7 @@ export default function Doctor_Prescription() {
                 className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
               >
                 <option value="">Select patient</option>
-                {allPatients.map(p => (
+                {allPatients.length > 0 && allPatients.map(p => (
                   <option key={p.id} value={p.id}>T#{p.tokenNo} • {p.patientName} • {p.mrNo}</option>
                 ))}
               </select>
@@ -3179,7 +3661,7 @@ export default function Doctor_Prescription() {
               <div className="flex items-end gap-2">
                 <div className="flex-1">
                   <label className="mb-1 block text-sm text-slate-700">Hx by (History Taker)</label>
-                  <input value={hxBy} onChange={e => setHxBy(e.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
+                  <input value={hxBy} disabled className="w-full rounded-md border border-slate-300 bg-slate-100 px-3 py-2 text-sm text-slate-600" />
                 </div>
                 <div className="w-[170px]">
                   <label className="mb-1 block text-sm text-slate-700">Date</label>
@@ -3364,6 +3846,19 @@ export default function Doctor_Prescription() {
                 </div>
               </div>
 
+              {/* Show TimePeriod field when top-level To Go is selected */}
+              {maritalStatus.status === 'To Go' && (
+                <div className="mt-4">
+                  <label className="mb-1 block text-sm text-slate-700">Time Period</label>
+                  <input
+                    value={maritalStatus.timePeriod}
+                    onChange={e => setMaritalStatus(s => ({ ...s, timePeriod: e.target.value }))}
+                    placeholder="Enter time period"
+                    className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+                  />
+                </div>
+              )}
+
               {maritalStatus.status === 'Married' && (
                 <div className="space-y-4">
                   {maritalStatus.marriages.map((m, idx) => (
@@ -3376,24 +3871,11 @@ export default function Doctor_Prescription() {
                             onClick={() =>
                               setMaritalStatus(s => {
                                 const next = [...s.marriages]
-                                next.push({
-                                  years: '',
-                                  months: '',
-                                  divorce: '',
-                                  separation: '',
-                                  ageOfWife: '',
-                                  educationOfWife: '',
-                                  reas: '',
-                                  marriageType: { loveMarriage: false, arrangeMarriage: false, like: false },
-                                  mutualSatisfaction: '' as '' | 'Satisfactory' | 'Non-Satisfactory',
-                                  mutualCooperation: '' as '' | 'Cooperative' | 'Non Cooperative',
-                                  childStatus: '' as '' | 'No Plan' | 'Trying',
-                                  childStatus2: { minors: false, pregnant: false, abortion: false, male: '', female: '' },
-                                })
+                                next.push({ ...emptyMarriage })
                                 return { ...s, marriages: next }
                               })
                             }
-                            className="rounded-md border border-slate-300 px-3 py-1.5 text-sm hover:bg-slate-50"
+                            className="rounded-md border border-blue-800 px-3 py-1.5 text-sm text-blue-800 hover:bg-blue-50"
                           >
                             Add
                           </button>
@@ -3407,280 +3889,332 @@ export default function Doctor_Prescription() {
                               })
                             }
                             disabled={maritalStatus.marriages.length === 1}
-                            className="rounded-md border border-slate-300 px-3 py-1.5 text-sm hover:bg-slate-50 disabled:opacity-50"
+                            className="rounded-md border border-red-600 px-3 py-1.5 text-sm text-red-600 hover:bg-red-50 disabled:opacity-50"
                           >
                             Remove
                           </button>
                         </div>
                       </div>
 
-                      <div className="mt-3 grid gap-4 sm:grid-cols-2">
-                        <div>
-                          <label className="mb-1 block text-sm text-slate-700">Years/Months</label>
-                          <div className="flex flex-wrap items-center gap-2">
-                            <div className="text-sm text-slate-600">Year:</div>
+                      {/* For additional marriages (idx > 0), show Married/To Go selection first */}
+                      {idx > 0 && (
+                        <div className="mb-4 grid gap-2 sm:grid-cols-2">
+                          <label className={checkboxCardLabelCls(m.status === 'Married')}>
                             <input
-                              value={m.years}
-                              onChange={e => setMaritalStatus(s => {
+                              type="checkbox"
+                              checked={m.status === 'Married'}
+                              onChange={(e) => setMaritalStatus(s => {
                                 const next = [...s.marriages]
-                                next[idx] = { ...next[idx], years: e.target.value }
+                                next[idx] = { ...next[idx], status: e.target.checked ? 'Married' : '' }
                                 return { ...s, marriages: next }
                               })}
-                              className="w-24 rounded-md border border-slate-300 px-3 py-2 text-sm"
+                              className="h-4 w-4 rounded border-slate-300"
                             />
-                            <div className="text-sm text-slate-600">Month:</div>
+                            Married
+                          </label>
+                          <label className={checkboxCardLabelCls(m.status === 'To Go')}>
                             <input
-                              value={m.months}
-                              onChange={e => setMaritalStatus(s => {
+                              type="checkbox"
+                              checked={m.status === 'To Go'}
+                              onChange={(e) => setMaritalStatus(s => {
                                 const next = [...s.marriages]
-                                next[idx] = { ...next[idx], months: e.target.value }
+                                next[idx] = { ...next[idx], status: e.target.checked ? 'To Go' : '' }
                                 return { ...s, marriages: next }
                               })}
-                              className="w-24 rounded-md border border-slate-300 px-3 py-2 text-sm"
+                              className="h-4 w-4 rounded border-slate-300"
                             />
-                          </div>
+                            To Go
+                          </label>
                         </div>
+                      )}
 
-                        <div>
-                          <label className="mb-1 block text-sm text-slate-700">Divorce</label>
+                      {/* Show TimePeriod field for To Go marriages (idx > 0) */}
+                      {idx > 0 && m.status === 'To Go' && (
+                        <div className="mb-4">
+                          <label className="mb-1 block text-sm text-slate-700">Time Period</label>
                           <input
-                            value={m.divorce}
+                            value={m.timePeriod}
                             onChange={e => setMaritalStatus(s => {
                               const next = [...s.marriages]
-                              next[idx] = { ...next[idx], divorce: e.target.value }
+                              next[idx] = { ...next[idx], timePeriod: e.target.value }
                               return { ...s, marriages: next }
                             })}
+                            placeholder="Enter time period"
                             className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
                           />
                         </div>
+                      )}
 
-                        <div>
-                          <label className="mb-1 block text-sm text-slate-700">Separation</label>
-                          <input
-                            value={m.separation}
-                            onChange={e => setMaritalStatus(s => {
-                              const next = [...s.marriages]
-                              next[idx] = { ...next[idx], separation: e.target.value }
-                              return { ...s, marriages: next }
-                            })}
-                            className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
-                          />
-                        </div>
-
-                        <div>
-                          <label className="mb-1 block text-sm text-slate-700">Age of Wife</label>
-                          <input
-                            value={m.ageOfWife}
-                            onChange={e => setMaritalStatus(s => {
-                              const next = [...s.marriages]
-                              next[idx] = { ...next[idx], ageOfWife: e.target.value }
-                              return { ...s, marriages: next }
-                            })}
-                            className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
-                          />
-                        </div>
-
-                        <div>
-                          <label className="mb-1 block text-sm text-slate-700">Education of Wife</label>
-                          <input
-                            value={m.educationOfWife}
-                            onChange={e => setMaritalStatus(s => {
-                              const next = [...s.marriages]
-                              next[idx] = { ...next[idx], educationOfWife: e.target.value }
-                              return { ...s, marriages: next }
-                            })}
-                            className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
-                          />
-                        </div>
-
-                        <div className="sm:col-span-2">
-                          <label className="mb-1 block text-sm text-slate-700">Reas</label>
-                          <textarea
-                            value={m.reas}
-                            onChange={e => setMaritalStatus(s => {
-                              const next = [...s.marriages]
-                              next[idx] = { ...next[idx], reas: e.target.value }
-                              return { ...s, marriages: next }
-                            })}
-                            rows={2}
-                            className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
-                          />
-                        </div>
-
-                        <div className="sm:col-span-2">
-                          <div className="mb-1 block text-sm text-slate-700">Marriage Type</div>
-                          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-                            <label className={checkboxCardLabelCls(!!m.marriageType?.loveMarriage)}>
+                      {/* Show full marriage form for first marriage OR when Married is selected for additional marriages */}
+                      {(idx === 0 || m.status === 'Married') && (
+                        <div className="mt-3 grid gap-4 sm:grid-cols-2">
+                          <div>
+                            <label className="mb-1 block text-sm text-slate-700">Years/Months</label>
+                            <div className="flex flex-wrap items-center gap-2">
+                              <div className="text-sm text-slate-600">Year:</div>
                               <input
-                                type="checkbox"
-                                checked={!!m.marriageType?.loveMarriage}
-                                onChange={(e) => setMaritalStatus(s => {
-                                  const next = [...s.marriages]
-                                  next[idx] = { ...next[idx], marriageType: { ...(next[idx] as any).marriageType, loveMarriage: e.target.checked, arrangeMarriage: e.target.checked ? false : (next[idx] as any).marriageType?.arrangeMarriage } }
-                                  return { ...s, marriages: next }
-                                })}
-                                className="h-4 w-4 rounded border-slate-300"
-                              />
-                              Love Marriage
-                            </label>
-                            <label className={checkboxCardLabelCls(!!m.marriageType?.arrangeMarriage)}>
-                              <input
-                                type="checkbox"
-                                checked={!!m.marriageType?.arrangeMarriage}
-                                onChange={(e) => setMaritalStatus(s => {
-                                  const next = [...s.marriages]
-                                  next[idx] = { ...next[idx], marriageType: { ...(next[idx] as any).marriageType, arrangeMarriage: e.target.checked, loveMarriage: e.target.checked ? false : (next[idx] as any).marriageType?.loveMarriage } }
-                                  return { ...s, marriages: next }
-                                })}
-                                className="h-4 w-4 rounded border-slate-300"
-                              />
-                              Arrange Marriage
-                            </label>
-                            <label className={checkboxCardLabelCls(!!m.marriageType?.like)}>
-                              <input
-                                type="checkbox"
-                                checked={!!m.marriageType?.like}
-                                onChange={(e) => setMaritalStatus(s => {
-                                  const next = [...s.marriages]
-                                  next[idx] = { ...next[idx], marriageType: { ...(next[idx] as any).marriageType, like: e.target.checked } }
-                                  return { ...s, marriages: next }
-                                })}
-                                className="h-4 w-4 rounded border-slate-300"
-                              />
-                              LIKE
-                            </label>
-                          </div>
-                        </div>
-
-                        <div className="sm:col-span-2">
-                          <div className="mb-1 block text-sm text-slate-700">Mutual Relations</div>
-                          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
-                            {(['Satisfactory', 'Non-Satisfactory'] as const).map(opt => (
-                              <label key={opt} className={checkboxCardLabelCls(m.mutualSatisfaction === opt)}>
-                                <input
-                                  type="checkbox"
-                                  checked={m.mutualSatisfaction === opt}
-                                  onChange={(e) => setMaritalStatus(s => {
-                                    const next = [...s.marriages]
-                                    next[idx] = { ...next[idx], mutualSatisfaction: e.target.checked ? opt : '' }
-                                    return { ...s, marriages: next }
-                                  })}
-                                  className="h-4 w-4 rounded border-slate-300"
-                                />
-                                {opt}
-                              </label>
-                            ))}
-                            {(['Cooperative', 'Non Cooperative'] as const).map(opt => (
-                              <label key={opt} className={checkboxCardLabelCls(m.mutualCooperation === opt)}>
-                                <input
-                                  type="checkbox"
-                                  checked={m.mutualCooperation === opt}
-                                  onChange={(e) => setMaritalStatus(s => {
-                                    const next = [...s.marriages]
-                                    next[idx] = { ...next[idx], mutualCooperation: e.target.checked ? opt : '' }
-                                    return { ...s, marriages: next }
-                                  })}
-                                  className="h-4 w-4 rounded border-slate-300"
-                                />
-                                {opt}
-                              </label>
-                            ))}
-                          </div>
-                        </div>
-
-                        <div className="sm:col-span-2">
-                          <div className="mb-1 block text-sm text-slate-700">Child Status#1</div>
-                          <div className="grid gap-2 sm:grid-cols-2">
-                            {(['No Plan', 'Trying'] as const).map(opt => (
-                              <label key={opt} className={checkboxCardLabelCls(m.childStatus === opt)}>
-                                <input
-                                  type="checkbox"
-                                  checked={m.childStatus === opt}
-                                  onChange={(e) => setMaritalStatus(s => {
-                                    const next = [...s.marriages]
-                                    next[idx] = { ...next[idx], childStatus: e.target.checked ? opt : '' }
-                                    return { ...s, marriages: next }
-                                  })}
-                                  className="h-4 w-4 rounded border-slate-300"
-                                />
-                                {opt}
-                              </label>
-                            ))}
-                          </div>
-                        </div>
-
-                        <div className="sm:col-span-2">
-                          <div className="mb-1 block text-sm text-slate-700">Child Status#2</div>
-                          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-                            <label className={checkboxCardLabelCls(!!m.childStatus2?.minors)}>
-                              <input
-                                type="checkbox"
-                                checked={!!m.childStatus2?.minors}
-                                onChange={(e) => setMaritalStatus(s => {
-                                  const next = [...s.marriages]
-                                  const cs2 = { ...(next[idx] as any).childStatus2, minors: e.target.checked }
-                                  if (!e.target.checked) { cs2.male = ''; cs2.female = '' }
-                                  next[idx] = { ...next[idx], childStatus2: cs2 }
-                                  return { ...s, marriages: next }
-                                })}
-                                className="h-4 w-4 rounded border-slate-300"
-                              />
-                              Minors
-                            </label>
-                            <label className={checkboxCardLabelCls(!!m.childStatus2?.pregnant)}>
-                              <input
-                                type="checkbox"
-                                checked={!!m.childStatus2?.pregnant}
-                                onChange={(e) => setMaritalStatus(s => {
-                                  const next = [...s.marriages]
-                                  next[idx] = { ...next[idx], childStatus2: { ...(next[idx] as any).childStatus2, pregnant: e.target.checked } }
-                                  return { ...s, marriages: next }
-                                })}
-                                className="h-4 w-4 rounded border-slate-300"
-                              />
-                              Pregnant
-                            </label>
-                            <label className={checkboxCardLabelCls(!!m.childStatus2?.abortion)}>
-                              <input
-                                type="checkbox"
-                                checked={!!m.childStatus2?.abortion}
-                                onChange={(e) => setMaritalStatus(s => {
-                                  const next = [...s.marriages]
-                                  next[idx] = { ...next[idx], childStatus2: { ...(next[idx] as any).childStatus2, abortion: e.target.checked } }
-                                  return { ...s, marriages: next }
-                                })}
-                                className="h-4 w-4 rounded border-slate-300"
-                              />
-                              Abortion
-                            </label>
-                          </div>
-
-                          {!!m.childStatus2?.minors && (
-                            <div className="mt-3 flex flex-wrap items-center gap-2">
-                              <div className="text-sm text-slate-600">Male</div>
-                              <input
-                                value={m.childStatus2?.male || ''}
+                                value={m.years}
                                 onChange={e => setMaritalStatus(s => {
                                   const next = [...s.marriages]
-                                  next[idx] = { ...next[idx], childStatus2: { ...(next[idx] as any).childStatus2, male: e.target.value } }
+                                  next[idx] = { ...next[idx], years: e.target.value }
                                   return { ...s, marriages: next }
                                 })}
                                 className="w-24 rounded-md border border-slate-300 px-3 py-2 text-sm"
                               />
-                              <div className="text-sm text-slate-600">Female</div>
+                              <div className="text-sm text-slate-600">Month:</div>
                               <input
-                                value={m.childStatus2?.female || ''}
+                                value={m.months}
                                 onChange={e => setMaritalStatus(s => {
                                   const next = [...s.marriages]
-                                  next[idx] = { ...next[idx], childStatus2: { ...(next[idx] as any).childStatus2, female: e.target.value } }
+                                  next[idx] = { ...next[idx], months: e.target.value }
                                   return { ...s, marriages: next }
                                 })}
                                 className="w-24 rounded-md border border-slate-300 px-3 py-2 text-sm"
                               />
                             </div>
-                          )}
+                          </div>
+
+                          <div>
+                            <label className="mb-1 block text-sm text-slate-700">Divorce</label>
+                            <input
+                              value={m.divorce}
+                              onChange={e => setMaritalStatus(s => {
+                                const next = [...s.marriages]
+                                next[idx] = { ...next[idx], divorce: e.target.value }
+                                return { ...s, marriages: next }
+                              })}
+                              className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+                            />
+                          </div>
+
+                          <div>
+                            <label className="mb-1 block text-sm text-slate-700">Separation</label>
+                            <input
+                              value={m.separation}
+                              onChange={e => setMaritalStatus(s => {
+                                const next = [...s.marriages]
+                                next[idx] = { ...next[idx], separation: e.target.value }
+                                return { ...s, marriages: next }
+                              })}
+                              className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+                            />
+                          </div>
+
+                          <div>
+                            <label className="mb-1 block text-sm text-slate-700">Age of Wife</label>
+                            <input
+                              value={m.ageOfWife}
+                              onChange={e => setMaritalStatus(s => {
+                                const next = [...s.marriages]
+                                next[idx] = { ...next[idx], ageOfWife: e.target.value }
+                                return { ...s, marriages: next }
+                              })}
+                              className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+                            />
+                          </div>
+
+                          <div>
+                            <label className="mb-1 block text-sm text-slate-700">Education of Wife</label>
+                            <input
+                              value={m.educationOfWife}
+                              onChange={e => setMaritalStatus(s => {
+                                const next = [...s.marriages]
+                                next[idx] = { ...next[idx], educationOfWife: e.target.value }
+                                return { ...s, marriages: next }
+                              })}
+                              className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+                            />
+                          </div>
+
+                          <div className="sm:col-span-2">
+                            <label className="mb-1 block text-sm text-slate-700">Reas</label>
+                            <textarea
+                              value={m.reas}
+                              onChange={e => setMaritalStatus(s => {
+                                const next = [...s.marriages]
+                                next[idx] = { ...next[idx], reas: e.target.value }
+                                return { ...s, marriages: next }
+                              })}
+                              rows={2}
+                              className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+                            />
+                          </div>
+
+                          <div className="sm:col-span-2">
+                            <div className="mb-1 block text-sm text-slate-700">Marriage Type</div>
+                            <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                              <label className={checkboxCardLabelCls(!!m.marriageType?.loveMarriage)}>
+                                <input
+                                  type="checkbox"
+                                  checked={!!m.marriageType?.loveMarriage}
+                                  onChange={(e) => setMaritalStatus(s => {
+                                    const next = [...s.marriages]
+                                    next[idx] = { ...next[idx], marriageType: { ...(next[idx] as any).marriageType, loveMarriage: e.target.checked, arrangeMarriage: e.target.checked ? false : (next[idx] as any).marriageType?.arrangeMarriage } }
+                                    return { ...s, marriages: next }
+                                  })}
+                                  className="h-4 w-4 rounded border-slate-300"
+                                />
+                                Love Marriage
+                              </label>
+                              <label className={checkboxCardLabelCls(!!m.marriageType?.arrangeMarriage)}>
+                                <input
+                                  type="checkbox"
+                                  checked={!!m.marriageType?.arrangeMarriage}
+                                  onChange={(e) => setMaritalStatus(s => {
+                                    const next = [...s.marriages]
+                                    next[idx] = { ...next[idx], marriageType: { ...(next[idx] as any).marriageType, arrangeMarriage: e.target.checked, loveMarriage: e.target.checked ? false : (next[idx] as any).marriageType?.loveMarriage } }
+                                    return { ...s, marriages: next }
+                                  })}
+                                  className="h-4 w-4 rounded border-slate-300"
+                                />
+                                Arrange Marriage
+                              </label>
+                              <label className={checkboxCardLabelCls(!!m.marriageType?.like)}>
+                                <input
+                                  type="checkbox"
+                                  checked={!!m.marriageType?.like}
+                                  onChange={(e) => setMaritalStatus(s => {
+                                    const next = [...s.marriages]
+                                    next[idx] = { ...next[idx], marriageType: { ...(next[idx] as any).marriageType, like: e.target.checked } }
+                                    return { ...s, marriages: next }
+                                  })}
+                                  className="h-4 w-4 rounded border-slate-300"
+                                />
+                                LIKE
+                              </label>
+                            </div>
+                          </div>
+
+                          <div className="sm:col-span-2">
+                            <div className="mb-1 block text-sm text-slate-700">Mutual Relations</div>
+                            <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+                              {(['Satisfactory', 'Non-Satisfactory'] as const).map(opt => (
+                                <label key={opt} className={checkboxCardLabelCls(m.mutualSatisfaction === opt)}>
+                                  <input
+                                    type="checkbox"
+                                    checked={m.mutualSatisfaction === opt}
+                                    onChange={(e) => setMaritalStatus(s => {
+                                      const next = [...s.marriages]
+                                      next[idx] = { ...next[idx], mutualSatisfaction: e.target.checked ? opt : '' }
+                                      return { ...s, marriages: next }
+                                    })}
+                                    className="h-4 w-4 rounded border-slate-300"
+                                  />
+                                  {opt}
+                                </label>
+                              ))}
+                              {(['Cooperative', 'Non Cooperative'] as const).map(opt => (
+                                <label key={opt} className={checkboxCardLabelCls(m.mutualCooperation === opt)}>
+                                  <input
+                                    type="checkbox"
+                                    checked={m.mutualCooperation === opt}
+                                    onChange={(e) => setMaritalStatus(s => {
+                                      const next = [...s.marriages]
+                                      next[idx] = { ...next[idx], mutualCooperation: e.target.checked ? opt : '' }
+                                      return { ...s, marriages: next }
+                                    })}
+                                    className="h-4 w-4 rounded border-slate-300"
+                                  />
+                                  {opt}
+                                </label>
+                              ))}
+                            </div>
+                          </div>
+
+                          <div className="sm:col-span-2">
+                            <div className="mb-1 block text-sm text-slate-700">Child Status#1</div>
+                            <div className="grid gap-2 sm:grid-cols-2">
+                              {(['No Plan', 'Trying'] as const).map(opt => (
+                                <label key={opt} className={checkboxCardLabelCls(m.childStatus === opt)}>
+                                  <input
+                                    type="checkbox"
+                                    checked={m.childStatus === opt}
+                                    onChange={(e) => setMaritalStatus(s => {
+                                      const next = [...s.marriages]
+                                      next[idx] = { ...next[idx], childStatus: e.target.checked ? opt : '' }
+                                      return { ...s, marriages: next }
+                                    })}
+                                    className="h-4 w-4 rounded border-slate-300"
+                                  />
+                                  {opt}
+                                </label>
+                              ))}
+                            </div>
+                          </div>
+
+                          <div className="sm:col-span-2">
+                            <div className="mb-1 block text-sm text-slate-700">Child Status#2</div>
+                            <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                              <label className={checkboxCardLabelCls(!!m.childStatus2?.minors)}>
+                                <input
+                                  type="checkbox"
+                                  checked={!!m.childStatus2?.minors}
+                                  onChange={(e) => setMaritalStatus(s => {
+                                    const next = [...s.marriages]
+                                    const cs2 = { ...(next[idx] as any).childStatus2, minors: e.target.checked }
+                                    if (!e.target.checked) { cs2.male = ''; cs2.female = '' }
+                                    next[idx] = { ...next[idx], childStatus2: cs2 }
+                                    return { ...s, marriages: next }
+                                  })}
+                                  className="h-4 w-4 rounded border-slate-300"
+                                />
+                                Minors
+                              </label>
+                              <label className={checkboxCardLabelCls(!!m.childStatus2?.pregnant)}>
+                                <input
+                                  type="checkbox"
+                                  checked={!!m.childStatus2?.pregnant}
+                                  onChange={(e) => setMaritalStatus(s => {
+                                    const next = [...s.marriages]
+                                    next[idx] = { ...next[idx], childStatus2: { ...(next[idx] as any).childStatus2, pregnant: e.target.checked } }
+                                    return { ...s, marriages: next }
+                                  })}
+                                  className="h-4 w-4 rounded border-slate-300"
+                                />
+                                Pregnant
+                              </label>
+                              <label className={checkboxCardLabelCls(!!m.childStatus2?.abortion)}>
+                                <input
+                                  type="checkbox"
+                                  checked={!!m.childStatus2?.abortion}
+                                  onChange={(e) => setMaritalStatus(s => {
+                                    const next = [...s.marriages]
+                                    next[idx] = { ...next[idx], childStatus2: { ...(next[idx] as any).childStatus2, abortion: e.target.checked } }
+                                    return { ...s, marriages: next }
+                                  })}
+                                  className="h-4 w-4 rounded border-slate-300"
+                                />
+                                Abortion
+                              </label>
+                            </div>
+
+                            {!!m.childStatus2?.minors && (
+                              <div className="mt-3 flex flex-wrap items-center gap-2">
+                                <div className="text-sm text-slate-600">Male</div>
+                                <input
+                                  value={m.childStatus2?.male || ''}
+                                  onChange={e => setMaritalStatus(s => {
+                                    const next = [...s.marriages]
+                                    next[idx] = { ...next[idx], childStatus2: { ...(next[idx] as any).childStatus2, male: e.target.value } }
+                                    return { ...s, marriages: next }
+                                  })}
+                                  className="w-24 rounded-md border border-slate-300 px-3 py-2 text-sm"
+                                />
+                                <div className="text-sm text-slate-600">Female</div>
+                                <input
+                                  value={m.childStatus2?.female || ''}
+                                  onChange={e => setMaritalStatus(s => {
+                                    const next = [...s.marriages]
+                                    next[idx] = { ...next[idx], childStatus2: { ...(next[idx] as any).childStatus2, female: e.target.value } }
+                                    return { ...s, marriages: next }
+                                  })}
+                                  className="w-24 rounded-md border border-slate-300 px-3 py-2 text-sm"
+                                />
+                              </div>
+                            )}
+                          </div>
                         </div>
-                      </div>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -3882,84 +4416,229 @@ export default function Doctor_Prescription() {
           {activeTab === 'Health' && (
             <div className="space-y-6">
               <div>
-                <div className="mb-2 text-sm font-semibold text-slate-800">Health</div>
+                <div className="mb-2 flex items-center justify-between gap-2">
+                  <div className="text-sm font-semibold text-slate-800">Health</div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAddConditionInputs([''])
+                      setIsAddConditionDialogOpen(true)
+                    }}
+                    className="inline-flex items-center gap-2 rounded-md border border-blue-800 px-3 py-2 text-sm font-semibold text-blue-800 hover:bg-blue-50"
+                    title="Add Condition"
+                  >
+                    <Plus className="h-4 w-4" />
+                    Add Condition
+                  </button>
+                </div>
                 <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-                  <label className={checkboxCardLabelCls(health.conditions.ihd)}>
-                    <input type="checkbox" checked={health.conditions.ihd} onChange={e => setHealth(s => ({ ...s, conditions: { ...s.conditions, ihd: e.target.checked } }))} className="h-4 w-4 rounded border-slate-300" />
-                    IHD
-                  </label>
-                  <label className={checkboxCardLabelCls(health.conditions.epiL)}>
-                    <input type="checkbox" checked={health.conditions.epiL} onChange={e => setHealth(s => ({ ...s, conditions: { ...s.conditions, epiL: e.target.checked } }))} className="h-4 w-4 rounded border-slate-300" />
-                    Epi.L
-                  </label>
-                  <label className={checkboxCardLabelCls(health.conditions.giPu)}>
-                    <input type="checkbox" checked={health.conditions.giPu} onChange={e => setHealth(s => ({ ...s, conditions: { ...s.conditions, giPu: e.target.checked } }))} className="h-4 w-4 rounded border-slate-300" />
-                    GI/PU
-                  </label>
-                  <label className={checkboxCardLabelCls(health.conditions.ky)}>
-                    <input type="checkbox" checked={health.conditions.ky} onChange={e => setHealth(s => ({ ...s, conditions: { ...s.conditions, ky: e.target.checked } }))} className="h-4 w-4 rounded border-slate-300" />
-                    KY
-                  </label>
-                  <label className={checkboxCardLabelCls(health.conditions.liv)}>
-                    <input type="checkbox" checked={health.conditions.liv} onChange={e => setHealth(s => ({ ...s, conditions: { ...s.conditions, liv: e.target.checked } }))} className="h-4 w-4 rounded border-slate-300" />
-                    LIV
-                  </label>
-                  <label className={checkboxCardLabelCls(health.conditions.hrd)}>
-                    <input type="checkbox" checked={health.conditions.hrd} onChange={e => setHealth(s => ({ ...s, conditions: { ...s.conditions, hrd: e.target.checked } }))} className="h-4 w-4 rounded border-slate-300" />
-                    HrD
-                  </label>
-                  <label className={checkboxCardLabelCls(health.conditions.thy)}>
-                    <input type="checkbox" checked={health.conditions.thy} onChange={e => setHealth(s => ({ ...s, conditions: { ...s.conditions, thy: e.target.checked } }))} className="h-4 w-4 rounded border-slate-300" />
-                    Thy
-                  </label>
-                  <label className={checkboxCardLabelCls(health.conditions.accident)}>
-                    <input type="checkbox" checked={health.conditions.accident} onChange={e => setHealth(s => ({ ...s, conditions: { ...s.conditions, accident: e.target.checked } }))} className="h-4 w-4 rounded border-slate-300" />
-                    Accident
-                  </label>
-                  <label className={checkboxCardLabelCls(health.conditions.surgery)}>
-                    <input type="checkbox" checked={health.conditions.surgery} onChange={e => setHealth(s => ({ ...s, conditions: { ...s.conditions, surgery: e.target.checked } }))} className="h-4 w-4 rounded border-slate-300" />
-                    Surgery
-                  </label>
-                  <label className={checkboxCardLabelCls(health.conditions.obesity)}>
-                    <input type="checkbox" checked={health.conditions.obesity} onChange={e => setHealth(s => ({ ...s, conditions: { ...s.conditions, obesity: e.target.checked } }))} className="h-4 w-4 rounded border-slate-300" />
-                    Obesity
-                  </label>
-                  <label className={checkboxCardLabelCls(health.conditions.penileTruma)}>
-                    <input type="checkbox" checked={health.conditions.penileTruma} onChange={e => setHealth(s => ({ ...s, conditions: { ...s.conditions, penileTruma: e.target.checked } }))} className="h-4 w-4 rounded border-slate-300" />
-                    Penile Truma
-                  </label>
-                  <label className={checkboxCardLabelCls(health.conditions.otherChecked)}>
-                    <input
-                      type="checkbox"
-                      checked={health.conditions.otherChecked}
-                      onChange={e => setHealth(s => (
-                        {
-                          ...s,
-                          conditions: {
-                            ...s.conditions,
-                            otherChecked: e.target.checked,
-                            otherText: e.target.checked ? s.conditions.otherText : '',
-                          },
-                        }
-                      ))}
-                      className="h-4 w-4 rounded border-slate-300"
-                    />
-                    Other
-                  </label>
+                  {/* Default Health Conditions (not hidden) */}
+                  {defaultHealthConditions
+                    .filter(c => !hiddenHealthConditionsSet.has(String(c || '')))
+                    .map(c => {
+                      const checked = health.selectedConditions.includes(c)
+                      return (
+                        <div key={c} className="flex items-center gap-2">
+                          <label className={`${checkboxCardLabelCls(checked)} flex-1`}>
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              onChange={() => toggleHealthCondition(c)}
+                              className="h-4 w-4 rounded border-slate-300"
+                            />
+                            {c}
+                          </label>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setDeleteConfirmItem({ type: 'default', value: c })
+                              setIsDeleteConfirmOpen(true)
+                            }}
+                            className="inline-flex items-center justify-center rounded-md border border-slate-300 px-2.5 py-2 text-sm font-semibold text-slate-700 hover:border-rose-600 hover:bg-rose-50 hover:text-rose-600"
+                            title="Remove"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        </div>
+                      )
+                    })}
+
+                  {/* Custom Health Conditions */}
+                  {customHealthConditions
+                    .filter(c => !(defaultHealthConditions as readonly string[]).includes(c))
+                    .map(c => {
+                      const checked = health.selectedConditions.includes(c)
+                      return (
+                        <div key={`custom-${c}`} className="flex items-center gap-2">
+                          <label className={`${checkboxCardLabelCls(checked)} flex-1`}>
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              onChange={() => toggleHealthCondition(c)}
+                              className="h-4 w-4 rounded border-slate-300"
+                            />
+                            {c}
+                          </label>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setDeleteConfirmItem({ type: 'custom', value: c })
+                              setIsDeleteConfirmOpen(true)
+                            }}
+                            className="inline-flex items-center justify-center rounded-md border border-slate-300 px-2.5 py-2 text-sm font-semibold text-slate-700 hover:border-rose-600 hover:bg-rose-50 hover:text-rose-600"
+                            title="Remove"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        </div>
+                      )
+                    })}
                 </div>
 
-                {health.conditions.otherChecked && (
-                  <div className="mt-3">
-                    <label className="mb-1 block text-sm text-slate-700">Other</label>
-                    <input
-                      value={health.conditions.otherText}
-                      onChange={e => setHealth(s => ({ ...s, conditions: { ...s.conditions, otherText: e.target.value } }))}
-                      className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
-                      placeholder="Enter other"
-                    />
+                {/* Hidden conditions can be restored */}
+                {hiddenHealthConditions.length > 0 && (
+                  <div className="mt-4">
+                    <div className="mb-2 text-xs text-slate-500">Hidden conditions (click to restore):</div>
+                    <div className="flex flex-wrap gap-2">
+                      {hiddenHealthConditions.map(c => (
+                        <button
+                          key={`hidden-${c}`}
+                          type="button"
+                          onClick={() => setHiddenHealthConditions(prev => prev.filter(x => x !== c))}
+                          className="rounded-md border border-slate-200 bg-slate-50 px-2 py-1 text-xs text-slate-600 hover:bg-slate-100"
+                        >
+                          + {c}
+                        </button>
+                      ))}
+                    </div>
                   </div>
                 )}
               </div>
+
+              {/* Add Condition Dialog */}
+              {isAddConditionDialogOpen && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+                  <div className="w-full max-w-md rounded-lg bg-white p-6 shadow-xl">
+                    <div className="mb-4 flex items-center justify-between">
+                      <h3 className="text-lg font-semibold text-slate-800">Add Health Conditions</h3>
+                      <button
+                        type="button"
+                        onClick={() => setIsAddConditionDialogOpen(false)}
+                        className="rounded-md p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+                      >
+                        ×
+                      </button>
+                    </div>
+                    <div className="max-h-96 space-y-3 overflow-y-auto">
+                      {addConditionInputs.map((input, idx) => (
+                        <div key={idx} className="flex items-center gap-2">
+                          <input
+                            value={input}
+                            onChange={e => {
+                              const newInputs = [...addConditionInputs]
+                              newInputs[idx] = e.target.value
+                              setAddConditionInputs(newInputs)
+                            }}
+                            placeholder={`Condition ${idx + 1}`}
+                            className="flex-1 rounded-md border border-slate-300 px-3 py-2 text-sm"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const newInputs = addConditionInputs.filter((_, i) => i !== idx)
+                              setAddConditionInputs(newInputs.length ? newInputs : [''])
+                            }}
+                            className="inline-flex items-center justify-center rounded-md border border-slate-300 px-2.5 py-2 text-sm font-semibold text-slate-700 hover:border-rose-600 hover:bg-rose-50 hover:text-rose-600"
+                            title="Remove"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="mt-4 flex items-center justify-between">
+                      <button
+                        type="button"
+                        onClick={() => setAddConditionInputs([...addConditionInputs, ''])}
+                        className="inline-flex items-center gap-2 rounded-md border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                      >
+                        <Plus className="h-4 w-4" />
+                        Add More
+                      </button>
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setIsAddConditionDialogOpen(false)}
+                          className="rounded-md border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            addConditionInputs.forEach(v => {
+                              if (v.trim()) addHealthCondition(v.trim(), false)
+                            })
+                            setIsAddConditionDialogOpen(false)
+                          }}
+                          className="rounded-md bg-blue-800 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-900"
+                        >
+                          Add All
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Delete Confirmation Dialog */}
+              {isDeleteConfirmOpen && deleteConfirmItem && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+                  <div className="w-full max-w-sm rounded-lg bg-white p-6 shadow-xl">
+                    <div className="mb-4">
+                      <h3 className="text-lg font-semibold text-slate-800">Confirm Delete</h3>
+                      <p className="mt-2 text-sm text-slate-600">
+                        Are you sure you want to permanently delete <strong>"{deleteConfirmItem.value}"</strong>?
+                      </p>
+                      {deleteConfirmItem.type === 'default' && (
+                        <p className="mt-1 text-xs text-slate-500">
+                          This will hide the default condition. You can restore it later.
+                        </p>
+                      )}
+                      {deleteConfirmItem.type === 'custom' && (
+                        <p className="mt-1 text-xs text-rose-600">
+                          This custom condition will be permanently deleted.
+                        </p>
+                      )}
+                    </div>
+                    <div className="flex justify-end gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setIsDeleteConfirmOpen(false)}
+                        className="rounded-md border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (deleteConfirmItem.type === 'default') {
+                            setHiddenHealthConditions(prev => [...prev, deleteConfirmItem.value])
+                          } else {
+                            setCustomHealthConditions(prev => prev.filter(x => x !== deleteConfirmItem.value))
+                            removeHealthCondition(deleteConfirmItem.value)
+                          }
+                          setIsDeleteConfirmOpen(false)
+                          setDeleteConfirmItem(null)
+                        }}
+                        className="rounded-md bg-rose-600 px-4 py-2 text-sm font-semibold text-white hover:bg-rose-700"
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               <div className="rounded-lg border border-slate-200 bg-white p-4">
                 <div className="text-sm font-semibold text-slate-800">Diabetes</div>
@@ -4365,37 +5044,80 @@ export default function Doctor_Prescription() {
                 <div className="text-sm font-semibold text-slate-800">PE</div>
                 <div className="mt-3 grid gap-4 sm:grid-cols-2">
                   <div>
-                    <div className="flex flex-wrap items-center gap-3">
-                      {(['Pre', 'Just'] as const).map(opt => (
-                        <label key={opt} className={checkboxCardLabelCls(sexualHistory.pe.preJustType === opt)}>
-                          <input
-                            type="checkbox"
-                            checked={sexualHistory.pe.preJustType === opt}
-                            onChange={(e) => setSexualHistory(s => ({
-                              ...s,
-                              pe: {
-                                ...s.pe,
-                                preJustType: e.target.checked ? opt : '',
-                                preJustValue: e.target.checked ? s.pe.preJustValue : '',
-                                preJustUnit: e.target.checked ? s.pe.preJustUnit : '',
-                              },
-                            }))}
-                            className="h-4 w-4 rounded border-slate-300"
-                          />
-                          {opt}
-                        </label>
-                      ))}
-                    </div>
+                    {/* Pre Checkbox and Fields */}
+                    <label className={checkboxCardLabelCls(sexualHistory.pe.pre)}>
+                      <input
+                        type="checkbox"
+                        checked={sexualHistory.pe.pre}
+                        onChange={(e) => setSexualHistory(s => ({
+                          ...s,
+                          pe: {
+                            ...s.pe,
+                            pre: e.target.checked,
+                            preValue: e.target.checked ? s.pe.preValue : '',
+                            preUnit: e.target.checked ? s.pe.preUnit : '',
+                          },
+                        }))}
+                        className="h-4 w-4 rounded border-slate-300"
+                      />
+                      Pre
+                    </label>
 
-                    {!!sexualHistory.pe.preJustType && (
+                    {sexualHistory.pe.pre && (
                       <div className="mt-3 flex flex-wrap items-center gap-3">
-                        <input value={sexualHistory.pe.preJustValue} onChange={e => setSexualHistory(s => ({ ...s, pe: { ...s.pe, preJustValue: e.target.value } }))} className="w-28 rounded-md border border-slate-300 px-3 py-2 text-sm" placeholder="#" />
+                        <input
+                          value={sexualHistory.pe.preValue}
+                          onChange={e => setSexualHistory(s => ({ ...s, pe: { ...s.pe, preValue: e.target.value } }))}
+                          className="w-28 rounded-md border border-slate-300 px-3 py-2 text-sm"
+                          placeholder="#"
+                        />
                         {(['Sec', 'JK', 'Min'] as const).map(opt => (
                           <label key={opt} className="flex items-center gap-2 text-sm text-slate-700">
                             <input
                               type="checkbox"
-                              checked={sexualHistory.pe.preJustUnit === opt}
-                              onChange={(e) => setSexualHistory(s => ({ ...s, pe: { ...s.pe, preJustUnit: e.target.checked ? opt : '' } }))}
+                              checked={sexualHistory.pe.preUnit === opt}
+                              onChange={(e) => setSexualHistory(s => ({ ...s, pe: { ...s.pe, preUnit: e.target.checked ? opt : '' } }))}
+                              className="h-4 w-4 rounded border-slate-300"
+                            />
+                            {opt}
+                          </label>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Just Checkbox and Fields */}
+                    <label className={checkboxCardLabelCls(sexualHistory.pe.just)}>
+                      <input
+                        type="checkbox"
+                        checked={sexualHistory.pe.just}
+                        onChange={(e) => setSexualHistory(s => ({
+                          ...s,
+                          pe: {
+                            ...s.pe,
+                            just: e.target.checked,
+                            justValue: e.target.checked ? s.pe.justValue : '',
+                            justUnit: e.target.checked ? s.pe.justUnit : '',
+                          },
+                        }))}
+                        className="h-4 w-4 rounded border-slate-300"
+                      />
+                      Just
+                    </label>
+
+                    {sexualHistory.pe.just && (
+                      <div className="mt-3 flex flex-wrap items-center gap-3">
+                        <input
+                          value={sexualHistory.pe.justValue}
+                          onChange={e => setSexualHistory(s => ({ ...s, pe: { ...s.pe, justValue: e.target.value } }))}
+                          className="w-28 rounded-md border border-slate-300 px-3 py-2 text-sm"
+                          placeholder="#"
+                        />
+                        {(['Sec', 'JK', 'Min'] as const).map(opt => (
+                          <label key={opt} className="flex items-center gap-2 text-sm text-slate-700">
+                            <input
+                              type="checkbox"
+                              checked={sexualHistory.pe.justUnit === opt}
+                              onChange={(e) => setSexualHistory(s => ({ ...s, pe: { ...s.pe, justUnit: e.target.checked ? opt : '' } }))}
                               className="h-4 w-4 rounded border-slate-300"
                             />
                             {opt}
@@ -4459,17 +5181,33 @@ export default function Doctor_Prescription() {
                 <div className="mt-4">
                   <div className="mb-2 text-sm text-slate-700">Status</div>
                   <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-                    {(['No issue', 'ER↓', 'Weakness'] as const).map(opt => (
-                      <label key={opt} className={checkboxCardLabelCls(sexualHistory.pFluid.status === opt)}>
-                        <input
-                          type="checkbox"
-                          checked={sexualHistory.pFluid.status === opt}
-                          onChange={(e) => setSexualHistory(s => ({ ...s, pFluid: { ...s.pFluid, status: e.target.checked ? opt : '' } }))}
-                          className="h-4 w-4 rounded border-slate-300"
-                        />
-                        {opt}
-                      </label>
-                    ))}
+                    <label className={checkboxCardLabelCls(sexualHistory.pFluid.status.noIssue)}>
+                      <input
+                        type="checkbox"
+                        checked={sexualHistory.pFluid.status.noIssue}
+                        onChange={(e) => setSexualHistory(s => ({ ...s, pFluid: { ...s.pFluid, status: { ...s.pFluid.status, noIssue: e.target.checked } } }))}
+                        className="h-4 w-4 rounded border-slate-300"
+                      />
+                      No issue
+                    </label>
+                    <label className={checkboxCardLabelCls(sexualHistory.pFluid.status.erDown)}>
+                      <input
+                        type="checkbox"
+                        checked={sexualHistory.pFluid.status.erDown}
+                        onChange={(e) => setSexualHistory(s => ({ ...s, pFluid: { ...s.pFluid, status: { ...s.pFluid.status, erDown: e.target.checked } } }))}
+                        className="h-4 w-4 rounded border-slate-300"
+                      />
+                      ER↓
+                    </label>
+                    <label className={checkboxCardLabelCls(sexualHistory.pFluid.status.weakness)}>
+                      <input
+                        type="checkbox"
+                        checked={sexualHistory.pFluid.status.weakness}
+                        onChange={(e) => setSexualHistory(s => ({ ...s, pFluid: { ...s.pFluid, status: { ...s.pFluid.status, weakness: e.target.checked } } }))}
+                        className="h-4 w-4 rounded border-slate-300"
+                      />
+                      Weakness
+                    </label>
                   </div>
                 </div>
               </div>
@@ -4498,48 +5236,136 @@ export default function Doctor_Prescription() {
               <div className="rounded-lg border border-slate-200 bg-white p-4">
                 <div className="text-sm font-semibold text-slate-800">P.Size</div>
                 <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-                  {(['Bent', 'Small', 'Shrink'] as const).map(opt => (
-                    <label key={opt} className={checkboxCardLabelCls(sexualHistory.pSize.status === opt)}>
-                      <input
-                        type="checkbox"
-                        checked={sexualHistory.pSize.status === opt}
-                        onChange={(e) => setSexualHistory(s => (
-                          {
-                            ...s,
-                            pSize: {
-                              ...s.pSize,
-                              status: e.target.checked ? opt : '',
-                              bentSide: (e.target.checked && opt === 'Bent') ? s.pSize.bentSide : '',
-                            },
-                          }
-                        ))}
-                        className="h-4 w-4 rounded border-slate-300"
-                      />
-                      {opt}
-                    </label>
-                  ))}
+                  <label className={checkboxCardLabelCls(sexualHistory.pSize.bent)}>
+                    <input
+                      type="checkbox"
+                      checked={sexualHistory.pSize.bent}
+                      onChange={(e) => setSexualHistory(s => ({
+                        ...s,
+                        pSize: {
+                          ...s.pSize,
+                          bent: e.target.checked,
+                          bentLeft: e.target.checked ? s.pSize.bentLeft : false,
+                          bentRight: e.target.checked ? s.pSize.bentRight : false,
+                        },
+                      }))}
+                      className="h-4 w-4 rounded border-slate-300"
+                    />
+                    Bent
+                  </label>
+                  <label className={checkboxCardLabelCls(sexualHistory.pSize.small)}>
+                    <input
+                      type="checkbox"
+                      checked={sexualHistory.pSize.small}
+                      onChange={(e) => setSexualHistory(s => ({
+                        ...s,
+                        pSize: {
+                          ...s.pSize,
+                          small: e.target.checked,
+                          smallHead: e.target.checked ? s.pSize.smallHead : false,
+                          smallBody: e.target.checked ? s.pSize.smallBody : false,
+                          smallTip: e.target.checked ? s.pSize.smallTip : false,
+                          smallMid: e.target.checked ? s.pSize.smallMid : false,
+                          smallBase: e.target.checked ? s.pSize.smallBase : false,
+                        },
+                      }))}
+                      className="h-4 w-4 rounded border-slate-300"
+                    />
+                    Small
+                  </label>
+                  <label className={checkboxCardLabelCls(sexualHistory.pSize.shrink)}>
+                    <input
+                      type="checkbox"
+                      checked={sexualHistory.pSize.shrink}
+                      onChange={(e) => setSexualHistory(s => ({ ...s, pSize: { ...s.pSize, shrink: e.target.checked } }))}
+                      className="h-4 w-4 rounded border-slate-300"
+                    />
+                    Shrink
+                  </label>
                 </div>
 
-                {sexualHistory.pSize.status === 'Bent' && (
+                {sexualHistory.pSize.bent && (
                   <div className="mt-3">
+                    <div className="text-sm text-slate-600 mb-2">Bent Side</div>
                     <div className="grid gap-2 sm:grid-cols-2">
-                      <label className={checkboxCardLabelCls(sexualHistory.pSize.bentSide === 'Left')}>
+                      <label className={checkboxCardLabelCls(sexualHistory.pSize.bentLeft)}>
                         <input
                           type="checkbox"
-                          checked={sexualHistory.pSize.bentSide === 'Left'}
-                          onChange={(e) => setSexualHistory(s => ({ ...s, pSize: { ...s.pSize, bentSide: e.target.checked ? 'Left' : '' } }))}
+                          checked={sexualHistory.pSize.bentLeft}
+                          onChange={(e) => setSexualHistory(s => ({ ...s, pSize: { ...s.pSize, bentLeft: e.target.checked } }))}
                           className="h-4 w-4 rounded border-slate-300"
                         />
                         Left
                       </label>
-                      <label className={checkboxCardLabelCls(sexualHistory.pSize.bentSide === 'Right')}>
+                      <label className={checkboxCardLabelCls(sexualHistory.pSize.bentRight)}>
                         <input
                           type="checkbox"
-                          checked={sexualHistory.pSize.bentSide === 'Right'}
-                          onChange={(e) => setSexualHistory(s => ({ ...s, pSize: { ...s.pSize, bentSide: e.target.checked ? 'Right' : '' } }))}
+                          checked={sexualHistory.pSize.bentRight}
+                          onChange={(e) => setSexualHistory(s => ({ ...s, pSize: { ...s.pSize, bentRight: e.target.checked } }))}
                           className="h-4 w-4 rounded border-slate-300"
                         />
                         Right
+                      </label>
+                    </div>
+                  </div>
+                )}
+
+                {sexualHistory.pSize.small && (
+                  <div className="mt-3">
+                    <div className="text-sm text-slate-600 mb-2">Part</div>
+                    <div className="grid gap-2 sm:grid-cols-2">
+                      <label className={checkboxCardLabelCls(sexualHistory.pSize.smallHead)}>
+                        <input
+                          type="checkbox"
+                          checked={sexualHistory.pSize.smallHead}
+                          onChange={(e) => setSexualHistory(s => ({ ...s, pSize: { ...s.pSize, smallHead: e.target.checked } }))}
+                          className="h-4 w-4 rounded border-slate-300"
+                        />
+                        Head
+                      </label>
+                      <label className={checkboxCardLabelCls(sexualHistory.pSize.smallBody)}>
+                        <input
+                          type="checkbox"
+                          checked={sexualHistory.pSize.smallBody}
+                          onChange={(e) => setSexualHistory(s => ({ ...s, pSize: { ...s.pSize, smallBody: e.target.checked } }))}
+                          className="h-4 w-4 rounded border-slate-300"
+                        />
+                        Body
+                      </label>
+                    </div>
+                  </div>
+                )}
+
+                {sexualHistory.pSize.shrink && (
+                  <div className="mt-3">
+                    <div className="text-sm text-slate-600 mb-2">Section</div>
+                    <div className="grid gap-2 sm:grid-cols-3">
+                      <label className={checkboxCardLabelCls(sexualHistory.pSize.smallTip)}>
+                        <input
+                          type="checkbox"
+                          checked={sexualHistory.pSize.smallTip}
+                          onChange={(e) => setSexualHistory(s => ({ ...s, pSize: { ...s.pSize, smallTip: e.target.checked } }))}
+                          className="h-4 w-4 rounded border-slate-300"
+                        />
+                        Tip
+                      </label>
+                      <label className={checkboxCardLabelCls(sexualHistory.pSize.smallMid)}>
+                        <input
+                          type="checkbox"
+                          checked={sexualHistory.pSize.smallMid}
+                          onChange={(e) => setSexualHistory(s => ({ ...s, pSize: { ...s.pSize, smallMid: e.target.checked } }))}
+                          className="h-4 w-4 rounded border-slate-300"
+                        />
+                        Mid
+                      </label>
+                      <label className={checkboxCardLabelCls(sexualHistory.pSize.smallBase)}>
+                        <input
+                          type="checkbox"
+                          checked={sexualHistory.pSize.smallBase}
+                          onChange={(e) => setSexualHistory(s => ({ ...s, pSize: { ...s.pSize, smallBase: e.target.checked } }))}
+                          className="h-4 w-4 rounded border-slate-300"
+                        />
+                        Base
                       </label>
                     </div>
                   </div>
@@ -4561,256 +5387,272 @@ export default function Doctor_Prescription() {
                     ))}
                   </div>
                 </div>
+              </div>
 
-                <div className="mt-4 rounded-lg border border-slate-200 bg-white p-4">
-                  <div className="text-sm font-semibold text-slate-800">INF</div>
+              <div className="mt-4 rounded-lg border border-slate-200 bg-white p-4">
+                <div className="text-sm font-semibold text-slate-800">On-Examine (OE)</div>
 
-                  <div className="mt-4">
-                    <div className="mb-2 text-sm text-slate-700">Sexuality</div>
-                    <div className="grid gap-2 sm:grid-cols-2">
-                      {(['OK', 'Disturbed'] as const).map(opt => (
-                        <label key={opt} className={checkboxCardLabelCls(sexualHistory.inf.sexuality.status === opt)}>
-                          <input
-                            type="checkbox"
-                            checked={sexualHistory.inf.sexuality.status === opt}
-                            onChange={(e) => setSexualHistory(s => ({ ...s, inf: { ...s.inf, sexuality: { ...s.inf.sexuality, status: e.target.checked ? opt : '' } } }))}
-                            className="h-4 w-4 rounded border-slate-300"
-                          />
-                          {opt}
-                        </label>
-                      ))}
-                    </div>
-                  </div>
-
-                  <div className="mt-4">
-                    <div className="mb-2 text-sm text-slate-700">Diagnosis</div>
-                    <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
-                      <label className={checkboxCardLabelCls(sexualHistory.inf.diagnosis.azos)}>
-                        <input type="checkbox" checked={sexualHistory.inf.diagnosis.azos} onChange={(e) => setSexualHistory(s => ({ ...s, inf: { ...s.inf, diagnosis: { ...s.inf.diagnosis, azos: e.target.checked } } }))} className="h-4 w-4 rounded border-slate-300" />
-                        Azos
-                      </label>
-                      <label className={checkboxCardLabelCls(sexualHistory.inf.diagnosis.oligo)}>
-                        <input type="checkbox" checked={sexualHistory.inf.diagnosis.oligo} onChange={(e) => setSexualHistory(s => ({ ...s, inf: { ...s.inf, diagnosis: { ...s.inf.diagnosis, oligo: e.target.checked } } }))} className="h-4 w-4 rounded border-slate-300" />
-                        Oligo
-                      </label>
-                      <label className={checkboxCardLabelCls(sexualHistory.inf.diagnosis.terato)}>
-                        <input type="checkbox" checked={sexualHistory.inf.diagnosis.terato} onChange={(e) => setSexualHistory(s => ({ ...s, inf: { ...s.inf, diagnosis: { ...s.inf.diagnosis, terato: e.target.checked } } }))} className="h-4 w-4 rounded border-slate-300" />
-                        Terato
-                      </label>
-                      <label className={checkboxCardLabelCls(sexualHistory.inf.diagnosis.astheno)}>
-                        <input type="checkbox" checked={sexualHistory.inf.diagnosis.astheno} onChange={(e) => setSexualHistory(s => ({ ...s, inf: { ...s.inf, diagnosis: { ...s.inf.diagnosis, astheno: e.target.checked } } }))} className="h-4 w-4 rounded border-slate-300" />
-                        Astheno
-                      </label>
-                    </div>
-                  </div>
-
-                  <div className="mt-4">
-                    <div className="mb-2 text-sm text-slate-700">Problems</div>
-                    <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-                      <label className={checkboxCardLabelCls(sexualHistory.inf.problems.magi)}>
-                        <input type="checkbox" checked={sexualHistory.inf.problems.magi} onChange={(e) => setSexualHistory(s => ({ ...s, inf: { ...s.inf, problems: { ...s.inf.problems, magi: e.target.checked } } }))} className="h-4 w-4 rounded border-slate-300" />
-                        MAGI
-                      </label>
-                      <label className={checkboxCardLabelCls(sexualHistory.inf.problems.cystitis)}>
-                        <input type="checkbox" checked={sexualHistory.inf.problems.cystitis} onChange={(e) => setSexualHistory(s => ({ ...s, inf: { ...s.inf, problems: { ...s.inf.problems, cystitis: e.target.checked } } }))} className="h-4 w-4 rounded border-slate-300" />
-                        Cystitis
-                      </label>
-                      <label className={checkboxCardLabelCls(sexualHistory.inf.problems.balanitis)}>
-                        <input type="checkbox" checked={sexualHistory.inf.problems.balanitis} onChange={(e) => setSexualHistory(s => ({ ...s, inf: { ...s.inf, problems: { ...s.inf.problems, balanitis: e.target.checked } } }))} className="h-4 w-4 rounded border-slate-300" />
-                        Balanitis
-                      </label>
-                    </div>
-                  </div>
-
-                  <div className="mt-4">
-                    <label className="mb-1 block text-sm text-slate-700">Others</label>
-                    <textarea value={sexualHistory.inf.others} onChange={e => setSexualHistory(s => ({ ...s, inf: { ...s.inf, others: e.target.value } }))} rows={2} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
+                <div className="mt-4">
+                  <div className="text-sm text-slate-700">Muscles</div>
+                  <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                    <label className={checkboxCardLabelCls(sexualHistory.oeMuscle.ok)}>
+                      <input
+                        type="checkbox"
+                        checked={sexualHistory.oeMuscle.ok}
+                        onChange={(e) => setSexualHistory(s => ({ ...s, oeMuscle: { ...s.oeMuscle, ok: e.target.checked } }))}
+                        className="h-4 w-4 rounded border-slate-300"
+                      />
+                      OK
+                    </label>
+                    <label className={checkboxCardLabelCls(sexualHistory.oeMuscle.semi)}>
+                      <input
+                        type="checkbox"
+                        checked={sexualHistory.oeMuscle.semi}
+                        onChange={(e) => setSexualHistory(s => ({ ...s, oeMuscle: { ...s.oeMuscle, semi: e.target.checked } }))}
+                        className="h-4 w-4 rounded border-slate-300"
+                      />
+                      Semi
+                    </label>
+                    <label className={checkboxCardLabelCls(sexualHistory.oeMuscle.fl)}>
+                      <input
+                        type="checkbox"
+                        checked={sexualHistory.oeMuscle.fl}
+                        onChange={(e) => setSexualHistory(s => ({ ...s, oeMuscle: { ...s.oeMuscle, fl: e.target.checked } }))}
+                        className="h-4 w-4 rounded border-slate-300"
+                      />
+                      FL
+                    </label>
                   </div>
                 </div>
 
                 <div className="mt-4">
-                  <div className="text-sm font-semibold text-slate-800">On-Examine (OE)</div>
+                  <div className="text-sm text-slate-700">Disease</div>
+                  <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                    <label className={checkboxCardLabelCls(sexualHistory.oe.disease.peyronie)}>
+                      <input
+                        type="checkbox"
+                        checked={sexualHistory.oe.disease.peyronie}
+                        onChange={(e) => setSexualHistory(s => ({ ...s, oe: { ...s.oe, disease: { ...s.oe.disease, peyronie: e.target.checked } } }))}
+                        className="h-4 w-4 rounded border-slate-300"
+                      />
+                      Peyronie
+                    </label>
+                    <label className={checkboxCardLabelCls(sexualHistory.oe.disease.calcification)}>
+                      <input
+                        type="checkbox"
+                        checked={sexualHistory.oe.disease.calcification}
+                        onChange={(e) => setSexualHistory(s => ({ ...s, oe: { ...s.oe, disease: { ...s.oe.disease, calcification: e.target.checked } } }))}
+                        className="h-4 w-4 rounded border-slate-300"
+                      />
+                      Calcification
+                    </label>
+                  </div>
+                </div>
 
-                  <div className="mt-4">
-                    <div className="text-sm text-slate-700">Muscles</div>
-                    <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-                      {(['OK', 'Semi', 'FL'] as const).map(opt => (
-                        <label key={opt} className={checkboxCardLabelCls(sexualHistory.oeMuscle.status === opt)}>
+                <div className="mt-4">
+                  <div className="text-sm font-semibold text-slate-700">Testes</div>
+                  <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                    {(['Atrophic', 'Normal'] as const).map(opt => (
+                      <label key={opt} className={checkboxCardLabelCls(sexualHistory.oe.testes.status === opt)}>
+                        <input
+                          type="checkbox"
+                          checked={sexualHistory.oe.testes.status === opt}
+                          onChange={(e) => setSexualHistory(s => ({ ...s, oe: { ...s.oe, testes: { ...s.oe.testes, status: e.target.checked ? opt : '' } } }))}
+                          className="h-4 w-4 rounded border-slate-300"
+                        />
+                        {opt}
+                      </label>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="mt-4">
+                  <div className="text-sm text-slate-700">Epi.D Cst</div>
+                  <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                    <label className={checkboxCardLabelCls(!!sexualHistory.oe.epidCst.right)}>
+                      <input
+                        type="checkbox"
+                        checked={!!sexualHistory.oe.epidCst.right}
+                        onChange={(e) => setSexualHistory(s => ({ ...s, oe: { ...s.oe, epidCst: { ...s.oe.epidCst, right: e.target.checked } } }))}
+                        className="h-4 w-4 rounded border-slate-300"
+                      />
+                      Right
+                    </label>
+                    <label className={checkboxCardLabelCls(!!sexualHistory.oe.epidCst.left)}>
+                      <input
+                        type="checkbox"
+                        checked={!!sexualHistory.oe.epidCst.left}
+                        onChange={(e) => setSexualHistory(s => ({ ...s, oe: { ...s.oe, epidCst: { ...s.oe.epidCst, left: e.target.checked } } }))}
+                        className="h-4 w-4 rounded border-slate-300"
+                      />
+                      Left
+                    </label>
+                  </div>
+                </div>
+
+                <div className="mt-4">
+                  <div className="text-sm text-slate-700">Varicocle</div>
+                  <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                    <label className={checkboxCardLabelCls(!!sexualHistory.oe.varicocele.right)}>
+                      <input
+                        type="checkbox"
+                        checked={!!sexualHistory.oe.varicocele.right}
+                        onChange={(e) => setSexualHistory(s => ({ ...s, oe: { ...s.oe, varicocele: { ...s.oe.varicocele, right: e.target.checked } } }))}
+                        className="h-4 w-4 rounded border-slate-300"
+                      />
+                      Right
+                    </label>
+                    <label className={checkboxCardLabelCls(!!sexualHistory.oe.varicocele.left)}>
+                      <input
+                        type="checkbox"
+                        checked={!!sexualHistory.oe.varicocele.left}
+                        onChange={(e) => setSexualHistory(s => ({ ...s, oe: { ...s.oe, varicocele: { ...s.oe.varicocele, left: e.target.checked } } }))}
+                        className="h-4 w-4 rounded border-slate-300"
+                      />
+                      Left
+                    </label>
+                  </div>
+
+
+
+                  {!!sexualHistory.oe.varicocele.right && (
+                    <div className="mt-3 flex flex-wrap items-center gap-6">
+                      <div className="text-xs font-semibold text-slate-600">Right Grades:</div>
+                      {(['G1', 'G2', 'G3'] as const).map(g => (
+                        <label key={'right_' + g} className="flex items-center gap-2 text-sm text-slate-700">
                           <input
                             type="checkbox"
-                            checked={sexualHistory.oeMuscle.status === opt}
-                            onChange={(e) => setSexualHistory(s => ({ ...s, oeMuscle: { ...s.oeMuscle, status: e.target.checked ? opt : '' } }))}
-                            className="h-4 w-4 rounded border-slate-300"
-                          />
-                          {opt}
-                        </label>
-                      ))}
-                    </div>
-                  </div>
-
-                  <div className="mt-4">
-                    <div className="text-sm text-slate-700">Disease</div>
-                    <div className="mt-3 grid gap-2 sm:grid-cols-2">
-                      <label className={checkboxCardLabelCls(sexualHistory.oe.disease.peyronie)}>
-                        <input
-                          type="checkbox"
-                          checked={sexualHistory.oe.disease.peyronie}
-                          onChange={(e) => setSexualHistory(s => ({ ...s, oe: { ...s.oe, disease: { ...s.oe.disease, peyronie: e.target.checked } } }))}
-                          className="h-4 w-4 rounded border-slate-300"
-                        />
-                        Peyronie
-                      </label>
-                      <label className={checkboxCardLabelCls(sexualHistory.oe.disease.calcification)}>
-                        <input
-                          type="checkbox"
-                          checked={sexualHistory.oe.disease.calcification}
-                          onChange={(e) => setSexualHistory(s => ({ ...s, oe: { ...s.oe, disease: { ...s.oe.disease, calcification: e.target.checked } } }))}
-                          className="h-4 w-4 rounded border-slate-300"
-                        />
-                        Calcification
-                      </label>
-                    </div>
-                  </div>
-
-                  <div className="mt-4">
-                    <div className="text-sm font-semibold text-slate-700">Testes</div>
-                    <div className="mt-3 grid gap-2 sm:grid-cols-2">
-                      {(['Atrophic', 'Normal'] as const).map(opt => (
-                        <label key={opt} className={checkboxCardLabelCls(sexualHistory.oe.testes.status === opt)}>
-                          <input
-                            type="checkbox"
-                            checked={sexualHistory.oe.testes.status === opt}
-                            onChange={(e) => setSexualHistory(s => ({ ...s, oe: { ...s.oe, testes: { ...s.oe.testes, status: e.target.checked ? opt : '' } } }))}
-                            className="h-4 w-4 rounded border-slate-300"
-                          />
-                          {opt}
-                        </label>
-                      ))}
-                    </div>
-                  </div>
-
-                  <div className="mt-4">
-                    <div className="text-sm text-slate-700">Epi.D Cst</div>
-                    <div className="mt-3 grid gap-2 sm:grid-cols-2">
-                      <label className={checkboxCardLabelCls(!!sexualHistory.oe.epidCst.right)}>
-                        <input
-                          type="checkbox"
-                          checked={!!sexualHistory.oe.epidCst.right}
-                          onChange={(e) => setSexualHistory(s => ({ ...s, oe: { ...s.oe, epidCst: { ...s.oe.epidCst, right: e.target.checked } } }))}
-                          className="h-4 w-4 rounded border-slate-300"
-                        />
-                        Right
-                      </label>
-                      <label className={checkboxCardLabelCls(!!sexualHistory.oe.epidCst.left)}>
-                        <input
-                          type="checkbox"
-                          checked={!!sexualHistory.oe.epidCst.left}
-                          onChange={(e) => setSexualHistory(s => ({ ...s, oe: { ...s.oe, epidCst: { ...s.oe.epidCst, left: e.target.checked } } }))}
-                          className="h-4 w-4 rounded border-slate-300"
-                        />
-                        Left
-                      </label>
-                    </div>
-                  </div>
-
-                  <div className="mt-4">
-                    <div className="text-sm text-slate-700">Varicocle</div>
-                    <div className="mt-3 grid gap-2 sm:grid-cols-2">
-                      <label className={checkboxCardLabelCls(!!sexualHistory.oe.varicocele.right)}>
-                        <input
-                          type="checkbox"
-                          checked={!!sexualHistory.oe.varicocele.right}
-                          onChange={(e) => setSexualHistory(s => ({ ...s, oe: { ...s.oe, varicocele: { ...s.oe.varicocele, right: e.target.checked } } }))}
-                          className="h-4 w-4 rounded border-slate-300"
-                        />
-                        Right
-                      </label>
-                      <label className={checkboxCardLabelCls(!!sexualHistory.oe.varicocele.left)}>
-                        <input
-                          type="checkbox"
-                          checked={!!sexualHistory.oe.varicocele.left}
-                          onChange={(e) => setSexualHistory(s => ({ ...s, oe: { ...s.oe, varicocele: { ...s.oe.varicocele, left: e.target.checked } } }))}
-                          className="h-4 w-4 rounded border-slate-300"
-                        />
-                        Left
-                      </label>
-                    </div>
-
-
-
-                    {!!sexualHistory.oe.varicocele.right && (
-                      <div className="mt-3 flex flex-wrap items-center gap-6">
-                        <div className="text-xs font-semibold text-slate-600">Right Grades:</div>
-                        {(['G1', 'G2', 'G3'] as const).map(g => (
-                          <label key={'right_' + g} className="flex items-center gap-2 text-sm text-slate-700">
-                            <input
-                              type="checkbox"
-                              checked={!!(sexualHistory.oe.varicocele.rightGrades as any)[g.toLowerCase()]}
-                              onChange={(e) => setSexualHistory(s => ({
-                                ...s,
-                                oe: {
-                                  ...s.oe,
-                                  varicocele: {
-                                    ...s.oe.varicocele,
-                                    rightGrades: { ...s.oe.varicocele.rightGrades, [g.toLowerCase()]: e.target.checked },
-                                  },
+                            checked={!!(sexualHistory.oe.varicocele.rightGrades as any)[g.toLowerCase()]}
+                            onChange={(e) => setSexualHistory(s => ({
+                              ...s,
+                              oe: {
+                                ...s.oe,
+                                varicocele: {
+                                  ...s.oe.varicocele,
+                                  rightGrades: { ...s.oe.varicocele.rightGrades, [g.toLowerCase()]: e.target.checked },
                                 },
-                              }))}
-                              className="h-4 w-4 rounded border-slate-300"
-                            />
-                            {g}
-                          </label>
-                        ))}
-                      </div>
-                    )}
-
-                    {!!sexualHistory.oe.varicocele.left && (
-                      <div className="mt-3 flex flex-wrap items-center gap-6">
-                        <div className="text-xs font-semibold text-slate-600">Left Grades:</div>
-                        {(['G1', 'G2', 'G3'] as const).map(g => (
-                          <label key={'left_' + g} className="flex items-center gap-2 text-sm text-slate-700">
-                            <input
-                              type="checkbox"
-                              checked={!!(sexualHistory.oe.varicocele.leftGrades as any)[g.toLowerCase()]}
-                              onChange={(e) => setSexualHistory(s => ({
-                                ...s,
-                                oe: {
-                                  ...s.oe,
-                                  varicocele: {
-                                    ...s.oe.varicocele,
-                                    leftGrades: { ...s.oe.varicocele.leftGrades, [g.toLowerCase()]: e.target.checked },
-                                  },
-                                },
-                              }))}
-                              className="h-4 w-4 rounded border-slate-300"
-                            />
-                            {g}
-                          </label>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="mt-6">
-                    <div className="text-sm font-semibold text-slate-800">US/S</div>
-                    <div className="mt-3 grid gap-2 sm:grid-cols-2">
-                      {(['Yes', 'No'] as const).map(opt => (
-                        <label key={opt} className={checkboxCardLabelCls(sexualHistory.uss.status === opt)}>
-                          <input
-                            type="checkbox"
-                            checked={sexualHistory.uss.status === opt}
-                            onChange={(e) => setSexualHistory(s => ({ ...s, uss: { ...s.uss, status: e.target.checked ? opt : '' } }))}
+                              },
+                            }))}
                             className="h-4 w-4 rounded border-slate-300"
                           />
-                          {opt}
+                          {g}
                         </label>
                       ))}
                     </div>
-                    <div className="mt-4">
-                      <label className="mb-1 block text-sm text-slate-700">Other</label>
-                      <input value={sexualHistory.uss.other} onChange={e => setSexualHistory(s => ({ ...s, uss: { ...s.uss, other: e.target.value } }))} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
+                  )}
+
+                  {!!sexualHistory.oe.varicocele.left && (
+                    <div className="mt-3 flex flex-wrap items-center gap-6">
+                      <div className="text-xs font-semibold text-slate-600">Left Grades:</div>
+                      {(['G1', 'G2', 'G3'] as const).map(g => (
+                        <label key={'left_' + g} className="flex items-center gap-2 text-sm text-slate-700">
+                          <input
+                            type="checkbox"
+                            checked={!!(sexualHistory.oe.varicocele.leftGrades as any)[g.toLowerCase()]}
+                            onChange={(e) => setSexualHistory(s => ({
+                              ...s,
+                              oe: {
+                                ...s.oe,
+                                varicocele: {
+                                  ...s.oe.varicocele,
+                                  leftGrades: { ...s.oe.varicocele.leftGrades, [g.toLowerCase()]: e.target.checked },
+                                },
+                              },
+                            }))}
+                            className="h-4 w-4 rounded border-slate-300"
+                          />
+                          {g}
+                        </label>
+                      ))}
                     </div>
+                  )}
+                </div>
+
+                <div className="mt-6">
+                  <div className="text-sm font-semibold text-slate-800">US/S</div>
+                  <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                    {(['Yes', 'No'] as const).map(opt => (
+                      <label key={opt} className={checkboxCardLabelCls(sexualHistory.uss.status === opt)}>
+                        <input
+                          type="checkbox"
+                          checked={sexualHistory.uss.status === opt}
+                          onChange={(e) => setSexualHistory(s => ({ ...s, uss: { ...s.uss, status: e.target.checked ? opt : '' } }))}
+                          className="h-4 w-4 rounded border-slate-300"
+                        />
+                        {opt}
+                      </label>
+                    ))}
                   </div>
+                  <div className="mt-4">
+                    <label className="mb-1 block text-sm text-slate-700">Other</label>
+                    <input value={sexualHistory.uss.other} onChange={e => setSexualHistory(s => ({ ...s, uss: { ...s.uss, other: e.target.value } }))} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-4 rounded-lg border border-slate-200 bg-white p-4">
+                <div className="text-sm font-semibold text-slate-800">INF</div>
+
+                <div className="mt-4">
+                  <div className="mb-2 text-sm text-slate-700">Sexuality</div>
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    {(['OK', 'Disturbed'] as const).map(opt => (
+                      <label key={opt} className={checkboxCardLabelCls(sexualHistory.inf.sexuality.status === opt)}>
+                        <input
+                          type="checkbox"
+                          checked={sexualHistory.inf.sexuality.status === opt}
+                          onChange={(e) => setSexualHistory(s => ({ ...s, inf: { ...s.inf, sexuality: { ...s.inf.sexuality, status: e.target.checked ? opt : '' } } }))}
+                          className="h-4 w-4 rounded border-slate-300"
+                        />
+                        {opt}
+                      </label>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="mt-4">
+                  <div className="mb-2 text-sm text-slate-700">Diagnosis</div>
+                  <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+                    <label className={checkboxCardLabelCls(sexualHistory.inf.diagnosis.azos)}>
+                      <input type="checkbox" checked={sexualHistory.inf.diagnosis.azos} onChange={(e) => setSexualHistory(s => ({ ...s, inf: { ...s.inf, diagnosis: { ...s.inf.diagnosis, azos: e.target.checked } } }))} className="h-4 w-4 rounded border-slate-300" />
+                      Azos
+                    </label>
+                    <label className={checkboxCardLabelCls(sexualHistory.inf.diagnosis.oligo)}>
+                      <input type="checkbox" checked={sexualHistory.inf.diagnosis.oligo} onChange={(e) => setSexualHistory(s => ({ ...s, inf: { ...s.inf, diagnosis: { ...s.inf.diagnosis, oligo: e.target.checked } } }))} className="h-4 w-4 rounded border-slate-300" />
+                      Oligo
+                    </label>
+                    <label className={checkboxCardLabelCls(sexualHistory.inf.diagnosis.terato)}>
+                      <input type="checkbox" checked={sexualHistory.inf.diagnosis.terato} onChange={(e) => setSexualHistory(s => ({ ...s, inf: { ...s.inf, diagnosis: { ...s.inf.diagnosis, terato: e.target.checked } } }))} className="h-4 w-4 rounded border-slate-300" />
+                      Terato
+                    </label>
+                    <label className={checkboxCardLabelCls(sexualHistory.inf.diagnosis.astheno)}>
+                      <input type="checkbox" checked={sexualHistory.inf.diagnosis.astheno} onChange={(e) => setSexualHistory(s => ({ ...s, inf: { ...s.inf, diagnosis: { ...s.inf.diagnosis, astheno: e.target.checked } } }))} className="h-4 w-4 rounded border-slate-300" />
+                      Astheno
+                    </label>
+                  </div>
+                </div>
+
+                <div className="mt-4">
+                  <div className="mb-2 text-sm text-slate-700">Problems</div>
+                  <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                    <label className={checkboxCardLabelCls(sexualHistory.inf.problems.magi)}>
+                      <input type="checkbox" checked={sexualHistory.inf.problems.magi} onChange={(e) => setSexualHistory(s => ({ ...s, inf: { ...s.inf, problems: { ...s.inf.problems, magi: e.target.checked } } }))} className="h-4 w-4 rounded border-slate-300" />
+                      MAGI
+                    </label>
+                    <label className={checkboxCardLabelCls(sexualHistory.inf.problems.cystitis)}>
+                      <input type="checkbox" checked={sexualHistory.inf.problems.cystitis} onChange={(e) => setSexualHistory(s => ({ ...s, inf: { ...s.inf, problems: { ...s.inf.problems, cystitis: e.target.checked } } }))} className="h-4 w-4 rounded border-slate-300" />
+                      Cystitis
+                    </label>
+                    <label className={checkboxCardLabelCls(sexualHistory.inf.problems.balanitis)}>
+                      <input type="checkbox" checked={sexualHistory.inf.problems.balanitis} onChange={(e) => setSexualHistory(s => ({ ...s, inf: { ...s.inf, problems: { ...s.inf.problems, balanitis: e.target.checked } } }))} className="h-4 w-4 rounded border-slate-300" />
+                      Balanitis
+                    </label>
+                  </div>
+                </div>
+
+                <div className="mt-4">
+                  <label className="mb-1 block text-sm text-slate-700">Others</label>
+                  <textarea value={sexualHistory.inf.others} onChange={e => setSexualHistory(s => ({ ...s, inf: { ...s.inf, others: e.target.value } }))} rows={2} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
                 </div>
               </div>
             </div>
@@ -4976,7 +5818,12 @@ export default function Doctor_Prescription() {
                 <div className="grid gap-4 sm:grid-cols-2">
                   <div>
                     <label className="mb-1 block text-sm text-slate-700">Reports Entered by</label>
-                    <input value={labReportsHxBy} onChange={e => setLabReportsHxBy(e.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
+                    <input
+                      value={labReportsHxBy}
+                      onChange={(e) => setLabReportsHxBy(e.target.value)}
+                      placeholder="Enter name..."
+                      className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                    />
                   </div>
 
                   <div>
@@ -5144,18 +5991,38 @@ export default function Doctor_Prescription() {
               <div>
                 <div className="mb-2 flex items-center justify-between gap-2">
                   <div className="text-sm font-semibold text-slate-800">Lab Orders</div>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setLabOrderDraft('')
-                      setIsLabOrderDialogOpen(true)
-                    }}
-                    className="inline-flex items-center gap-2 rounded-md border border-blue-800 px-3 py-2 text-sm font-semibold text-blue-800 hover:bg-blue-50"
-                    title="Add Test"
-                  >
-                    <Plus className="h-4 w-4" />
-                    Add Test
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setIsViewTemplatesDialogOpen(true)}
+                      className="inline-flex items-center gap-2 rounded-md border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                      title="View Templates"
+                    >
+                      <Eye className="h-4 w-4" />
+                      View Template
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setIsAddTemplateDialogOpen(true)}
+                      className="inline-flex items-center gap-2 rounded-md border border-green-700 px-3 py-2 text-sm font-semibold text-green-700 hover:bg-green-50"
+                      title="Add Template"
+                    >
+                      <BookmarkPlus className="h-4 w-4" />
+                      Add Template
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setLabOrderDraft('')
+                        setIsLabOrderDialogOpen(true)
+                      }}
+                      className="inline-flex items-center gap-2 rounded-md border border-blue-800 px-3 py-2 text-sm font-semibold text-blue-800 hover:bg-blue-50"
+                      title="Add Test"
+                    >
+                      <Plus className="h-4 w-4" />
+                      Add Test
+                    </button>
+                  </div>
                 </div>
                 <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
                   {labQuickTests.filter(t => !hiddenLabQuickTestsSet.has(String(t || ''))).map(t => {
@@ -5842,12 +6709,11 @@ export default function Doctor_Prescription() {
               </div>
 
               <div>
-                <label className="mb-1 block text-sm font-semibold text-slate-800">Discount (PKR)</label>
+                <label className="mb-1 block text-sm font-semibold text-slate-800">Discount</label>
                 <input
-                  type="number"
                   value={(form as any).therapyDiscount || ''}
                   onChange={(e) => setForm(f => ({ ...f as any, therapyDiscount: e.target.value }))}
-                  placeholder="0"
+                  placeholder="Enter discount"
                   className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
                 />
               </div>
@@ -6187,12 +7053,11 @@ export default function Doctor_Prescription() {
               </div>
 
               <div>
-                <label className="mb-1 block text-sm font-semibold text-slate-800">Discount (PKR)</label>
+                <label className="mb-1 block text-sm font-semibold text-slate-800">Discount</label>
                 <input
-                  type="number"
                   value={(form as any).counsellingDiscount || ''}
                   onChange={(e) => setForm(f => ({ ...f as any, counsellingDiscount: e.target.value }))}
-                  placeholder="0"
+                  placeholder="Enter discount"
                   className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
                 />
               </div>
@@ -6253,14 +7118,14 @@ export default function Doctor_Prescription() {
         labNotes={form.labNotes}
         therapyTests={String((form as any).therapyTestsText || '').split(/\n|,/).map(s => s.trim()).filter(Boolean)}
         therapyNotes={(form as any).therapyNotes}
-        therapyDiscount={Number((form as any).therapyDiscount) || 0}
+        therapyDiscount={ (form as any).therapyDiscount || '0' }
         therapyPlan={therapyPlan}
         therapyMachines={therapyMachines}
         diagnosticTests={(diagRef.current?.getData?.()?.tests) || []}
         diagnosticNotes={(diagRef.current?.getData?.()?.notes) || ''}
-        diagnosticDiscount={Number(diagRef.current?.getData?.()?.discount) || 0}
+        diagnosticDiscount={diagRef.current?.getData?.()?.discount || '0'}
         counselling={counselling}
-        counsellingDiscount={Number((form as any).counsellingDiscount) || 0}
+        counsellingDiscount={(form as any).counsellingDiscount || '0'}
         primaryComplaint={form.primaryComplaint}
         primaryComplaintHistory={form.primaryComplaintHistory}
         familyHistory={form.familyHistory}
@@ -6271,6 +7136,24 @@ export default function Doctor_Prescription() {
         diagnosis={form.diagnosis}
         advice={form.advice}
         createdAt={new Date()}
+      />
+
+      <AddTemplateDialog
+        open={isAddTemplateDialogOpen}
+        onClose={() => setIsAddTemplateDialogOpen(false)}
+        onSave={saveLabTemplate}
+        doctorId={doc?.id || ''}
+        availableTests={[...labQuickTests]}
+        customTests={customLabOrderTests}
+      />
+
+      <ViewTemplatesDialog
+        open={isViewTemplatesDialogOpen}
+        onClose={() => setIsViewTemplatesDialogOpen(false)}
+        templates={labTemplates}
+        onApply={applyLabTemplate}
+        onDelete={deleteLabTemplate}
+        isLoading={isLoadingTemplates}
       />
     </div>
   )

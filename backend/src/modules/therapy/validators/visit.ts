@@ -15,7 +15,7 @@ const patientSnapshotSchema = z.object({
 const visitTestSchema = z.object({
   id: z.string().min(1),
   name: z.string().min(1),
-  price: z.coerce.number().optional().default(0),
+  details: z.any().optional(),
 })
 
 export const therapyVisitCreateSchema = z.object({
@@ -29,11 +29,16 @@ export const therapyVisitCreateSchema = z.object({
 
   subtotal: z.coerce.number().nonnegative().optional().default(0),
   discount: z.coerce.number().nonnegative().optional().default(0),
+  discountType: z.enum(['PKR', '%']).optional().default('PKR'),
   net: z.coerce.number().nonnegative().optional().default(0),
 
   payPreviousDues: z.coerce.boolean().optional().default(false),
   useAdvance: z.coerce.boolean().optional().default(false),
   amountReceived: z.coerce.number().nonnegative().optional().default(0),
+
+  paymentStatus: z.enum(['paid', 'unpaid']).optional().default('paid'),
+  paymentMethod: z.enum(['Cash', 'Card']).optional(),
+  receivedToAccountCode: z.string().optional(),
 
   referringConsultant: z.string().optional(),
   fromReferralId: z.string().optional(),

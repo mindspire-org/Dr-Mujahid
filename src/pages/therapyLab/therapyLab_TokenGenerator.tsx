@@ -105,6 +105,14 @@ export default function TherapyLab_TokenGenerator() {
   const [guardianName, setGuardianName] = useState('')
   const [cnic, setCnic] = useState('')
   const [address, setAddress] = useState('')
+  const [mrn, setMrn] = useState('')
+  const [patientId, setPatientId] = useState('')
+
+  const phoneStorageKey = 'therapyLab.tokenGenerator.lastPhone'
+  const [phoneLookupLoading, setPhoneLookupLoading] = useState(false)
+  const [phoneLookupSearchedDigits, setPhoneLookupSearchedDigits] = useState('')
+  const phoneLookupTimerRef = useRef<any>(null)
+  const phoneLookupSeqRef = useRef(0)
 
   const [fromReferralId, setFromReferralId] = useState<string>('')
   const [referringConsultant, setReferringConsultant] = useState('')
@@ -266,9 +274,11 @@ export default function TherapyLab_TokenGenerator() {
 
   function applyPatientToForm(p: Patient) {
     setSelectedPatient(p)
+    setPatientId(p._id || '')
     setFullName(p.fullName || '')
     setPhone(p.phoneNormalized || (p as any).phone || '')
     setAge(p.age || '')
+    setMrn(p.mrn || '')
     if (p.gender) setGender(String(p.gender))
     setGuardianName(p.fatherName || '')
     if (p.guardianRel) {
@@ -279,6 +289,75 @@ export default function TherapyLab_TokenGenerator() {
     setAddress(p.address || '')
     setCnic(p.cnicNormalized || (p as any).cnicNormalized || p.cnic || (p as any).cnic || '')
   }
+
+  async function runPhoneLookup(digits: string, { open }: { open: boolean }) {
+    const d = String(digits || '').replace(/\D+/g, '')
+    if (!d) {
+      setPhoneMatches([])
+      setPhoneLookupLoading(false)
+      setPhoneLookupSearchedDigits('')
+      if (open) setSelectPatientOpen(false)
+      return
+    }
+    setPhoneLookupLoading(true)
+    setPhoneLookupSearchedDigits(d)
+    const seq = ++phoneLookupSeqRef.current
+    try {
+      const r: any = await therapyApi.searchPatients({ phone: d, limit: 25 } as any)
+      if (seq !== phoneLookupSeqRef.current) return
+      const list: any[] = Array.isArray(r?.patients) ? r.patients : []
+      setPhoneMatches(list)
+      if (open) setSelectPatientOpen(list.length >= 1)
+    } catch {
+      if (seq !== phoneLookupSeqRef.current) return
+      setPhoneMatches([])
+      if (open) setSelectPatientOpen(false)
+    } finally {
+      if (seq !== phoneLookupSeqRef.current) return
+      setPhoneLookupLoading(false)
+    }
+  }
+
+  function schedulePhoneLookup(rawPhone: string, { open }: { open: boolean }) {
+    const digits = String(rawPhone || '').replace(/\D+/g, '')
+    try {
+      if (digits) localStorage.setItem(phoneStorageKey, digits)
+      else localStorage.removeItem(phoneStorageKey)
+    } catch { }
+
+    if (phoneLookupTimerRef.current) clearTimeout(phoneLookupTimerRef.current)
+    if (!digits) {
+      setPhoneMatches([])
+      setPhoneLookupLoading(false)
+      setPhoneLookupSearchedDigits('')
+      if (open) setSelectPatientOpen(false)
+      return
+    }
+    phoneLookupTimerRef.current = setTimeout(() => {
+      runPhoneLookup(digits, { open })
+    }, 250)
+  }
+
+  useEffect(() => {
+    return () => {
+      if (phoneLookupTimerRef.current) clearTimeout(phoneLookupTimerRef.current)
+    }
+  }, [])
+
+  useEffect(() => {
+    let stored = ''
+    try { stored = String(localStorage.getItem(phoneStorageKey) || '').trim() } catch { }
+    const digits = stored.replace(/\D+/g, '')
+    if (!digits) return
+    setPhone(prev => {
+      const cur = String(prev || '').replace(/\D+/g, '')
+      if (cur) return prev
+      return digits
+    })
+    setTimeout(() => {
+      runPhoneLookup(digits, { open: true })
+    }, 0)
+  }, [])
 
   const [account, setAccount] = useState<{ dues: number; advance: number } | null>(null)
   const [accountLoading, setAccountLoading] = useState(false)
@@ -390,6 +469,8 @@ export default function TherapyLab_TokenGenerator() {
         if (p.fatherName) setGuardianName(String(p.fatherName))
         if (p.guardianRelation) setGuardianRel(String(p.guardianRelation))
         if (p.cnic) setCnic(String(p.cnic))
+        if (p.mrn) setMrn(String(p.mrn))
+        if (p.age) setAge(String(p.age))
 
         if (p.mrn && !selectedPatient && !autoMrnAppliedRef.current) {
           const code = String(p.mrn || '').trim()
@@ -409,20 +490,46 @@ export default function TherapyLab_TokenGenerator() {
       }
       if (st?.fromReferralId) setFromReferralId(String(st.fromReferralId))
       if (st?.referringConsultant) setReferringConsultant(String(st.referringConsultant))
+
+      if (st?.requestedPackages && Array.isArray(st.requestedPackages) && packages.length > 0) {
+        const pkgNames = st.requestedPackages.map((n: any) => String(n).trim().toLowerCase())
+        const found = packages.find(p => pkgNames.includes(String(p.packageName || '').trim().toLowerCase()))
+        if (found) {
+          setSelectedPackageId(String(found._id))
+          if (found.machinePreset) {
+            applyMachinePreset(found.machinePreset)
+          }
+        }
+      }
     } catch { }
-  }, [location?.key])
+  }, [location?.key, packages])
 
   const selectedMachines = useMemo(() => {
-    const rows: Array<{ id: string; name: string; price: number }> = []
+    const rows: Array<{ id: string; name: string; details?: any }> = []
 
     for (const k of FIXED_THERAPY_MACHINE_KEYS) {
       const st: any = (therapyMachines as any)[k]
-      if (st?.enabled) rows.push({ id: k, name: therapyMachineLabel(k), price: 0 })
+      if (st?.enabled) {
+        const details: any = {}
+        Object.keys(st).forEach(key => {
+          if (key !== 'enabled' && st[key] === true) {
+            details[key] = true
+          } else if (key === 'note' && st[key]) {
+            details[key] = st[key]
+          }
+        })
+        rows.push({ id: k, name: therapyMachineLabel(k), details })
+      }
     }
 
     for (const m of customTherapyMachines) {
       const st = customTherapyMachineState[m.id] || { enabled: false }
-      if (st.enabled) rows.push({ id: m.id, name: m.name, price: 0 })
+      if (st.enabled) {
+        const details: any = {}
+        if (st.checks) details.checks = st.checks
+        if (st.fields) details.fields = st.fields
+        rows.push({ id: m.id, name: m.name, details })
+      }
     }
 
     return rows
@@ -430,11 +537,17 @@ export default function TherapyLab_TokenGenerator() {
 
   const subtotal = useMemo(() => {
     const pkgPrice = Number((selectedPackage as any)?.price || 0)
-    if (pkgPrice > 0) return pkgPrice
-    return selectedMachines.reduce((s, r) => s + Number(r.price || 0), 0)
-  }, [selectedMachines, selectedPackage])
+    return pkgPrice
+  }, [selectedPackage])
   const [discount, setDiscount] = useState('0')
-  const net = Math.max(0, subtotal - (Number(discount) || 0))
+  const [discountType, setDiscountType] = useState<'PKR' | '%'>('PKR')
+  const calculatedDiscount = useMemo(() => {
+    if (discountType === '%') {
+      return subtotal * (Number(discount) / 100)
+    }
+    return Number(discount) || 0
+  }, [subtotal, discount, discountType])
+  const net = Math.max(0, subtotal - calculatedDiscount)
 
   const paymentPreview = useMemo(() => {
     const duesBefore = Math.max(0, Number(account?.dues || 0))
@@ -486,6 +599,72 @@ export default function TherapyLab_TokenGenerator() {
   const [slipOpen, setSlipOpen] = useState(false)
   const [slipData, setSlipData] = useState<TherapyLabTokenSlipData | null>(null)
 
+  const [billingType, setBillingType] = useState<'Cash' | 'Card'>('Cash')
+  const [accountNumberIban, setAccountNumberIban] = useState('')
+  const [receptionistName, setReceptionistName] = useState('')
+  const [receivedToAccountCode, setReceivedToAccountCode] = useState('')
+  const [paymentStatus, setPaymentStatus] = useState<'paid' | 'unpaid'>('paid')
+  const [payToAccounts, setPayToAccounts] = useState<Array<{ code: string; label: string }>>([])
+
+  useEffect(() => {
+    let mounted = true
+    ;(async () => {
+      try {
+        const hApi = (await import('../../utils/api')).hospitalApi
+        const [mineRes, bankRes, pettyRes] = await Promise.all([
+          hApi.myPettyCash(),
+          hApi.listBankAccounts(),
+          hApi.listPettyCashAccounts(),
+        ]) as any
+
+        const opts: Array<{ code: string; label: string }> = []
+        const seen = new Set<string>()
+        const add = (code?: string, label?: string) => {
+          const c = String(code || '').trim().toUpperCase()
+          if (!c) return
+          if (seen.has(c)) return
+          seen.add(c)
+          opts.push({ code: c, label: String(label || c) })
+        }
+
+        const myCode = String(mineRes?.account?.code || '').trim().toUpperCase()
+        if (myCode) {
+          add(myCode, `${mineRes?.account?.name || 'My Petty Cash'} (${myCode})`)
+        }
+
+        const petty: any[] = pettyRes?.accounts || []
+        for (const p of petty) {
+          const code = String(p?.code || '').trim().toUpperCase()
+          if (!code) continue
+          const rs = String(p?.responsibleStaff || '').trim()
+          if (rs) continue
+          if (String(p?.status || 'Active') !== 'Active') continue
+          add(code, `${String(p?.name || code).trim()} (${code})`)
+        }
+
+        const banks: any[] = bankRes?.accounts || []
+        for (const b of banks) {
+          const an = String(b?.accountNumber || '')
+          const last4 = an ? an.slice(-4) : ''
+          const code = String(b?.financeAccountCode || (last4 ? `BANK_${last4}` : '')).trim().toUpperCase()
+          if (!code) continue
+          const bankLabel = `${String(b?.bankName || '').trim()} - ${String(b?.accountTitle || '').trim()}${last4 ? ` (${last4})` : ''}`.trim()
+          add(code, bankLabel ? `${bankLabel} (${code})` : code)
+        }
+
+        if (mounted) {
+          setPayToAccounts(opts)
+          const storedPayTo = localStorage.getItem('therapyLab.receivedToAccountCode')
+          if (storedPayTo) setReceivedToAccountCode(storedPayTo)
+          else if (myCode) setReceivedToAccountCode(myCode)
+        }
+      } catch {
+        if (mounted) setPayToAccounts([])
+      }
+    })()
+    return () => { mounted = false }
+  }, [])
+
   const generateToken = async () => {
     if (!fullName.trim() || !phone.trim() || selectedMachines.length === 0) return
 
@@ -533,7 +712,7 @@ export default function TherapyLab_TokenGenerator() {
         }
       } catch { }
 
-      const slipRows = selectedMachines.map((m) => ({ name: m.name, price: Number(m.price || 0) }))
+      const slipRows = selectedMachines.map((m) => ({ name: m.name, details: m.details }))
 
       const visitRes: any = await therapyApi.createVisit({
         patientId: String(patient!._id),
@@ -550,13 +729,19 @@ export default function TherapyLab_TokenGenerator() {
         },
         packageId: selectedPackage ? String((selectedPackage as any)._id) : undefined,
         packageName: selectedPackage ? String((selectedPackage as any).packageName || '') : undefined,
-        tests: selectedMachines.map((m) => ({ id: m.id, name: m.name, price: Number(m.price || 0) })),
+        tests: selectedMachines.map((m) => ({ id: m.id, name: m.name, details: m.details })),
         subtotal,
         discount: Number(discount) || 0,
+        discountType: discountType || 'PKR',
         net,
+        paymentStatus,
+        paymentMethod: paymentStatus === 'paid' ? billingType : undefined,
+        accountNumberIban: (paymentStatus === 'paid' && billingType === 'Card') ? accountNumberIban : undefined,
+        receivedToAccountCode: paymentStatus === 'paid' ? receivedToAccountCode : undefined,
+        receptionistName: receptionistName || undefined,
         payPreviousDues,
         useAdvance,
-        amountReceived: Math.max(0, Number(amountReceivedNow || 0)),
+        amountReceived: paymentStatus === 'paid' ? Math.max(0, Number(amountReceivedNow || 0)) : 0,
         fromReferralId: fromReferralId || undefined,
         referringConsultant: referringConsultant || undefined,
       })
@@ -581,9 +766,15 @@ export default function TherapyLab_TokenGenerator() {
         address: address || undefined,
         tests: slipRows,
         subtotal,
-        discount: Number(discount) || 0,
-        payable: net,
-        amountReceived: Math.max(0, Number(amountReceivedNow || 0)),
+        discount: Number(v?.discount ?? discount ?? 0),
+        discountType: v?.discountType ?? discountType ?? 'PKR',
+        payable: Number(v?.net ?? net ?? 0),
+        paymentStatus: v?.paymentStatus || paymentStatus,
+        paymentMethod: v?.paymentMethod || billingType,
+        accountNumberIban: v?.accountNumberIban || accountNumberIban,
+        receivedToAccountCode: v?.receivedToAccountCode || receivedToAccountCode,
+        receptionistName: v?.receptionistName || receptionistName,
+        amountReceived: Number(v?.amountReceived ?? (paymentStatus === 'paid' ? amountReceivedNow : 0)),
         payPreviousDues,
         useAdvance,
         advanceApplied: Number(v?.advanceApplied || 0),
@@ -594,7 +785,7 @@ export default function TherapyLab_TokenGenerator() {
         advanceAdded: Number(v?.advanceAdded || 0),
         duesAfter: Number(v?.duesAfter || 0),
         advanceAfter: Number(v?.advanceAfter || 0),
-        createdAt: String(v?.createdAtIso || ''),
+        createdAt: String(v?.createdAtIso || v?.createdAt || ''),
       }
 
       setSlipData(data)
@@ -607,50 +798,61 @@ export default function TherapyLab_TokenGenerator() {
 
   return (
     <div className="space-y-4">
-      <div className="rounded-xl border border-slate-200 bg-white p-4">
-        <div className="text-base font-semibold text-slate-800">Patient Details</div>
-        <div className="text-xs text-slate-500">Fill all required details to generate a token</div>
-        <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2">
-          <div>
-            <label className="mb-1 block text-xs font-medium text-slate-600">Phone *</label>
+      <div className="rounded-lg border border-slate-200 bg-white p-4">
+        <h3 className="mb-3 text-sm font-semibold text-slate-700">Patient Information</h3>
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+          <div className="md:col-span-2">
+            <label className="mb-1 block text-sm font-medium text-slate-700">MR #</label>
+            <input className="w-full rounded-md border border-slate-300 px-3 py-2 bg-slate-50 text-slate-600 outline-none" value={mrn || 'auto'} disabled readOnly />
+          </div>
+          <div className="md:col-span-2">
+            <label className="mb-1 block text-sm font-medium text-slate-700">Phone</label>
             <input
+              className="w-full rounded-md border border-slate-300 px-3 py-2 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-200"
+              placeholder="Enter 11-digit phone"
               value={phone}
               onChange={(e) => {
                 setPhone(e.target.value)
                 skipLookupKeyRef.current = null
                 lastPromptKeyRef.current = null
                 lastPhonePromptRef.current = null
+                schedulePhoneLookup(e.target.value, { open: true })
               }}
-              ref={phoneRef}
               onBlur={onPhoneBlur}
-              className="w-full rounded-md border border-slate-300 px-3 py-2"
-              placeholder="03XXXXXXXXX"
+              ref={phoneRef}
             />
           </div>
-          <div>
-            <label className="mb-1 block text-xs font-medium text-slate-600">Patient Name *</label>
+          <div className="md:col-span-2">
+            <label className="mb-1 block text-sm font-medium text-slate-700">Patient Name</label>
             <input
+              className="w-full rounded-md border border-slate-300 px-3 py-2 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-200"
+              placeholder="Full Name"
               value={fullName}
               onChange={(e) => {
                 setFullName(e.target.value)
                 skipLookupKeyRef.current = null
                 lastPromptKeyRef.current = null
               }}
-              ref={nameRef}
               onBlur={() => lookupExistingByPhoneAndName('name')}
-              className="w-full rounded-md border border-slate-300 px-3 py-2"
-              placeholder="e.g. Muhammad Zain"
+              ref={nameRef}
             />
           </div>
-        </div>
-        <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-3">
           <div>
-            <label className="mb-1 block text-xs font-medium text-slate-600">Age</label>
-            <input value={age} onChange={(e) => setAge(e.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-2" placeholder="e.g. 22" />
+            <label className="mb-1 block text-sm font-medium text-slate-700">Age</label>
+            <input
+              className="w-full rounded-md border border-slate-300 px-3 py-2 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-200"
+              placeholder="e.g., 25"
+              value={age}
+              onChange={(e) => setAge(e.target.value)}
+            />
           </div>
           <div>
-            <label className="mb-1 block text-xs font-medium text-slate-600">Gender</label>
-            <select value={gender} onChange={(e) => setGender(e.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-2">
+            <label className="mb-1 block text-sm font-medium text-slate-700">Gender</label>
+            <select
+              className="w-full rounded-md border border-slate-300 px-3 py-2 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-200"
+              value={gender}
+              onChange={(e) => setGender(e.target.value)}
+            >
               <option value="">Select gender</option>
               <option>Male</option>
               <option>Female</option>
@@ -658,27 +860,44 @@ export default function TherapyLab_TokenGenerator() {
             </select>
           </div>
           <div>
-            <label className="mb-1 block text-xs font-medium text-slate-600">Guardian S/O or D/O</label>
-            <select value={guardianRel} onChange={(e) => setGuardianRel(e.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-2">
-              <option value="">Select</option>
+            <label className="mb-1 block text-sm font-medium text-slate-700">Guardian</label>
+            <select
+              className="w-full rounded-md border border-slate-300 px-3 py-2 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-200"
+              value={guardianRel}
+              onChange={(e) => setGuardianRel(e.target.value)}
+            >
+              <option value="">S/O or D/O</option>
               <option value="S/O">S/O</option>
               <option value="D/O">D/O</option>
-              <option value="O">O</option>
             </select>
           </div>
-        </div>
-        <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-3">
           <div>
-            <label className="mb-1 block text-xs font-medium text-slate-600">Guardian Name</label>
-            <input value={guardianName} onChange={(e) => setGuardianName(e.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-2" placeholder="e.g. Arif" />
+            <label className="mb-1 block text-sm font-medium text-slate-700">Guardian Name</label>
+            <input
+              className="w-full rounded-md border border-slate-300 px-3 py-2 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-200"
+              placeholder="Father/Guardian Name"
+              value={guardianName}
+              onChange={(e) => setGuardianName(e.target.value)}
+            />
           </div>
           <div>
-            <label className="mb-1 block text-xs font-medium text-slate-600">CNIC</label>
-            <input value={cnic} onChange={(e) => setCnic(e.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-2" placeholder="#####-#######-#" />
+            <label className="mb-1 block text-sm font-medium text-slate-700">CNIC</label>
+            <input
+              className="w-full rounded-md border border-slate-300 px-3 py-2 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-200"
+              placeholder="13-digit CNIC (no dashes)"
+              value={cnic}
+              onChange={(e) => setCnic(e.target.value)}
+            />
           </div>
-          <div>
-            <label className="mb-1 block text-xs font-medium text-slate-600">Address</label>
-            <input value={address} onChange={(e) => setAddress(e.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-2" placeholder="Street, City" />
+          <div className="md:col-span-2">
+            <label className="mb-1 block text-sm font-medium text-slate-700">Address</label>
+            <textarea
+              className="w-full rounded-md border border-slate-300 px-3 py-2 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-200"
+              rows={3}
+              placeholder="Residential Address"
+              value={address}
+              onChange={(e) => setAddress(e.target.value)}
+            />
           </div>
         </div>
       </div>
@@ -1164,95 +1383,216 @@ export default function TherapyLab_TokenGenerator() {
         <div className="text-base font-semibold text-slate-800">Billing Summary</div>
         <div className="mt-3 divide-y divide-slate-200 text-sm">
           {selectedMachines.map((m) => (
-            <div key={m.id} className="flex items-center justify-between py-2">
-              <div>{m.name}</div>
-              <div>PKR {Number(m.price || 0).toLocaleString()}</div>
+            <div key={m.id} className="flex flex-wrap items-center justify-between py-2 gap-2">
+              <div className="font-medium">{m.name}</div>
             </div>
           ))}
           <div className="flex items-center justify-between py-2">
             <div className="text-slate-600">Subtotal</div>
-            <div>PKR {subtotal.toLocaleString()}</div>
+            <div className="font-medium">PKR {subtotal.toLocaleString()}</div>
           </div>
-          <div className="flex items-center justify-between py-2">
+          <div className="flex flex-wrap items-center justify-between py-2 gap-2">
             <div className="text-slate-600">Discount</div>
-            <input value={discount} onChange={(e) => setDiscount(e.target.value)} className="w-40 rounded-md border border-slate-300 px-3 py-1.5 text-right" placeholder="0" />
+            <div className="flex items-center gap-2">
+              <input
+                value={discount}
+                onChange={(e) => setDiscount(e.target.value)}
+                className="w-24 rounded-md border border-slate-300 px-3 py-1.5 text-right"
+                placeholder="0"
+              />
+              <select
+                value={discountType}
+                onChange={(e) => setDiscountType(e.target.value as 'PKR' | '%')}
+                className="rounded-md border border-slate-300 px-2 py-1.5 text-sm"
+              >
+                <option value="PKR">PKR</option>
+                <option value="%">%</option>
+              </select>
+            </div>
           </div>
-          <div className="flex items-center justify-between py-2 font-semibold">
+          <div className="flex items-center justify-between py-2 font-bold text-lg text-slate-900 border-t border-slate-300 mt-1 pt-3">
             <div>Net Amount</div>
             <div>PKR {net.toLocaleString()}</div>
           </div>
         </div>
 
-        <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-3">
-          <div className="mb-2 text-sm font-semibold text-slate-800">Payment</div>
-          <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-            <div>
-              <div className="text-xs font-medium text-slate-600">Previous Dues</div>
-              <div className="mt-1 text-sm text-slate-900">{accountLoading ? 'Loading...' : `PKR ${Number(account?.dues || 0).toLocaleString()}`}</div>
-            </div>
-            <div>
-              <div className="text-xs font-medium text-slate-600">Previous Advance</div>
-              <div className="mt-1 text-sm text-slate-900">{accountLoading ? 'Loading...' : `PKR ${Number(account?.advance || 0).toLocaleString()}`}</div>
-            </div>
-          </div>
+        <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-4">
+          <div className="mb-3 text-sm font-semibold text-slate-800">Payment & Account</div>
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            <div className="space-y-3">
+              <div className="grid grid-cols-2 gap-3">
+                <div className="rounded-md border border-slate-200 bg-white p-2">
+                  <div className="text-[10px] font-medium uppercase text-slate-500">Prev. Dues</div>
+                  <div className="text-sm font-bold text-rose-600">{accountLoading ? '...' : `PKR ${Number(account?.dues || 0).toLocaleString()}`}</div>
+                </div>
+                <div className="rounded-md border border-slate-200 bg-white p-2">
+                  <div className="text-[10px] font-medium uppercase text-slate-500">Prev. Advance</div>
+                  <div className="text-sm font-bold text-emerald-600">{accountLoading ? '...' : `PKR ${Number(account?.advance || 0).toLocaleString()}`}</div>
+                </div>
+              </div>
 
-          <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-3">
-            <div>
-              <label className="mb-1 block text-xs font-medium text-slate-600">Amount Received Now</label>
-              <input
-                value={amountReceivedNow}
-                onChange={(e) => setAmountReceivedNow(e.target.value)}
-                className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm"
-                placeholder="0"
-              />
+              <div>
+                <label className="mb-1 block text-xs font-medium text-slate-600">Payment Status</label>
+                <select
+                  value={paymentStatus}
+                  onChange={(e) => setPaymentStatus(e.target.value as any)}
+                  className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm"
+                >
+                  <option value="paid">PAID</option>
+                  <option value="unpaid">UNPAID</option>
+                </select>
+              </div>
+
+              {paymentStatus === 'paid' && (
+                <>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="mb-1 block text-xs font-medium text-slate-600">Method</label>
+                      <select
+                        value={billingType}
+                        onChange={(e) => setBillingType(e.target.value as any)}
+                        className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm"
+                      >
+                        <option value="Cash">Cash</option>
+                        <option value="Card">Card</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="mb-1 block text-xs font-medium text-slate-600">Amount Received</label>
+                      <input
+                        value={amountReceivedNow}
+                        onChange={(e) => setAmountReceivedNow(e.target.value)}
+                        className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-bold text-blue-700"
+                        placeholder="0"
+                      />
+                    </div>
+                  </div>
+
+                  {billingType === 'Card' && (
+                    <div>
+                      <label className="mb-1 block text-xs font-medium text-slate-600">Card/IBAN Details</label>
+                      <input
+                        value={accountNumberIban}
+                        onChange={(e) => setAccountNumberIban(e.target.value)}
+                        className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm"
+                        placeholder="Last 4 digits or IBAN"
+                      />
+                    </div>
+                  )}
+
+                  <div>
+                    <label className="mb-1 block text-xs font-medium text-slate-600">Receive To (Account)</label>
+                    <select
+                      value={receivedToAccountCode}
+                      onChange={(e) => {
+                        const v = e.target.value
+                        setReceivedToAccountCode(v)
+                        localStorage.setItem('therapyLab.receivedToAccountCode', v)
+                      }}
+                      className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm"
+                    >
+                      <option value="">Select Account</option>
+                      {payToAccounts.map((a) => (
+                        <option key={a.code} value={a.code}>{a.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                </>
+              )}
             </div>
 
-            <div className="flex items-end">
-              <label className="flex items-center gap-2 text-sm text-slate-800">
+            <div className="space-y-3">
+              <div className="rounded-lg border border-blue-100 bg-blue-50/50 p-3">
+                <div className="mb-2 text-xs font-semibold uppercase text-blue-800">Settlement Preview</div>
+                <div className="space-y-2 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-slate-600">Current Net</span>
+                    <span className="font-medium">PKR {net.toLocaleString()}</span>
+                  </div>
+                  {paymentStatus === 'paid' && (
+                    <>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="checkbox"
+                          checked={payPreviousDues}
+                          onChange={(e) => setPayPreviousDues(e.target.checked)}
+                          disabled={Number(account?.dues || 0) <= 0}
+                          className="h-4 w-4 rounded border-slate-300"
+                        />
+                        <span className="text-slate-700">Pay Previous Dues</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="checkbox"
+                          checked={useAdvance}
+                          onChange={(e) => setUseAdvance(e.target.checked)}
+                          disabled={Number(account?.advance || 0) <= 0}
+                          className="h-4 w-4 rounded border-slate-300"
+                        />
+                        <span className="text-slate-700">Use Advance</span>
+                      </div>
+                    </>
+                  )}
+                  <div className="border-t border-blue-200 pt-2">
+                    <div className="flex justify-between font-bold text-slate-800">
+                      <span>Dues After</span>
+                      <span className={paymentPreview.duesAfter > 0 ? 'text-rose-600' : ''}>PKR {paymentPreview.duesAfter.toLocaleString()}</span>
+                    </div>
+                    <div className="flex justify-between font-bold text-slate-800">
+                      <span>Advance After</span>
+                      <span className="text-emerald-600">PKR {paymentPreview.advanceAfter.toLocaleString()}</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <label className="mb-1 block text-xs font-medium text-slate-600">Receptionist Name (Optional)</label>
                 <input
-                  type="checkbox"
-                  checked={payPreviousDues}
-                  onChange={(e) => setPayPreviousDues(e.target.checked)}
-                  disabled={Number(account?.dues || 0) <= 0}
-                  className="h-4 w-4 rounded border-slate-300"
+                  value={receptionistName}
+                  onChange={(e) => setReceptionistName(e.target.value)}
+                  className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm"
+                  placeholder="e.g. John Doe"
                 />
-                Pay Previous Dues
-              </label>
-            </div>
-
-            <div className="flex items-end">
-              <label className="flex items-center gap-2 text-sm text-slate-800">
-                <input
-                  type="checkbox"
-                  checked={useAdvance}
-                  onChange={(e) => setUseAdvance(e.target.checked)}
-                  disabled={Number(account?.advance || 0) <= 0}
-                  className="h-4 w-4 rounded border-slate-300"
-                />
-                Use Advance
-              </label>
-            </div>
-          </div>
-
-          <div className="mt-3 grid grid-cols-1 gap-2 text-sm md:grid-cols-2">
-            <div className="flex items-center justify-between rounded-md bg-white px-3 py-2 border border-slate-200">
-              <div className="text-slate-600">Dues After</div>
-              <div className="font-semibold">PKR {Number(paymentPreview.duesAfter || 0).toLocaleString()}</div>
-            </div>
-            <div className="flex items-center justify-between rounded-md bg-white px-3 py-2 border border-slate-200">
-              <div className="text-slate-600">Advance After</div>
-              <div className="font-semibold">PKR {Number(paymentPreview.advanceAfter || 0).toLocaleString()}</div>
+              </div>
             </div>
           </div>
         </div>
 
         <div className="mt-4 flex items-center justify-end gap-2">
           <button
+            onClick={() => {
+              setFullName('')
+              setPhone('')
+              setAge('')
+              setGender('')
+              setGuardianRel('')
+              setGuardianName('')
+              setCnic('')
+              setAddress('')
+              setMrn('')
+              setPatientId('')
+              setSelectedPatient(null)
+              setSelectedPackageId('')
+              setTherapyMachines(getEmptyTherapyMachines())
+              setCustomTherapyMachineState({})
+              setDiscount('0')
+              setAmountReceivedNow('0')
+              setPayPreviousDues(false)
+              setUseAdvance(false)
+              setAccountNumberIban('')
+              setReceptionistName('')
+            }}
+            className="rounded-md border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+          >
+            Reset
+          </button>
+          <button
             onClick={generateToken}
             disabled={!fullName || !phone || selectedMachines.length === 0}
-            className="rounded-md bg-violet-700 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-40"
+            className="rounded-md bg-violet-700 px-6 py-2 text-sm font-bold text-white shadow-sm hover:bg-violet-800 disabled:opacity-40"
           >
-            Generate Token
+            Generate & Print Token
           </button>
         </div>
       </div>
@@ -1513,31 +1853,48 @@ export default function TherapyLab_TokenGenerator() {
             </div>
 
             <div className="max-h-[70vh] overflow-y-auto p-4">
-              <div className="mb-3 text-sm text-slate-600">Found {phoneMatches.length} patients on this phone number. Select one to autofill.</div>
-              <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-                {phoneMatches.map((p, idx) => (
-                  <button
-                    key={(p as any)._id || (p as any).mrn || idx}
-                    type="button"
-                    onClick={() => {
-                      applyPatientToForm(p)
-                      setSelectPatientOpen(false)
-                      setPhoneMatches([])
-                      showToast('success', 'Patient selected and autofilled')
-                    }}
-                    className="w-full rounded-lg border border-slate-200 p-4 text-left hover:border-violet-300 hover:bg-violet-50"
-                  >
-                    <div className="text-sm font-semibold text-slate-800">{p.fullName || 'N/A'}</div>
-                    <div className="mt-1 text-xs text-slate-600">MRN: {p.mrn || '-'}</div>
-                    <div className="text-xs text-slate-600">Phone: {p.phoneNormalized || '-'}</div>
-                    <div className="text-xs text-slate-600">Age: {p.age || '-'}</div>
-                    <div className="text-xs text-slate-600">Gender: {p.gender || '-'}</div>
-                    <div className="mt-1 text-xs text-slate-600">Guardian: {p.fatherName || '-'}</div>
-                    <div className="text-xs text-slate-600">CNIC: {p.cnicNormalized || p.cnic || '-'}</div>
-                    <div className="text-xs text-slate-600">Address: {p.address || '-'}</div>
-                  </button>
-                ))}
+              <div className="mb-3 text-sm text-slate-600">
+                {phoneLookupLoading
+                  ? `Searching registered patients for ${phoneLookupSearchedDigits || phone.replace(/\D+/g, '')}...`
+                  : (phoneMatches.length > 0
+                    ? `Found ${phoneMatches.length} patients on this phone number. Select one to autofill.`
+                    : `No registered patients found for ${phoneLookupSearchedDigits || phone.replace(/\D+/g, '')}.`)
+                }
               </div>
+
+              {!phoneLookupLoading && phoneMatches.length === 0 && (
+                <div className="rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
+                  You can continue by entering a new patient.
+                </div>
+              )}
+
+              {phoneMatches.length > 0 && (
+                <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                  {phoneMatches.map((p, idx) => (
+                    <button
+                      key={p._id || p.mrn || idx}
+                      type="button"
+                      onClick={() => {
+                        applyPatientToForm(p)
+                        setSelectPatientOpen(false)
+                        setPhoneMatches([])
+                        showToast('success', 'Patient selected and autofilled')
+                      }}
+                      className="w-full rounded-lg border border-slate-200 p-4 text-left hover:border-violet-300 hover:bg-violet-50"
+                    >
+                      <div className="text-sm font-semibold text-slate-800">{p.fullName || 'Unnamed'}</div>
+                      <div className="mt-1 text-xs text-slate-600">MRN: {p.mrn || '-'}</div>
+                      <div className="mt-1 text-xs text-slate-600">Phone: {p.phoneNormalized || phone}</div>
+                      {(p.age != null || p.gender) && (
+                        <div className="mt-1 text-xs text-slate-600">
+                          {p.age != null ? `Age: ${p.age}` : ''}{p.age != null && p.gender ? ' • ' : ''}{p.gender ? `Gender: ${p.gender}` : ''}
+                        </div>
+                      )}
+                      {p.address && <div className="mt-1 line-clamp-2 text-xs text-slate-600">Address: {p.address}</div>}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
 
             <div className="flex items-center justify-end gap-2 border-t border-slate-200 px-5 py-3">

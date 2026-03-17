@@ -26,6 +26,7 @@ const OrderSchema = new Schema({
   returnedTests: { type: [String], default: [] },
   subtotal: { type: Number, default: 0 },
   discount: { type: Number, default: 0 },
+  discountType: { type: String, enum: ['PKR', '%'], default: 'PKR' },
   net: { type: Number, default: 0 },
   duesBefore: { type: Number, default: 0 },
   advanceBefore: { type: Number, default: 0 },
@@ -70,6 +71,7 @@ export type DiagnosticOrderDoc = {
   returnedTests?: string[]
   subtotal: number
   discount: number
+  discountType?: 'PKR' | '%'
   net: number
   duesBefore?: number
   advanceBefore?: number

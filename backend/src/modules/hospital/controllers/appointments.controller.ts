@@ -3,6 +3,7 @@ import { HospitalAppointment } from '../models/Appointment'
 import { createAppointmentSchema, updateAppointmentSchema } from '../validators/appointment'
 import { LabPatient } from '../../lab/models/Patient'
 import { LabCounter } from '../../lab/models/Counter'
+import { HospitalSettings } from '../models/Settings'
 
 function handleError(res: Response, e: any){
   if (e?.name === 'ZodError') return res.status(400).json({ error: e.errors?.[0]?.message || 'Invalid payload' })
@@ -16,12 +17,31 @@ function normDigits(s?: string){
 
 async function nextMrn(){
   const key = 'lab_mrn_mr7553'
+  
+  // Get settings to check for custom starting number
+  const settings = await HospitalSettings.findOne().lean()
+  const mrStart = settings?.mrStart || 1
+  
+  // Check current counter value
+  let existingCounter = await LabCounter.findById(key).lean()
+  const currentSeq = (existingCounter as any)?.seq || 0
+  
+  // If no counter exists OR current seq is less than mrStart-1, reset to mrStart-1
+  const targetSeq = Math.max(0, mrStart - 1)
+  if (!existingCounter) {
+    // Initialize counter to mrStart - 1, so first increment gives mrStart
+    await LabCounter.create({ _id: key, seq: targetSeq })
+  } else if (currentSeq < targetSeq) {
+    // Reset counter to mrStart - 1 if current is lower
+    await LabCounter.findByIdAndUpdate(key, { $set: { seq: targetSeq } })
+  }
+  
   const c = await LabCounter.findByIdAndUpdate(key, { $inc: { seq: 1 } }, { upsert: true, new: true, setDefaultsOnInsert: true })
   const seq = Number((c as any).seq || 1)
-  return `MR7553${seq}`
+  return String(seq)
 }
 
-async function resolvePatient(data: any){
+async function resolvePatient(data: any, createIfMissing: boolean = true){
   // Prefer explicit patientId.
   if (data.patientId){
     const patient = await LabPatient.findById(data.patientId)
@@ -71,6 +91,8 @@ async function resolvePatient(data: any){
   }
 
   if (!name) throw { status: 400, error: 'patientName required' }
+
+  if (!createIfMissing) return null
 
   const mrn = await nextMrn()
   const patient = await LabPatient.create({
@@ -162,19 +184,19 @@ export async function getById(req: Request, res: Response){
 export async function create(req: Request, res: Response){
   try {
     const data = createAppointmentSchema.parse(req.body)
-    const patient = await resolvePatient(data)
+    const patient = await resolvePatient(data, false)
     const doc = await HospitalAppointment.create({
       ...data,
-      patientId: patient?._id,
-      patientMrn: patient?.mrn,
-      patientName: String((patient as any)?.fullName || data.patientName || '').trim(),
-      patientPhone: data.patientPhone || (patient as any)?.phoneNormalized,
-      patientAge: data.patientAge || (patient as any)?.age,
-      patientGender: data.patientGender || (patient as any)?.gender,
-      guardianRel: data.guardianRel || (patient as any)?.guardianRel,
-      guardianName: data.guardianName || (patient as any)?.fatherName,
-      cnic: data.cnic || (patient as any)?.cnicNormalized,
-      address: data.address || (patient as any)?.address,
+      patientId: patient?._id || undefined,
+      patientMrn: patient?.mrn || undefined,
+      patientName: String(patient?.fullName || data.patientName || '').trim(),
+      patientPhone: data.patientPhone || patient?.phoneNormalized,
+      patientAge: data.patientAge || patient?.age,
+      patientGender: data.patientGender || patient?.gender,
+      guardianRel: data.guardianRel || patient?.guardianRel,
+      guardianName: data.guardianName || patient?.fatherName,
+      cnic: data.cnic || patient?.cnicNormalized,
+      address: data.address || patient?.address,
     })
     res.status(201).json({ appointment: doc })
   } catch (e) {

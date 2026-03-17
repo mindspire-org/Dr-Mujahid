@@ -35,6 +35,12 @@ function getToken(path?: string) {
         const diagnosticToken = localStorage.getItem('diagnostic.token')
         if (diagnosticToken) return diagnosticToken
 
+        // Allow doctor portal to access diagnostic endpoints using doctor token
+        if (localStorage.getItem('doctor.session')) {
+          const doctorToken = localStorage.getItem('doctor.token')
+          if (doctorToken) return doctorToken
+        }
+
         // Allow reception portal to access diagnostic endpoints using reception token
         if (localStorage.getItem('reception.session')) {
           const receptionToken = localStorage.getItem('reception.token')
@@ -48,7 +54,21 @@ function getToken(path?: string) {
         // Fallback legacy token key
         return localStorage.getItem('token') || ''
       }
-      if (path.startsWith('/lab')) return localStorage.getItem('lab.token') || localStorage.getItem('aesthetic.token') || localStorage.getItem('token') || ''
+      if (path.startsWith('/lab')) {
+        const labToken = localStorage.getItem('lab.token')
+        if (labToken) return labToken
+        
+        // Allow doctor portal to access lab endpoints using doctor token
+        if (localStorage.getItem('doctor.session')) {
+          const doctorToken = localStorage.getItem('doctor.token')
+          if (doctorToken) return doctorToken
+        }
+
+        const hospitalToken = localStorage.getItem('hospital.token')
+        if (hospitalToken) return hospitalToken
+
+        return localStorage.getItem('aesthetic.token') || localStorage.getItem('token') || ''
+      }
       if (path.startsWith('/aesthetic')) return localStorage.getItem('aesthetic.token') || localStorage.getItem('token') || ''
       if (path.startsWith('/pharmacy')) return localStorage.getItem('pharmacy.token') || localStorage.getItem('token') || ''
       if (path.startsWith('/therapy')) return localStorage.getItem('therapy.token') || localStorage.getItem('token') || ''
@@ -194,7 +214,7 @@ export const diagnosticApi = {
     corporateCoverageCap?: number
   }) =>
     api('/diagnostic/orders', { method: 'POST', body: JSON.stringify(data) }),
-  updateOrder: (id: string, data: { tests?: string[]; patient?: { mrn?: string; fullName?: string; phone?: string; age?: string; gender?: string; address?: string; guardianRelation?: string; guardianName?: string; cnic?: string }; subtotal?: number; discount?: number; net?: number }) =>
+  updateOrder: (id: string, data: { tests?: string[]; patient?: { mrn?: string; fullName?: string; phone?: string; age?: string; gender?: string; address?: string; guardianRelation?: string; guardianName?: string; cnic?: string }; subtotal?: number; discount?: number; discountInput?: number; discountType?: 'PKR' | '%'; net?: number; amountReceived?: number; paidForToday?: number }) =>
     api(`/diagnostic/orders/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   updateOrderTrack: (id: string, data: { sampleTime?: string; reportingTime?: string; status?: 'received' | 'completed' | 'returned'; referringConsultant?: string }) =>
     api(`/diagnostic/orders/${id}/track`, { method: 'PUT', body: JSON.stringify(data) }),
@@ -1579,6 +1599,15 @@ export const labApi = {
   createBBBag: (data: any) => api('/lab/bb/inventory', { method: 'POST', body: JSON.stringify(data) }),
   updateBBBag: (id: string, data: any) => api(`/lab/bb/inventory/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   deleteBBBag: (id: string) => api(`/lab/bb/inventory/${id}`, { method: 'DELETE' }),
+
+  // Templates (for doctor prescription lab orders)
+  listTemplates: (doctorId: string) => api(`/lab/templates?doctorId=${encodeURIComponent(doctorId)}`),
+  createTemplate: (data: { doctorId: string; name: string; tests: string[] }) =>
+    api('/lab/templates', { method: 'POST', body: JSON.stringify(data) }),
+  getTemplate: (id: string) => api(`/lab/templates/${encodeURIComponent(id)}`),
+  updateTemplate: (id: string, data: { name?: string; tests?: string[] }) =>
+    api(`/lab/templates/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify(data) }),
+  deleteTemplate: (id: string) => api(`/lab/templates/${encodeURIComponent(id)}`, { method: 'DELETE' }),
 }
 
 export const therapyApi = {
@@ -1675,6 +1704,39 @@ export const therapyApi = {
   }) => api('/therapy/visits', { method: 'POST', body: JSON.stringify(data) }),
   getVisit: (id: string) => api(`/therapy/visits/${encodeURIComponent(id)}`),
   updateVisit: (id: string, patch: any) => api(`/therapy/visits/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify(patch) }),
+  updateSessionStatus: (id: string, status: 'Queued' | 'Completed') => api(`/therapy/visits/${encodeURIComponent(id)}/session-status`, { method: 'PUT', body: JSON.stringify({ sessionStatus: status }) }),
+  returnVisit: (id: string, reason: string) => api(`/therapy/visits/${encodeURIComponent(id)}/return`, { method: 'POST', body: JSON.stringify({ reason }) }),
+  
+  // Appointments
+  listAppointments: (params?: { from?: string; to?: string; paymentStatus?: 'paid' | 'unpaid'; q?: string; page?: number; limit?: number }) => {
+    const qs = new URLSearchParams()
+    if (params?.from) qs.set('from', params.from)
+    if (params?.to) qs.set('to', params.to)
+    if (params?.paymentStatus) qs.set('paymentStatus', params.paymentStatus)
+    if (params?.q) qs.set('q', params.q)
+    if (params?.page != null) qs.set('page', String(params.page))
+    if (params?.limit != null) qs.set('limit', String(params.limit))
+    const s = qs.toString()
+    return api(`/therapy/appointments${s ? `?${s}` : ''}`)
+  },
+  getAppointment: (id: string) => api(`/therapy/appointments/${encodeURIComponent(id)}`),
+  createAppointment: (data: any) => api('/therapy/appointments', { method: 'POST', body: JSON.stringify(data) }),
+  updateAppointment: (id: string, data: any) => api(`/therapy/appointments/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify(data) }),
+  deleteAppointment: (id: string) => api(`/therapy/appointments/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+
+  getDashboardSummary: (params?: { from?: string; to?: string }) => {
+    const qs = new URLSearchParams()
+    if (params?.from) qs.set('from', params.from)
+    if (params?.to) qs.set('to', params.to)
+    const s = qs.toString()
+    return api(`/therapy/dashboard/summary${s ? `?${s}` : ''}`).catch(() => ({
+      orders: 0,
+      revenue: 0,
+      pending: 0,
+      completed: 0,
+      returned: 0
+    }))
+  },
 
   // Payments
   listPayments: (params?: { patientId?: string; from?: string; to?: string; page?: number; limit?: number }) => {
@@ -1687,14 +1749,144 @@ export const therapyApi = {
     const s = qs.toString()
     return api(`/therapy/payments${s ? `?${s}` : ''}`)
   },
-  recordPayment: (data: { patientId: string; visitId?: string; amount: number; applyMode?: 'duesFirst' | 'advanceOnly' | 'duesOnly'; note?: string }) =>
-    api('/therapy/payments', { method: 'POST', body: JSON.stringify(data) }),
+  payCreditPatient: (patientId: string, data: { amount: number; currentDues?: number; paymentMethod: 'Cash' | 'Card' | 'Insurance'; receivedToAccountCode: string; accountNumberIban?: string; receptionistName?: string; note?: string }) =>
+    api(`/therapy/accounts/${encodeURIComponent(patientId)}/pay`, { method: 'POST', body: JSON.stringify(data) }),
+
+  // Credit Patients
+  listCreditPatients: (params?: { q?: string; page?: number; limit?: number }) => {
+    const qs = new URLSearchParams()
+    if (params?.q) qs.set('q', params.q)
+    if (params?.page != null) qs.set('page', String(params.page))
+    if (params?.limit != null) qs.set('limit', String(params.limit))
+    const s = qs.toString()
+    return api(`/therapy/accounts/credit${s ? `?${s}` : ''}`)
+  },
+
+  // Appointments
+  listAppointments: (params?: { from?: string; to?: string; paymentStatus?: 'paid' | 'unpaid'; q?: string; page?: number; limit?: number }) => {
+    const qs = new URLSearchParams()
+    if (params?.from) qs.set('from', params.from)
+    if (params?.to) qs.set('to', params.to)
+    if (params?.paymentStatus) qs.set('paymentStatus', params.paymentStatus)
+    if (params?.q) qs.set('q', params.q)
+    if (params?.page != null) qs.set('page', String(params.page))
+    if (params?.limit != null) qs.set('limit', String(params.limit))
+    const s = qs.toString()
+    return api(`/therapy/appointments${s ? `?${s}` : ''}`)
+  },
+  getAppointment: (id: string) => api(`/therapy/appointments/${encodeURIComponent(id)}`),
+  createAppointment: (data: any) => api('/therapy/appointments', { method: 'POST', body: JSON.stringify(data) }),
+  updateAppointment: (id: string, data: any) => api(`/therapy/appointments/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify(data) }),
+  deleteAppointment: (id: string) => api(`/therapy/appointments/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+}
+
+export const counsellingApi = {
+  // Tests (Catalog)
+  listTests: (params?: { q?: string; page?: number; limit?: number }) => {
+    const qs = new URLSearchParams()
+    if (params?.q) qs.set('q', params.q)
+    if (params?.page != null) qs.set('page', String(params.page))
+    if (params?.limit != null) qs.set('limit', String(params.limit))
+    const s = qs.toString()
+    return api(`/counselling/tests${s ? `?${s}` : ''}`)
+  },
+
+  // Orders
+  listOrders: (params?: { q?: string; status?: string; from?: string; to?: string; page?: number; limit?: number }) => {
+    const qs = new URLSearchParams()
+    if (params?.q) qs.set('q', params.q)
+    if (params?.status) qs.set('status', params.status)
+    if (params?.from) qs.set('from', params.from)
+    if (params?.to) qs.set('to', params.to)
+    if (params?.page != null) qs.set('page', String(params.page))
+    if (params?.limit != null) qs.set('limit', String(params.limit))
+    const s = qs.toString()
+    return api(`/counselling/orders${s ? `?${s}` : ''}`)
+  },
+  createOrder: (data: any) => api('/counselling/orders', { method: 'POST', body: JSON.stringify(data) }),
+  getOrder: (id: string) => api(`/counselling/orders/${id}`),
+
+  // Patients
+  searchPatients: (params?: { phone?: string; name?: string; limit?: number }) => {
+    const qs = new URLSearchParams()
+    if (params?.phone) qs.set('phone', params.phone)
+    if (params?.name) qs.set('name', params.name)
+    if (params?.limit != null) qs.set('limit', String(params.limit))
+    const s = qs.toString()
+    return api(`/counselling/patients/search${s ? `?${s}` : ''}`)
+  },
+  findOrCreatePatient: (data: any) => api('/counselling/patients/find-or-create', { method: 'POST', body: JSON.stringify(data) }),
+  getPatientByMrn: (mrn: string) => api(`/counselling/patients/by-mrn?mrn=${encodeURIComponent(mrn)}`),
+  updatePatient: (id: string, data: any) => api(`/counselling/patients/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+
+  // Accounts
+  getAccount: (patientId: string) => api(`/counselling/accounts/${encodeURIComponent(patientId)}`),
+  payCreditPatient: (patientId: string, data: any) => api(`/counselling/accounts/${encodeURIComponent(patientId)}/pay`, { method: 'POST', body: JSON.stringify(data) }),
+
+  // Credit Patients
+  listCreditPatients: (params?: { q?: string; page?: number; limit?: number }) => {
+    const qs = new URLSearchParams()
+    if (params?.q) qs.set('q', params.q)
+    if (params?.page != null) qs.set('page', String(params.page))
+    if (params?.limit != null) qs.set('limit', String(params.limit))
+    const s = qs.toString()
+    return api(`/counselling/credit-patients${s ? `?${s}` : ''}`)
+  },
+
+  // Settings
+  getSettings: () => api('/counselling/settings'),
+  updateSettings: (data: any) => api('/counselling/settings', { method: 'PUT', body: JSON.stringify(data) }),
+
+  // Packages
+  listPackages: (params?: { status?: string; package?: number; limit?: number }) => {
+    const qs = new URLSearchParams()
+    if (params?.status) qs.set('status', params.status)
+    if (params?.package != null) qs.set('package', String(params.package))
+    if (params?.limit != null) qs.set('limit', String(params.limit))
+    const s = qs.toString()
+    return api(`/counselling/packages${s ? `?${s}` : ''}`)
+  },
+  getPackage: (id: string) => api(`/counselling/packages/${id}`),
+  createPackage: (data: any) => api('/counselling/packages', { method: 'POST', body: JSON.stringify(data) }),
+  updatePackage: (id: string, data: any) => api(`/counselling/packages/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  deletePackage: (id: string) => api(`/counselling/packages/${id}`, { method: 'DELETE' }),
+
+  // Appointments
+  listAppointments: (params?: { from?: string; to?: string; paymentStatus?: 'paid' | 'unpaid'; q?: string; page?: number; limit?: number }) => {
+    const qs = new URLSearchParams()
+    if (params?.from) qs.set('from', params.from)
+    if (params?.to) qs.set('to', params.to)
+    if (params?.paymentStatus) qs.set('paymentStatus', params.paymentStatus)
+    if (params?.q) qs.set('q', params.q)
+    if (params?.page != null) qs.set('page', String(params.page))
+    if (params?.limit != null) qs.set('limit', String(params.limit))
+    const s = qs.toString()
+    return api(`/counselling/appointments${s ? `?${s}` : ''}`)
+  },
+  getAppointment: (id: string) => api(`/counselling/appointments/${encodeURIComponent(id)}`),
+  createAppointment: (data: any) => api('/counselling/appointments', { method: 'POST', body: JSON.stringify(data) }),
+  updateAppointment: (id: string, data: any) => api(`/counselling/appointments/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify(data) }),
+  deleteAppointment: (id: string) => api(`/counselling/appointments/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+
+  updateOrder: (id: string, data: any) => api(`/counselling/orders/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  updateSessionStatus: (id: string, status: 'Queued' | 'Completed') => api(`/counselling/orders/${id}/session-status`, { method: 'PUT', body: JSON.stringify({ sessionStatus: status }) }),
+  returnOrder: (id: string, reason: string) => api(`/counselling/orders/${id}/return`, { method: 'POST', body: JSON.stringify({ reason }) }),
+  getDashboardSummary: (params?: { from?: string; to?: string }) => {
+    const qs = new URLSearchParams()
+    if (params?.from) qs.set('from', params.from)
+    if (params?.to) qs.set('to', params.to)
+    const s = qs.toString()
+    return api(`/counselling/dashboard/summary${s ? `?${s}` : ''}`)
+  },
 }
 
 export const hospitalApi = {
   // Settings
   getSettings: () => api('/hospital/settings'),
   updateSettings: (data: any) => api('/hospital/settings', { method: 'PUT', body: JSON.stringify(data) }),
+
+  // Patient lookup
+  getPatientByMrn: (mrn: string) => api(`/hospital/patients/by-mrn?mrn=${encodeURIComponent(mrn)}`),
 
   // Notifications (Hospital staff/user)
   listUserNotifications: () => api('/hospital/user-notifications'),
@@ -1760,6 +1952,47 @@ export const hospitalApi = {
     const s = qs.toString()
     return api(`/hospital/patients/search${s ? `?${s}` : ''}`)
   },
+  exportPatientsUrl: (params?: { mrn?: string; name?: string; fatherName?: string; phone?: string }) => {
+    const qs = new URLSearchParams()
+    if (params?.mrn) qs.set('mrn', params.mrn)
+    if (params?.name) qs.set('name', params.name)
+    if (params?.fatherName) qs.set('fatherName', params.fatherName)
+    if (params?.phone) qs.set('phone', params.phone)
+    const s = qs.toString()
+    return `${baseURL}/hospital/patients/export${s ? `?${s}` : ''}`
+  },
+  importPatientsExcel: (formData: FormData) => {
+    const token = getToken('/hospital/patients/import-excel')
+    const headers: Record<string, string> = {}
+    if (token) headers['Authorization'] = `Bearer ${token}`
+    return fetch(`${baseURL}/hospital/patients/import-excel`, { 
+      method: 'POST', 
+      body: formData, 
+      headers 
+    }).then(async res => {
+      if (!res.ok) {
+        const text = await res.text()
+        throw new Error(text || res.statusText)
+      }
+      return res.json()
+    })
+  },
+  previewPatientsExcel: (formData: FormData) => {
+    const token = getToken('/hospital/patients/preview-excel')
+    const headers: Record<string, string> = {}
+    if (token) headers['Authorization'] = `Bearer ${token}`
+    return fetch(`${baseURL}/hospital/patients/preview-excel`, { 
+      method: 'POST', 
+      body: formData, 
+      headers 
+    }).then(async res => {
+      if (!res.ok) {
+        const text = await res.text()
+        throw new Error(text || res.statusText)
+      }
+      return res.json()
+    })
+  },
 
   // Accounts (dues/advance)
   getAccount: (patientId: string) => api(`/hospital/accounts/${encodeURIComponent(patientId)}`),
@@ -1816,8 +2049,8 @@ export const hospitalApi = {
   resetHospitalUserPassword: (id: string, password?: string) =>
     api(`/hospital/users/${id}/reset-password`, { method: 'POST', body: JSON.stringify({ password }) }),
   deleteHospitalUser: (id: string) => api(`/hospital/users/${id}`, { method: 'DELETE' }),
-  loginHospitalUser: (username: string, password?: string) =>
-    api('/hospital/users/login', { method: 'POST', body: JSON.stringify({ username, password }) }),
+  loginHospitalUser: (username: string, password?: string, portal?: string) =>
+    api('/hospital/users/login', { method: 'POST', body: JSON.stringify({ username, password, portal }) }),
   logoutHospitalUser: (username?: string) =>
     api('/hospital/users/logout', { method: 'POST', body: JSON.stringify({ username }) }),
 
@@ -2398,11 +2631,11 @@ export const hospitalApi = {
     api(`/hospital/ipd/billing/payments/${encodeURIComponent(id)}`, { method: 'DELETE' }),
 
   // Prescriptions
-  createPrescription: (data: { encounterId: string; historyTakingId?: string; labReportsEntryId?: string; medicine?: Array<{ name: string; dose?: string; frequency?: string; duration?: string; notes?: string }>; items?: Array<{ name: string; dose?: string; frequency?: string; duration?: string; notes?: string }>; labTests?: string[]; labNotes?: string; diagnosticTests?: string[]; diagnosticNotes?: string; diagnosticDiscount?: number; therapyTests?: string[]; therapyNotes?: string; therapyDiscount?: number; therapyPlan?: any; therapyMachines?: any; counselling?: any; counsellingDiscount?: number; primaryComplaint?: string; primaryComplaintHistory?: string; familyHistory?: string; treatmentHistory?: string; allergyHistory?: string; history?: string; examFindings?: string; diagnosis?: string; advice?: string; createdBy?: string; vitals?: { pulse?: number; temperatureC?: number; bloodPressureSys?: number; bloodPressureDia?: number; respiratoryRate?: number; bloodSugar?: number; weightKg?: number; heightCm?: number; bmi?: number; bsa?: number; spo2?: number } }) =>
+  createPrescription: (data: { encounterId: string; historyTakingId?: string; labReportsEntryId?: string; medicine?: Array<{ name: string; dose?: string; frequency?: string; duration?: string; notes?: string }>; items?: Array<{ name: string; dose?: string; frequency?: string; duration?: string; notes?: string }>; labTests?: string[]; labNotes?: string; diagnosticTests?: string[]; diagnosticNotes?: string; diagnosticDiscount?: number; therapyTests?: string[]; therapyNotes?: string; therapyDiscount?: number; therapyPlan?: any; therapyMachines?: any; counselling?: any; counsellingDiscount?: number; primaryComplaint?: string; primaryComplaintHistory?: string; familyHistory?: string; treatmentHistory?: string; allergyHistory?: string; history?: string; examFindings?: string; diagnosis?: string; advice?: string; createdBy?: string; vitals?: { pulse?: number; temperatureC?: number; bloodPressureSys?: number; bloodPressureDia?: number; respiratoryRate?: number; bloodSugar?: number; weightKg?: number; heightCm?: number; bmi?: number; bsa?: number; spo2?: number }; historyEdits?: { personalInfo?: any; maritalStatus?: any; coitus?: any; health?: any; sexualHistory?: any; previousMedicalHistory?: any; arrivalReference?: any } }) =>
     api('/hospital/opd/prescriptions', { method: 'POST', body: JSON.stringify(data) }),
   getPrescriptionByEncounter: (encounterId: string) =>
     api(`/hospital/opd/encounters/${encodeURIComponent(encounterId)}/prescription`),
-  upsertPrescriptionByEncounter: (encounterId: string, data: { historyTakingId?: string; labReportsEntryId?: string; medicine?: Array<{ name: string; dose?: string; frequency?: string; duration?: string; notes?: string }>; items?: Array<{ name: string; dose?: string; frequency?: string; duration?: string; notes?: string }>; labTests?: string[]; labNotes?: string; diagnosticTests?: string[]; diagnosticNotes?: string; diagnosticDiscount?: number; therapyTests?: string[]; therapyNotes?: string; therapyDiscount?: number; therapyPlan?: any; therapyMachines?: any; counselling?: any; counsellingDiscount?: number; primaryComplaint?: string; primaryComplaintHistory?: string; familyHistory?: string; treatmentHistory?: string; allergyHistory?: string; history?: string; examFindings?: string; diagnosis?: string; advice?: string; createdBy?: string; vitals?: { pulse?: number; temperatureC?: number; bloodPressureSys?: number; bloodPressureDia?: number; respiratoryRate?: number; bloodSugar?: number; weightKg?: number; heightCm?: number; bmi?: number; bsa?: number; spo2?: number } }) =>
+  upsertPrescriptionByEncounter: (encounterId: string, data: { historyTakingId?: string; labReportsEntryId?: string; medicine?: Array<{ name: string; dose?: string; frequency?: string; duration?: string; notes?: string }>; items?: Array<{ name: string; dose?: string; frequency?: string; duration?: string; notes?: string }>; labTests?: string[]; labNotes?: string; diagnosticTests?: string[]; diagnosticNotes?: string; diagnosticDiscount?: number; therapyTests?: string[]; therapyNotes?: string; therapyDiscount?: number; therapyPlan?: any; therapyMachines?: any; counselling?: any; counsellingDiscount?: number; primaryComplaint?: string; primaryComplaintHistory?: string; familyHistory?: string; treatmentHistory?: string; allergyHistory?: string; history?: string; examFindings?: string; diagnosis?: string; advice?: string; createdBy?: string; vitals?: { pulse?: number; temperatureC?: number; bloodPressureSys?: number; bloodPressureDia?: number; respiratoryRate?: number; bloodSugar?: number; weightKg?: number; heightCm?: number; bmi?: number; bsa?: number; spo2?: number }; historyEdits?: { personalInfo?: any; maritalStatus?: any; coitus?: any; health?: any; sexualHistory?: any; previousMedicalHistory?: any; arrivalReference?: any } }) =>
     api(`/hospital/opd/encounters/${encodeURIComponent(encounterId)}/prescription`, { method: 'PUT', body: JSON.stringify(data) }),
   listPrescriptions: (params?: { doctorId?: string; patientMrn?: string; from?: string; to?: string; page?: number; limit?: number }) => {
     const qs = new URLSearchParams()
@@ -2416,7 +2649,9 @@ export const hospitalApi = {
     return api(`/hospital/opd/prescriptions${s ? `?${s}` : ''}`)
   },
   getPrescription: (id: string) => api(`/hospital/opd/prescriptions/${id}`),
-  updatePrescription: (id: string, data: { historyTakingId?: string; labReportsEntryId?: string; medicine?: Array<{ name: string; dose?: string; frequency?: string; duration?: string; notes?: string }>; items?: Array<{ name: string; dose?: string; frequency?: string; duration?: string; notes?: string }>; labTests?: string[]; labNotes?: string; diagnosticTests?: string[]; diagnosticNotes?: string; diagnosticDiscount?: number; therapyTests?: string[]; therapyNotes?: string; therapyDiscount?: number; therapyPlan?: any; therapyMachines?: any; counselling?: any; counsellingDiscount?: number; primaryComplaint?: string; primaryComplaintHistory?: string; familyHistory?: string; treatmentHistory?: string; allergyHistory?: string; history?: string; examFindings?: string; diagnosis?: string; advice?: string; createdBy?: string; vitals?: { pulse?: number; temperatureC?: number; bloodPressureSys?: number; bloodPressureDia?: number; respiratoryRate?: number; bloodSugar?: number; weightKg?: number; heightCm?: number; bmi?: number; bsa?: number; spo2?: number } }) =>
+  getPrescriptionByHistoryTakingId: (historyTakingId: string) =>
+    api(`/hospital/opd/prescriptions/by-history-taking/${encodeURIComponent(historyTakingId)}`),
+  updatePrescription: (id: string, data: { historyTakingId?: string; labReportsEntryId?: string; medicine?: Array<{ name: string; dose?: string; frequency?: string; duration?: string; notes?: string }>; items?: Array<{ name: string; dose?: string; frequency?: string; duration?: string; notes?: string }>; labTests?: string[]; labNotes?: string; diagnosticTests?: string[]; diagnosticNotes?: string; diagnosticDiscount?: number; therapyTests?: string[]; therapyNotes?: string; therapyDiscount?: number; therapyPlan?: any; therapyMachines?: any; counselling?: any; counsellingDiscount?: number; primaryComplaint?: string; primaryComplaintHistory?: string; familyHistory?: string; treatmentHistory?: string; allergyHistory?: string; history?: string; examFindings?: string; diagnosis?: string; advice?: string; createdBy?: string; vitals?: { pulse?: number; temperatureC?: number; bloodPressureSys?: number; bloodPressureDia?: number; respiratoryRate?: number; bloodSugar?: number; weightKg?: number; heightCm?: number; bmi?: number; bsa?: number; spo2?: number }; historyEdits?: { personalInfo?: any; maritalStatus?: any; coitus?: any; health?: any; sexualHistory?: any; previousMedicalHistory?: any; arrivalReference?: any } }) =>
     api(`/hospital/opd/prescriptions/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   deletePrescription: (id: string) => api(`/hospital/opd/prescriptions/${id}`, { method: 'DELETE' }),
 

@@ -17,6 +17,7 @@ interface TokenRow {
   department?: string
   fee: number
   discount?: number
+  discountType?: 'PKR' | '%'
   paymentStatus?: 'paid' | 'unpaid'
   receptionistName?: string
   paymentMethod?: string
@@ -73,11 +74,119 @@ export default function Hospital_TodayTokens() {
     doctorId: '',
     amount: '',
     discount: '',
+    discountType: 'PKR' as 'PKR' | '%',
     paymentStatus: 'paid' as 'paid' | 'unpaid',
     receptionistName: '',
     paymentMethod: 'Cash' as 'Cash' | 'Card' | 'Insurance',
     accountNumberIban: '',
+    receivedToAccountCode: '',
+    discountType: 'PKR' as 'PKR' | '%',
   })
+
+  const [account, setAccount] = useState<{ dues: number; advance: number } | null>(null)
+  const [accountLoading, setAccountLoading] = useState(false)
+  const [payPreviousDues, setPayPreviousDues] = useState(false)
+  const [useAdvance, setUseAdvance] = useState(false)
+  const [amountReceivedNow, setAmountReceivedNow] = useState('0')
+
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      try {
+        const pid = editRow?.raw?.patientId?._id || editRow?.raw?.patientId
+        if (!pid) {
+          if (!cancelled) setAccount({ dues: 0, advance: 0 })
+          return
+        }
+        if (!cancelled) setAccountLoading(true)
+        const res: any = await hospitalApi.getAccount(pid)
+        const a: any = res?.account || null
+        const dues = Math.max(0, Number(a?.dues || 0))
+        const advance = Math.max(0, Number(a?.advance || 0))
+        if (!cancelled) {
+          setAccount({ dues, advance })
+          if (dues <= 0) setPayPreviousDues(false)
+          if (advance <= 0) setUseAdvance(false)
+        }
+      } catch {
+        if (!cancelled) setAccount({ dues: 0, advance: 0 })
+      } finally {
+        if (!cancelled) setAccountLoading(false)
+      }
+    })()
+    return () => { cancelled = true }
+  }, [editRow?._id])
+
+  const finalFee = useMemo(() => {
+    const fee = parseFloat(editForm.amount || '0')
+    const discount = parseFloat(editForm.discount || '0')
+    const discountType = editForm.discountType
+    let discountAmount = 0
+    if (discountType === '%') {
+      discountAmount = fee * (discount / 100)
+    } else {
+      discountAmount = discount
+    }
+    const f = Math.max(fee - discountAmount, 0)
+    return isNaN(f) ? 0 : f
+  }, [editForm.amount, editForm.discount, editForm.discountType])
+
+  const paymentPreview = useMemo(() => {
+    const duesBefore = Math.max(0, Number(account?.dues || 0))
+    const advanceBefore = Math.max(0, Number(account?.advance || 0))
+    const received = Math.max(0, Number(amountReceivedNow || 0))
+    const net = finalFee
+    const isUnpaid = editForm.paymentStatus === 'unpaid'
+    const canPay = !isUnpaid
+
+    const payPrev = canPay ? payPreviousDues : false
+    const useAdv = canPay ? useAdvance : false
+    const receivedNow = canPay ? received : 0
+
+    let advanceApplied = 0
+    let netDueToday = net
+    let advanceLeft = advanceBefore
+    if (useAdv) {
+      advanceApplied = Math.min(advanceBefore, netDueToday)
+      netDueToday = Math.max(0, netDueToday - advanceApplied)
+      advanceLeft = Math.max(0, advanceBefore - advanceApplied)
+    }
+
+    let amt = receivedNow
+    let duesPaidLocal = 0
+    let paidForTodayLocal = 0
+    let advanceAddedLocal = 0
+    let duesAfter = duesBefore
+
+    if (payPrev) {
+      duesPaidLocal = Math.min(duesAfter, amt)
+      duesAfter = Math.max(0, duesAfter - duesPaidLocal)
+      amt -= duesPaidLocal
+    }
+
+    paidForTodayLocal = Math.min(netDueToday, amt)
+    netDueToday = Math.max(0, netDueToday - paidForTodayLocal)
+    amt -= paidForTodayLocal
+
+    advanceAddedLocal = Math.max(0, amt)
+    duesAfter = duesAfter + netDueToday
+    const advanceAfter = advanceLeft + advanceAddedLocal
+
+    return {
+      duesBefore,
+      advanceBefore,
+      advanceApplied,
+      amountReceived: receivedNow,
+      duesPaid: duesPaidLocal,
+      paidForToday: paidForTodayLocal,
+      advanceAdded: advanceAddedLocal,
+      duesAfter,
+      advanceAfter,
+      payPreviousDues: payPrev,
+      useAdvance: useAdv,
+      paymentStatus: isUnpaid ? 'unpaid' : 'paid',
+    }
+  }, [account?.dues, account?.advance, amountReceivedNow, payPreviousDues, useAdvance, finalFee, editForm.paymentStatus])
 
 
   useEffect(() => { load() }, [])
@@ -176,6 +285,7 @@ export default function Hospital_TodayTokens() {
       department: t.departmentId?.name || '-',
       fee: Number(t.fee || 0),
       discount: Number(t.discount ?? t.pricing?.discount ?? 0),
+      discountType: (t.discountType || 'PKR') as 'PKR' | '%',
       paymentStatus: (t.paymentStatus || 'paid') as any,
       receptionistName: t.receptionistName || '',
       paymentMethod: t.paymentMethod || '',
@@ -260,8 +370,10 @@ export default function Hospital_TodayTokens() {
     const rawAmount = t.amount ?? (Number(t.fee || 0) + Number(t.discount || 0))
     const amount = Number.isFinite(Number(rawAmount)) ? String(rawAmount) : ''
     const discount = String(t.discount ?? 0)
+    const discountType = (t.discountType || r.discountType || 'PKR') as 'PKR' | '%'
     const paymentStatus = (String(t.paymentStatus || r.paymentStatus || 'paid') as any)
     const receptionistName = String(t.receptionistName || r.receptionistName || '')
+    const receivedToAccountCode = String(t.receivedToAccountCode || '')
     const method = String(t.paymentMethod || r.paymentMethod || 'Cash')
     const paymentMethod = ((['Cash', 'Card', 'Insurance'].includes(method) ? method : 'Cash') as any)
     const accountNumberIban = String(t.accountNumberIban || r.accountNumberIban || '')
@@ -280,11 +392,16 @@ export default function Hospital_TodayTokens() {
       doctorId,
       amount,
       discount,
+      discountType,
       paymentStatus: (paymentStatus === 'unpaid' ? 'unpaid' : 'paid'),
       receptionistName,
+      receivedToAccountCode,
       paymentMethod,
       accountNumberIban,
     })
+    setAmountReceivedNow(String(t.amountReceived || 0))
+    setPayPreviousDues(!!t.payPreviousDues)
+    setUseAdvance(!!t.useAdvance)
     setEditOpen(true)
   }
 
@@ -312,10 +429,15 @@ export default function Hospital_TodayTokens() {
         doctorId: editForm.doctorId || undefined,
         amount: cleanNum(editForm.amount),
         discount: cleanNum(editForm.discount) ?? 0,
+        discountType: editForm.discountType,
         paymentStatus: editForm.paymentStatus,
         receptionistName: editForm.receptionistName || undefined,
+        receivedToAccountCode: editForm.paymentStatus === 'unpaid' ? undefined : (editForm.receivedToAccountCode || undefined),
         paymentMethod: editForm.paymentStatus === 'paid' ? editForm.paymentMethod : undefined,
         accountNumberIban: editForm.paymentStatus === 'paid' && editForm.paymentMethod === 'Card' ? (editForm.accountNumberIban || undefined) : undefined,
+        payPreviousDues: paymentPreview.payPreviousDues,
+        useAdvance: paymentPreview.useAdvance,
+        amountReceived: paymentPreview.amountReceived,
       }
       await hospitalApi.updateToken(editRow._id, payload)
       setEditOpen(false)
@@ -369,6 +491,7 @@ export default function Hospital_TodayTokens() {
       gender: r.gender,
       amount,
       discount,
+      discountType: r.discountType || 'PKR',
       payable,
       paymentStatus: r.paymentStatus || (r.raw?.paymentStatus || 'paid'),
       receptionistName: r.receptionistName || (r.raw?.receptionistName || ''),
@@ -503,7 +626,11 @@ export default function Hospital_TodayTokens() {
                   </div>
                 </Td>
                 <Td>
-                  Rs. {Number(r.discount ?? r.raw?.discount ?? r.raw?.pricing?.discount ?? 0).toLocaleString()}
+                  {r.discountType === '%' ? (() => {
+                    const originalAmount = r.fee / (1 - r.discount / 100);
+                    const discountAmount = Math.round(originalAmount * (r.discount / 100));
+                    return `${r.discount}% (PKR ${discountAmount.toLocaleString()})`;
+                  })() : `Rs. ${Number(r.discount ?? 0).toLocaleString()}`}
                 </Td>
                 <Td><button onClick={() => printSlip(r)} className="text-sky-600 hover:underline">Print Slip</button></Td>
                 <Td>
@@ -582,6 +709,10 @@ export default function Hospital_TodayTokens() {
 
               <section className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 <div className="md:col-span-2 text-sm font-semibold text-slate-800">Patient Details</div>
+                <div className="sm:col-span-2">
+                  <label className="mb-1 block text-xs font-medium text-slate-600">MR #</label>
+                  <input value={editRow?.mrNo || '-'} disabled readOnly className="w-full rounded-md border border-slate-300 bg-slate-100 px-3 py-2 text-sm text-slate-600 cursor-not-allowed" />
+                </div>
                 <div className="md:col-span-2">
                   <label className="mb-1 block text-sm font-medium text-slate-700">Patient Name</label>
                   <input value={editForm.patientName} onChange={e => setEditForm(p => ({ ...p, patientName: e.target.value }))} className="w-full rounded-md border border-slate-300 px-3 py-2 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-200" />
@@ -643,42 +774,171 @@ export default function Hospital_TodayTokens() {
                 </div>
               </section>
 
-              <section className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                <div className="md:col-span-2 text-sm font-semibold text-slate-800">Billing / Payment</div>
-                <div>
-                  <label className="mb-1 block text-sm font-medium text-slate-700">Total Amount</label>
-                  <input value={editForm.amount} onChange={e => setEditForm(p => ({ ...p, amount: e.target.value }))} className="w-full rounded-md border border-slate-300 px-3 py-2 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-200" />
-                </div>
-                <div>
-                  <label className="mb-1 block text-sm font-medium text-slate-700">Discount</label>
-                  <input value={editForm.discount} onChange={e => setEditForm(p => ({ ...p, discount: e.target.value }))} className="w-full rounded-md border border-slate-300 px-3 py-2 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-200" />
-                </div>
+              {editForm.paymentStatus !== 'unpaid' && (
+                <section>
+                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                    <div>
+                      <label className="mb-1 block text-sm font-medium text-slate-700">Payment Method</label>
+                      <select className="w-full rounded-md border border-slate-300 px-3 py-2 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-200" value={editForm.paymentMethod} onChange={e => setEditForm(p => ({ ...p, paymentMethod: e.target.value as any }))}>
+                        <option value="Cash">Cash</option>
+                        <option value="Card">Card</option>
+                        <option value="Insurance">Insurance</option>
+                      </select>
+                    </div>
 
-                <div>
-                  <label className="mb-1 block text-sm font-medium text-slate-700">Payment Status</label>
-                  <select value={editForm.paymentStatus} onChange={e => setEditForm(p => ({ ...p, paymentStatus: e.target.value as any }))} className="w-full rounded-md border border-slate-300 px-3 py-2 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-200">
-                    <option value="paid">PAID</option>
-                    <option value="unpaid">UNPAID</option>
+                    {editForm.paymentMethod === 'Card' && (
+                      <div>
+                        <label className="mb-1 block text-sm font-medium text-slate-700">Account Number/IBAN</label>
+                        <input
+                          className="w-full rounded-md border border-slate-300 px-3 py-2 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-200"
+                          placeholder="Enter account number or IBAN"
+                          value={editForm.accountNumberIban}
+                          onChange={e => setEditForm(p => ({ ...p, accountNumberIban: e.target.value }))}
+                        />
+                      </div>
+                    )}
+                  </div>
+                </section>
+              )}
+
+              <section>
+                <h3 className="mb-3 text-sm font-semibold text-slate-700">Fee Details</h3>
+                <div className="rounded-xl border border-slate-200 bg-white p-4">
+                  <div className="mt-1 divide-y divide-slate-200 text-sm">
+                    <div className="flex items-center justify-between py-2">
+                      <div className="text-slate-600">Fee</div>
+                      <div>PKR {Number(Number(editForm.amount || 0) || 0).toLocaleString()}</div>
+                    </div>
+                    <div className="flex items-center justify-between py-2">
+                      <div className="text-slate-600">Discount</div>
+                      <div className="flex items-center gap-2">
+                        <input
+                          className="w-24 rounded-md border border-slate-300 px-3 py-1.5 text-right"
+                          placeholder="0"
+                          value={editForm.discount}
+                          onChange={e => setEditForm(p => ({ ...p, discount: e.target.value }))}
+                        />
+                        <select
+                          value={editForm.discountType}
+                          onChange={e => setEditForm(p => ({ ...p, discountType: e.target.value as any }))}
+                          className="rounded-md border border-slate-300 px-2 py-1.5 text-sm"
+                        >
+                          <option value="PKR">PKR</option>
+                          <option value="%">%</option>
+                        </select>
+                      </div>
+                    </div>
+                    <div className="flex items-center justify-between py-2 font-semibold">
+                      <div>Net Fee</div>
+                      <div>PKR {finalFee.toLocaleString()}</div>
+                    </div>
+                  </div>
+
+                  <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-3">
+                    <div className="mb-2 text-sm font-semibold text-slate-800">Payment</div>
+                    <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                      <div>
+                        <div className="text-xs font-medium text-slate-600">Previous Dues</div>
+                        <div className="mt-1 text-sm text-slate-900">{accountLoading ? 'Loading...' : `PKR ${Number(account?.dues || 0).toLocaleString()}`}</div>
+                      </div>
+                      <div>
+                        <div className="text-xs font-medium text-slate-600">Previous Advance</div>
+                        <div className="mt-1 text-sm text-slate-900">{accountLoading ? 'Loading...' : `PKR ${Number(account?.advance || 0).toLocaleString()}`}</div>
+                      </div>
+                    </div>
+
+                    <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-3">
+                      <div>
+                        <label className="mb-1 block text-xs font-medium text-slate-600">Amount Received Now</label>
+                        <input
+                          value={amountReceivedNow}
+                          onChange={(e) => setAmountReceivedNow(e.target.value)}
+                          disabled={editForm.paymentStatus === 'unpaid'}
+                          className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm"
+                          placeholder="0"
+                        />
+                      </div>
+
+                      <div className="flex items-end pb-2">
+                        <label className="flex items-center gap-2 text-sm text-slate-800">
+                          <input
+                            type="checkbox"
+                            checked={payPreviousDues}
+                            onChange={(e) => setPayPreviousDues(e.target.checked)}
+                            disabled={editForm.paymentStatus === 'unpaid' || Number(account?.dues || 0) <= 0}
+                            className="h-4 w-4 rounded border-slate-300"
+                          />
+                          Pay Previous Dues
+                        </label>
+                      </div>
+
+                      <div className="flex items-end pb-2">
+                        <label className="flex items-center gap-2 text-sm text-slate-800">
+                          <input
+                            type="checkbox"
+                            checked={useAdvance}
+                            onChange={(e) => setUseAdvance(e.target.checked)}
+                            disabled={editForm.paymentStatus === 'unpaid' || Number(account?.advance || 0) <= 0}
+                            className="h-4 w-4 rounded border-slate-300"
+                          />
+                          Use Advance
+                        </label>
+                      </div>
+                    </div>
+
+                    <div className="mt-3 grid grid-cols-1 gap-2 text-sm md:grid-cols-2">
+                      <div className="flex items-center justify-between rounded-md bg-white px-3 py-2 border border-slate-200">
+                        <div className="text-slate-600">Dues After</div>
+                        <div className="font-semibold">PKR {Number(paymentPreview.duesAfter || 0).toLocaleString()}</div>
+                      </div>
+                      <div className="flex items-center justify-between rounded-md bg-white px-3 py-2 border border-slate-200">
+                        <div className="text-slate-600">Advance After</div>
+                        <div className="font-semibold">PKR {Number(paymentPreview.advanceAfter || 0).toLocaleString()}</div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </section>
+
+              <section>
+                <h3 className="mb-3 text-sm font-semibold text-slate-700">Receptionist</h3>
+                <div className="rounded-lg border border-slate-200 bg-white p-4">
+                  <label className="mb-1 block text-sm font-medium text-slate-700">Payed to (Account)</label>
+                  <select
+                    className="w-full rounded-md border border-slate-300 px-3 py-2 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-200"
+                    value={editForm.receivedToAccountCode}
+                    onChange={e => setEditForm(p => ({ ...p, receivedToAccountCode: e.target.value }))}
+                    disabled={editForm.paymentStatus === 'unpaid'}
+                  >
+                    <option value="">Select account</option>
+                    {payToAccounts.map(a => (
+                      <option key={a.code} value={a.code}>{a.label}</option>
+                    ))}
                   </select>
                 </div>
+              </section>
 
-                <div>
-                  <label className="mb-1 block text-sm font-medium text-slate-700">Payed to (Receptionist)</label>
-                  <input value={editForm.receptionistName} onChange={e => setEditForm(p => ({ ...p, receptionistName: e.target.value }))} className="w-full rounded-md border border-slate-300 px-3 py-2 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-200" />
-                </div>
-
-                <div>
-                  <label className="mb-1 block text-sm font-medium text-slate-700">Payment Method</label>
-                  <select value={editForm.paymentMethod} onChange={e => setEditForm(p => ({ ...p, paymentMethod: e.target.value as any }))} className="w-full rounded-md border border-slate-300 px-3 py-2 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-200" disabled={editForm.paymentStatus !== 'paid'}>
-                    <option value="Cash">Cash</option>
-                    <option value="Card">Card</option>
-                    <option value="Insurance">Insurance</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="mb-1 block text-sm font-medium text-slate-700">Account Number/IBAN</label>
-                  <input value={editForm.accountNumberIban} onChange={e => setEditForm(p => ({ ...p, accountNumberIban: e.target.value }))} className="w-full rounded-md border border-slate-300 px-3 py-2 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-200" disabled={editForm.paymentStatus !== 'paid' || editForm.paymentMethod !== 'Card'} />
+              <section>
+                <h3 className="mb-3 text-sm font-semibold text-slate-700">Payment Status</h3>
+                <div className="flex flex-wrap items-center gap-6 rounded-lg border border-slate-200 bg-white p-4">
+                  <label className="flex items-center gap-2 text-sm text-slate-700">
+                    <input
+                      type="checkbox"
+                      checked={editForm.paymentStatus === 'paid'}
+                      onChange={() => setEditForm(p => ({ ...p, paymentStatus: 'paid' }))}
+                      className="h-4 w-4"
+                    />
+                    Paid
+                  </label>
+                  <label className="flex items-center gap-2 text-sm text-slate-700">
+                    <input
+                      type="checkbox"
+                      checked={editForm.paymentStatus === 'unpaid'}
+                      onChange={() => setEditForm(p => ({ ...p, paymentStatus: 'unpaid' }))}
+                      className="h-4 w-4"
+                    />
+                    Unpaid
+                  </label>
                 </div>
               </section>
             </div>

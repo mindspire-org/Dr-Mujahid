@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
-import { Link, useLocation, useNavigate } from 'react-router-dom'
-import { hospitalApi, labApi, diagnosticApi } from '../../utils/api'
+import { useLocation, useNavigate } from 'react-router-dom'
+import { hospitalApi, labApi, diagnosticApi, therapyApi, counsellingApi } from '../../utils/api'
 import { previewPrescriptionPdf } from '../../utils/prescriptionPdf'
 import type { PrescriptionPdfTemplate } from '../../utils/prescriptionPdf'
 import { printUltrasoundReport } from '../../components/diagnostic/diagnostic_UltrasoundGeneric'
@@ -9,7 +9,8 @@ import { printEchocardiographyReport } from '../../components/diagnostic/diagnos
 import { printColonoscopyReport } from '../../components/diagnostic/diagnostic_Colonoscopy'
 import { printUpperGIEndoscopyReport } from '../../components/diagnostic/diagnostic_UpperGIEndoscopy'
 import { previewLabReportPdf } from '../../utils/printLabReport'
-import { Eye, X } from 'lucide-react'
+import { Eye, X, Download } from 'lucide-react'
+import { mergeHistoryWithEdits, type HistorySection } from '../../utils/historyEdits'
 
 export default function Hospital_SearchPatients() {
   const location = useLocation()
@@ -23,10 +24,16 @@ export default function Hospital_SearchPatients() {
   const [loading, setLoading] = useState(false)
   const [patients, setPatients] = useState<any[]>([])
   const [expanded, setExpanded] = useState<Record<string, boolean>>({})
-  const [details, setDetails] = useState<Record<string, { patient?: any; pres?: any[]; lab?: any[]; diag?: any[]; ipd?: any[]; loading?: boolean }>>({})
+  const [details, setDetails] = useState<Record<string, { patient?: any; pres?: any[]; lab?: any[]; diag?: any[]; therapy?: any[]; counselling?: any[]; ipd?: any[]; history?: any[]; labEntries?: any[]; loading?: boolean }>>({})
   const [busy, setBusy] = useState<{ pres?: string; lab?: string; diag?: string }>({})
   const [patientDetailsOpen, setPatientDetailsOpen] = useState(false)
   const [patientDetailsRow, setPatientDetailsRow] = useState<any | null>(null)
+  
+  // Import Excel states
+  const [importPreviewOpen, setImportPreviewOpen] = useState(false)
+  const [importPreviewData, setImportPreviewData] = useState<any[]>([])
+  const [importPreviewFile, setImportPreviewFile] = useState<File | null>(null)
+  const [importing, setImporting] = useState(false)
 
   const update = (k: keyof typeof form, v: string) => setForm(prev => ({ ...prev, [k]: v }))
 
@@ -237,6 +244,9 @@ export default function Hospital_SearchPatients() {
         therapyPlan: pres?.therapyPlan,
         therapyMachines: pres?.therapyMachines,
         counselling: pres?.counselling,
+        diagnosticDiscount: p?.diagnosticDiscount || '0',
+        therapyDiscount: p?.therapyDiscount || '0',
+        counsellingDiscount: p?.counsellingDiscount || '0',
         createdAt: pres?.createdAt,
       }, tpl)
     } catch (e: any) {
@@ -317,6 +327,115 @@ export default function Hospital_SearchPatients() {
     try { sessionStorage.removeItem('hospital.searchPatients.v1') } catch { }
   }
 
+  const [showPrevHistoriesDlg, setShowPrevHistoriesDlg] = useState(false)
+  const [showPrevLabEntriesDlg, setShowPrevLabEntriesDlg] = useState(false)
+  const [showTherapyDetailsDlg, setShowTherapyDetailsDlg] = useState(false)
+  const [showCounsellingDetailsDlg, setShowCounsellingDetailsDlg] = useState(false)
+  const [selectedTherapy, setSelectedTherapy] = useState<any>(null)
+  const [selectedCounselling, setSelectedCounselling] = useState<any>(null)
+  const [selectedPatientForDialog, setSelectedPatientForDialog] = useState<any>(null)
+  const [selectedVisitDateForDialog, setSelectedVisitDateForDialog] = useState<string>('')
+  const [prevLabEntryViewId, setPrevLabEntryViewId] = useState('')
+  const [prevHistoryViewId, setPrevHistoryViewId] = useState('')
+  const [prevHistoryViewPrescription, setPrevHistoryViewPrescription] = useState<any>(null)
+
+  // Fetch prescription for history view to get historyEdits
+  useEffect(() => {
+    if (!prevHistoryViewId) {
+      setPrevHistoryViewPrescription(null)
+      return
+    }
+    // Find the patient MRN for the selected history
+    let patientMrn = ''
+    for (const mrn in details) {
+      if (details[mrn].history?.find((h: any) => String(h._id || h.id) === prevHistoryViewId)) {
+        patientMrn = mrn
+        break
+      }
+    }
+    if (!patientMrn) return
+
+    let cancelled = false
+    ;(async () => {
+      try {
+        const res: any = await hospitalApi.listPrescriptions({ 
+          patientMrn, 
+          limit: 1 
+        })
+        if (cancelled) return
+        const pres = res?.prescriptions?.[0] || null
+        setPrevHistoryViewPrescription(pres)
+      } catch {
+        if (!cancelled) setPrevHistoryViewPrescription(null)
+      }
+    })()
+    return () => { cancelled = true }
+  }, [prevHistoryViewId, details])
+
+  const onImportExcel = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    
+    setLoading(true)
+    try {
+      const formData = new FormData()
+      formData.append('file', file)
+      
+      // First, preview the data
+      const res: any = await hospitalApi.previewPatientsExcel(formData)
+      const rows = res?.rows || []
+      
+      if (!rows.length) {
+        alert('No valid patient records found in the Excel file.')
+        e.target.value = ''
+        return
+      }
+      
+      setImportPreviewData(rows)
+      setImportPreviewFile(file)
+      setImportPreviewOpen(true)
+    } catch (err: any) {
+      alert(err?.message || 'Failed to parse Excel file. Please check the format.')
+    } finally {
+      setLoading(false)
+      e.target.value = ''
+    }
+  }
+
+  const onConfirmImport = async () => {
+    if (!importPreviewFile) return
+    
+    setImporting(true)
+    try {
+      const formData = new FormData()
+      formData.append('file', importPreviewFile)
+      
+      const res: any = await hospitalApi.importPatientsExcel(formData)
+      const imported = res?.imported || 0
+      const failed = res?.failed || 0
+      const errors = res?.errors || []
+      
+      setImportPreviewOpen(false)
+      setImportPreviewData([])
+      setImportPreviewFile(null)
+      
+      if (failed > 0 && errors.length > 0) {
+        alert(`Import complete: ${imported} imported, ${failed} failed.\n\nErrors:\n${errors.slice(0, 5).join('\n')}${errors.length > 5 ? '\n...' : ''}`)
+      } else {
+        alert(`Successfully imported ${imported} patients!`)
+      }
+      
+      // Refresh search if we have active filters
+      if (form.mrNo || form.name || form.fatherName || form.phone) {
+        onSearch({ preventDefault: () => {} } as React.FormEvent)
+      }
+    } catch (err: any) {
+      alert(err?.message || 'Failed to import patients. Please check the file format.')
+    } finally {
+      setImporting(false)
+    }
+  }
+
   async function loadDetails(mrn: string) {
     setDetails(prev => ({ ...prev, [mrn]: { ...(prev[mrn] || {}), loading: true } }))
     try {
@@ -326,8 +445,26 @@ export default function Hospital_SearchPatients() {
         const pres: any[] = (res?.pres || []).map((p: any) => ({ id: p.id || p._id, createdAt: p.createdAt, diagnosis: p.diagnosis, doctor: p.doctor || '-', items: p.medicine || p.items || [] }))
         const lab: any[] = (res?.lab || [])
         const diag: any[] = (res?.diag || [])
+        const therapy: any[] = (res?.therapy || [])
+        const counselling: any[] = (res?.counselling || [])
         const patient = res?.patient || null
-        setDetails(prev => ({ ...prev, [mrn]: { patient, pres, lab, diag, ipd: [], loading: false } }))
+        
+        // Fetch history-taking and lab reports entries for the patient
+        let history: any[] = []
+        let labEntries: any[] = []
+        try {
+          if (patient?._id || patient?.id) {
+            const patientId = String(patient._id || patient.id)
+            const [historyRes, labEntriesRes] = await Promise.all([
+              hospitalApi.listHistoryTakings({ patientId, limit: 50 }) as any,
+              hospitalApi.listLabReportsEntries({ patientId, limit: 50 }) as any
+            ])
+            history = historyRes?.historyTakings || historyRes?.items || []
+            labEntries = labEntriesRes?.labReportsEntries || labEntriesRes?.items || []
+          }
+        } catch { }
+        
+        setDetails(prev => ({ ...prev, [mrn]: { patient, pres, lab, diag, therapy, counselling, ipd: [], history, labEntries, loading: false } }))
         return
       } catch { }
 
@@ -336,10 +473,28 @@ export default function Hospital_SearchPatients() {
         const resp: any = await labApi.getPatientByMrn(mrn)
         patient = resp?.patient || null
       } catch { }
-      const [presRes, ordersRes, diagOrdersRes] = await Promise.all([
+      
+      // Fetch history-taking and lab reports entries
+      let history: any[] = []
+      let labEntries: any[] = []
+      try {
+        if (patient?._id || patient?.id) {
+          const patientId = String(patient._id || patient.id)
+          const [historyRes, labEntriesRes] = await Promise.all([
+            hospitalApi.listHistoryTakings({ patientId, limit: 50 }) as any,
+            hospitalApi.listLabReportsEntries({ patientId, limit: 50 }) as any
+          ])
+          history = historyRes?.historyTakings || historyRes?.items || []
+          labEntries = labEntriesRes?.labReportsEntries || labEntriesRes?.items || []
+        }
+      } catch { }
+      
+      const [presRes, ordersRes, diagOrdersRes, therapyRes, counsellingRes] = await Promise.all([
         hospitalApi.listPrescriptions({ patientMrn: mrn, page: 1, limit: 50 }) as any,
         labApi.listOrders({ q: mrn, limit: 50 }) as any,
         diagnosticApi.listOrders({ q: mrn, limit: 50 }) as any,
+        therapyApi.listVisits({ mrn, limit: 50 }) as any,
+        counsellingApi.listOrders({ q: mrn, limit: 50 }) as any,
       ])
       const pres: any[] = (presRes?.prescriptions || []).map((p: any) => ({ id: p._id || p.id, createdAt: p.createdAt, diagnosis: p.diagnosis, doctor: p.encounterId?.doctorId?.name || '-', items: p.medicine || p.items || [] }))
       const orders: any[] = (ordersRes?.items || [])
@@ -362,9 +517,28 @@ export default function Hospital_SearchPatients() {
         } catch { }
         diag.push({ id: String(o._id || o.id), tokenNo: o.tokenNo, createdAt: o.createdAt, status: o.status, tests: o.tests || [], hasResult })
       }
-      setDetails(prev => ({ ...prev, [mrn]: { patient, pres, lab, diag, ipd: [], loading: false } }))
+
+      const therapy: any[] = (therapyRes?.items || []).map((v: any) => ({
+        id: String(v._id || v.id),
+        createdAt: v.createdAt,
+        status: v.sessionStatus || 'Pending',
+        packageName: v.packages?.map((p: any) => p.packageName || p.name).join(', ') || v.packageName || '-',
+        tests: v.tests || [],
+        machineSettings: v.machineSettings || null
+      }))
+
+      const counselling: any[] = (counsellingRes?.items || []).map((o: any) => ({
+        id: String(o._id || o.id),
+        createdAt: o.createdAt,
+        status: o.sessionStatus || 'Pending',
+        packageName: o.packages?.map((p: any) => p.packageName || p.name).join(', ') || o.packageName || '-',
+        tests: o.tests || [],
+        notes: o.notes || ''
+      }))
+
+      setDetails(prev => ({ ...prev, [mrn]: { patient, pres, lab, diag, therapy, counselling, ipd: [], history, labEntries, loading: false } }))
     } catch {
-      setDetails(prev => ({ ...prev, [mrn]: { patient: null, pres: [], lab: [], diag: [], ipd: [], loading: false } }))
+      setDetails(prev => ({ ...prev, [mrn]: { patient: null, pres: [], lab: [], diag: [], therapy: [], counselling: [], ipd: [], history: [], labEntries: [], loading: false } }))
     }
   }
 
@@ -392,9 +566,56 @@ export default function Hospital_SearchPatients() {
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <button type="submit" className="rounded-md bg-sky-600 px-4 py-2 text-sm font-medium text-white hover:bg-sky-700 disabled:opacity-50" disabled={loading}>{loading ? 'Searching...' : 'Search Patients'}</button>
           <button type="button" onClick={onClear} className="rounded-md border border-slate-300 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50">Clear Filters</button>
+          <button
+            type="button"
+            onClick={async () => {
+              try {
+                const url = hospitalApi.exportPatientsUrl(form)
+                const token = localStorage.getItem('hospital.token') || localStorage.getItem('token')
+                const finalUrl = token ? `${url}${url.includes('?') ? '&' : '?'}token=${encodeURIComponent(token)}` : url
+                
+                // Fetch the file to handle the download in the current tab
+                const response = await fetch(finalUrl, {
+                  headers: {
+                    'Accept': 'text/csv'
+                  }
+                })
+                
+                if (!response.ok) {
+                  const text = await response.text()
+                  throw new Error(text || 'Export failed')
+                }
+                
+                const blob = await response.blob()
+                if (blob.size === 0) throw new Error('Received empty file from server')
+                
+                const downloadUrl = window.URL.createObjectURL(blob)
+                const a = document.createElement('a')
+                a.href = downloadUrl
+                a.download = `patients_export_${new Date().toISOString().split('T')[0]}.csv`
+                document.body.appendChild(a)
+                a.click()
+                
+                // Cleanup
+                setTimeout(() => {
+                  window.URL.revokeObjectURL(downloadUrl)
+                  document.body.removeChild(a)
+                }, 100)
+              } catch (err: any) {
+                console.error('Export error:', err)
+                alert(err?.message || 'Failed to export patients')
+              }
+            }}
+            className="flex items-center gap-2 rounded-md border border-blue-800 px-4 py-2 text-sm font-semibold text-blue-800 hover:bg-blue-50"
+          >
+            <Download size={16} />
+            Export Patients
+          </button>
+          <button type="button" onClick={() => document.getElementById('patient-import-file')?.click()} className="rounded-md border border-emerald-600 px-4 py-2 text-sm font-medium text-emerald-700 hover:bg-emerald-50">Import Excel</button>
+          <input id="patient-import-file" type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={onImportExcel} />
         </div>
       </form>
 
@@ -452,15 +673,23 @@ export default function Hospital_SearchPatients() {
                           return 'Unknown'
                         }
                       }
-                      const presAll: any[] = Array.isArray(d.pres) ? d.pres : []
-                      const labAll: any[] = Array.isArray(d.lab) ? (d.lab.filter((lr: any) => !!lr?.hasResult)) : []
-                      const diagAll: any[] = Array.isArray(d.diag) ? (d.diag.filter((dr: any) => !!dr?.hasResult)) : []
-                      const visitKeys = Array.from(new Set([
-                        ...presAll.map((x: any) => toDay(x.createdAt)),
-                        ...labAll.map((x: any) => toDay(x.createdAt)),
-                        ...diagAll.map((x: any) => toDay(x.createdAt)),
-                      ].filter((x: any) => x != null && String(x).trim() !== '')))
-                        .sort((a, b) => (a > b ? -1 : a < b ? 1 : 0))
+                    const presAll: any[] = Array.isArray(d.pres) ? d.pres : []
+                    const labAll: any[] = Array.isArray(d.lab) ? (d.lab.filter((lr: any) => !!lr?.hasResult)) : []
+                    const diagAll: any[] = Array.isArray(d.diag) ? (d.diag.filter((dr: any) => !!dr?.hasResult)) : []
+                    const therapyAll: any[] = Array.isArray(d.therapy) ? d.therapy : []
+                    const counsellingAll: any[] = Array.isArray(d.counselling) ? d.counselling : []
+                    const historyAll: any[] = Array.isArray(d.history) ? d.history : []
+                    const labEntriesAll: any[] = Array.isArray(d.labEntries) ? d.labEntries : []
+                    const visitKeys = Array.from(new Set([
+                      ...presAll.map((x: any) => toDay(x.createdAt)),
+                      ...labAll.map((x: any) => toDay(x.createdAt)),
+                      ...diagAll.map((x: any) => toDay(x.createdAt)),
+                      ...therapyAll.map((x: any) => toDay(x.createdAt)),
+                      ...counsellingAll.map((x: any) => toDay(x.createdAt)),
+                      ...historyAll.map((x: any) => toDay(x.createdAt || x.hxDate)),
+                      ...labEntriesAll.map((x: any) => toDay(x.createdAt || x.entryDate)),
+                    ].filter((x: any) => x != null && String(x).trim() !== '')))
+                      .sort((a, b) => (a > b ? -1 : a < b ? 1 : 0))
 
                       const presEmpty = (
                         <div className="rounded-lg border border-slate-200 bg-white p-3 text-xs">
@@ -480,6 +709,24 @@ export default function Hospital_SearchPatients() {
                           <div className="mt-2 text-slate-600">No diagnostic reports found</div>
                         </div>
                       )
+                      const medEmpty = (
+                        <div className="rounded-lg border border-slate-200 bg-white p-3 text-xs">
+                          <div className="text-[10px] font-bold text-slate-900">MEDICAL CARD / HISTORY</div>
+                          <div className="mt-2 text-slate-600">No medical history found</div>
+                        </div>
+                      )
+                      const therapyEmpty = (
+                        <div className="rounded-lg border border-slate-200 bg-white p-3 text-xs">
+                          <div className="text-[10px] font-bold text-slate-900">THERAPY</div>
+                          <div className="mt-2 text-slate-600">No therapy records found</div>
+                        </div>
+                      )
+                      const counsellingEmpty = (
+                        <div className="rounded-lg border border-slate-200 bg-white p-3 text-xs">
+                          <div className="text-[10px] font-bold text-slate-900">COUNSELLING</div>
+                          <div className="mt-2 text-slate-600">No counselling records found</div>
+                        </div>
+                      )
 
                       return (
                         <div className="mt-3 space-y-3">
@@ -490,8 +737,11 @@ export default function Hospital_SearchPatients() {
                                 <div className="rounded-lg border border-blue-800 bg-white p-3">
                                   <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
                                     {presEmpty}
+                                    {medEmpty}
                                     {labEmpty}
                                     {diagEmpty}
+                                    {therapyEmpty}
+                                    {counsellingEmpty}
                                   </div>
                                 </div>
                               )}
@@ -499,11 +749,15 @@ export default function Hospital_SearchPatients() {
                                 const presFor = presAll.filter((x: any) => toDay(x.createdAt) === vk)
                                 const labFor = labAll.filter((x: any) => toDay(x.createdAt) === vk)
                                 const diagFor = diagAll.filter((x: any) => toDay(x.createdAt) === vk)
+                                const therapyFor = therapyAll.filter((x: any) => toDay(x.createdAt) === vk)
+                                const counsellingFor = counsellingAll.filter((x: any) => toDay(x.createdAt) === vk)
+                                const historyFor = historyAll.filter((x: any) => toDay(x.createdAt || x.hxDate) === vk)
+                                const labEntriesFor = labEntriesAll.filter((x: any) => toDay(x.createdAt || x.entryDate) === vk)
 
                                 return (
                                   <div key={`visit_${vk}`} className="rounded-lg border border-blue-800 bg-white p-3">
                                     <div className="mb-2 text-xs font-semibold text-slate-800">Visit: {vk}</div>
-                                    <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                                    <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
                                       <div className="space-y-3">
                                         {presFor.length ? presFor.map((pr: any) => (
                                           <div key={`pres_${String(pr.id)}`} className="rounded-lg border border-slate-200 bg-white p-3 text-xs">
@@ -523,19 +777,22 @@ export default function Hospital_SearchPatients() {
                                       </div>
 
                                       <div className="space-y-3">
-                                        {labFor.length ? labFor.map((lr: any) => (
-                                          <div key={`lab_${String(lr.id)}`} className="rounded-lg border border-slate-200 bg-white p-3 text-xs">
+                                        {labEntriesFor.length ? labEntriesFor.map((le: any) => (
+                                          <div key={`labentry_${String(le._id || le.id)}`} className="rounded-lg border border-slate-200 bg-white p-3 text-xs">
                                             <div className="text-[10px] font-bold text-slate-900">LAB REPORT</div>
-                                            <div className="mt-1 font-semibold text-slate-800">{new Date(lr.createdAt).toLocaleString()}</div>
-                                            <div className="mt-0.5 text-slate-600">Token: {lr.tokenNo || '-'}</div>
-                                            <div className="mt-2 flex items-center justify-between gap-2">
-                                              <div className="text-slate-700">Status: {lr.status || '-'}</div>
-                                              <div className="flex items-center gap-2">
-                                                <>
-                                                  <Link to={`/lab/results?orderId=${encodeURIComponent(lr.id)}&token=${encodeURIComponent(lr.tokenNo || '')}`} className="text-sky-700 hover:underline">Open Report</Link>
-                                                  <button className="rounded-md border border-slate-300 px-2 py-1 text-xs" onClick={() => onLabPdf(String(lr.id), String(p.mrn || ''))} disabled={busy.lab === String(lr.id)}>{busy.lab === String(lr.id) ? 'Opening...' : 'Lab Report PDF'}</button>
-                                                </>
-                                              </div>
+                                            <div className="mt-1 font-semibold text-slate-800">{new Date(le.createdAt || le.entryDate).toLocaleString()}</div>
+                                            <div className="mt-0.5 text-slate-600">By: {le.hxBy || le.submittedBy || '-'}</div>
+                                            <div className="mt-2">
+                                              <button
+                                                type="button"
+                                                onClick={() => {
+                                                  setPrevLabEntryViewId(String(le._id || le.id))
+                                                  setShowPrevLabEntriesDlg(true)
+                                                }}
+                                                className="flex w-full items-center justify-center gap-1 rounded-md border border-blue-800 px-3 py-1.5 text-xs font-semibold text-blue-800 hover:bg-blue-50"
+                                              >
+                                                View Lab Entries <Eye size={14} />
+                                              </button>
                                             </div>
                                           </div>
                                         )) : labEmpty}
@@ -555,6 +812,78 @@ export default function Hospital_SearchPatients() {
                                             </div>
                                           </div>
                                         )) : diagEmpty}
+                                      </div>
+
+                                      <div className="space-y-3">
+                                        {therapyFor.length ? therapyFor.map((th: any) => (
+                                          <div key={`therapy_${String(th.id)}`} className="rounded-lg border border-slate-200 bg-white p-3 text-xs">
+                                            <div className="text-[10px] font-bold text-slate-900">THERAPY</div>
+                                            <div className="mt-1 font-semibold text-slate-800">{new Date(th.createdAt).toLocaleString()}</div>
+                                            <div className="mt-0.5 text-slate-600">Package: {th.packageName || '-'}</div>
+                                            <div className="mt-2 text-slate-700">Status: {th.status || '-'}</div>
+                                            <div className="mt-2">
+                                              <button
+                                                type="button"
+                                                onClick={() => {
+                                                  setSelectedTherapy(th)
+                                                  setSelectedPatientForDialog(p)
+                                                  setSelectedVisitDateForDialog(new Date(th.createdAt).toLocaleString())
+                                                  setShowTherapyDetailsDlg(true)
+                                                }}
+                                                className="flex w-full items-center justify-center gap-1 rounded-md border border-blue-800 px-3 py-1.5 text-xs font-semibold text-blue-800 hover:bg-blue-50"
+                                              >
+                                                View Details <Eye size={14} />
+                                              </button>
+                                            </div>
+                                          </div>
+                                        )) : therapyEmpty}
+                                      </div>
+
+                                      <div className="space-y-3">
+                                        {counsellingFor.length ? counsellingFor.map((co: any) => (
+                                          <div key={`couns_${String(co.id)}`} className="rounded-lg border border-slate-200 bg-white p-3 text-xs">
+                                            <div className="text-[10px] font-bold text-slate-900">COUNSELLING</div>
+                                            <div className="mt-1 font-semibold text-slate-800">{new Date(co.createdAt).toLocaleString()}</div>
+                                            <div className="mt-0.5 text-slate-600">Package: {co.packageName || '-'}</div>
+                                            <div className="mt-0.5 text-slate-700 font-medium">Status: {co.status || '-'}</div>
+                                            <div className="mt-2">
+                                              <button
+                                                type="button"
+                                                onClick={() => {
+                                                  setSelectedCounselling(co)
+                                                  setSelectedPatientForDialog(p)
+                                                  setSelectedVisitDateForDialog(new Date(co.createdAt).toLocaleString())
+                                                  setShowCounsellingDetailsDlg(true)
+                                                }}
+                                                className="flex w-full items-center justify-center gap-1 rounded-md border border-blue-800 px-3 py-1.5 text-xs font-semibold text-blue-800 hover:bg-blue-50"
+                                              >
+                                                View Details <Eye size={14} />
+                                              </button>
+                                            </div>
+                                          </div>
+                                        )) : counsellingEmpty}
+                                      </div>
+
+                                      <div className="space-y-3">
+                                        {historyFor.length ? historyFor.map((hx: any) => (
+                                          <div key={`hx_${String(hx._id || hx.id)}`} className="rounded-lg border border-slate-200 bg-white p-3 text-xs">
+                                            <div className="text-[10px] font-bold text-slate-900">MEDICAL CARD / HISTORY</div>
+                                            <div className="mt-1 font-semibold text-slate-800">{new Date(hx.submittedAt || hx.createdAt || hx.hxDate).toLocaleString()}</div>
+                                            <div className="mt-0.5 text-slate-600">By: {hx.hxBy || '-'}</div>
+                                            <div className="mt-2">
+                                              <button
+                                                type="button"
+                                                onClick={() => {
+                                                  setPrevHistoryViewId(String(hx._id || hx.id))
+                                                  setShowPrevHistoriesDlg(true)
+                                                }}
+                                                className="flex w-full items-center justify-center gap-1 rounded-md border border-blue-800 px-3 py-1.5 text-xs font-semibold text-blue-800 hover:bg-blue-50"
+                                              >
+                                                View History <Eye size={14} />
+                                              </button>
+                                            </div>
+                                          </div>
+                                        )) : medEmpty}
                                       </div>
                                     </div>
                                   </div>
@@ -583,10 +912,18 @@ export default function Hospital_SearchPatients() {
                     const presAll: any[] = Array.isArray(d.pres) ? d.pres : []
                     const labAll: any[] = Array.isArray(d.lab) ? (d.lab.filter((lr: any) => !!lr?.hasResult)) : []
                     const diagAll: any[] = Array.isArray(d.diag) ? (d.diag.filter((dr: any) => !!dr?.hasResult)) : []
+                    const therapyAll: any[] = Array.isArray(d.therapy) ? d.therapy : []
+                    const counsellingAll: any[] = Array.isArray(d.counselling) ? d.counselling : []
+                    const historyAll: any[] = Array.isArray(d.history) ? d.history : []
+                    const labEntriesAll: any[] = Array.isArray(d.labEntries) ? d.labEntries : []
                     const visitKeys = Array.from(new Set([
                       ...presAll.map((x: any) => toDay(x.createdAt)),
                       ...labAll.map((x: any) => toDay(x.createdAt)),
                       ...diagAll.map((x: any) => toDay(x.createdAt)),
+                      ...therapyAll.map((x: any) => toDay(x.createdAt)),
+                      ...counsellingAll.map((x: any) => toDay(x.createdAt)),
+                      ...historyAll.map((x: any) => toDay(x.createdAt || x.hxDate)),
+                      ...labEntriesAll.map((x: any) => toDay(x.createdAt || x.entryDate)),
                     ].filter((x: any) => x != null && String(x).trim() !== '')))
                       .sort((a, b) => (a > b ? -1 : a < b ? 1 : 0))
 
@@ -608,6 +945,24 @@ export default function Hospital_SearchPatients() {
                         <div className="mt-2 text-slate-600">No diagnostic reports found</div>
                       </div>
                     )
+                    const medEmpty = (
+                      <div className="rounded-lg border border-slate-200 bg-white p-3 text-xs">
+                        <div className="text-[10px] font-bold text-slate-900">MEDICAL CARD / HISTORY</div>
+                        <div className="mt-2 text-slate-600">No medical history found</div>
+                      </div>
+                    )
+                    const therapyEmpty = (
+                      <div className="rounded-lg border border-slate-200 bg-white p-3 text-xs">
+                        <div className="text-[10px] font-bold text-slate-900">THERAPY</div>
+                        <div className="mt-2 text-slate-600">No therapy records found</div>
+                      </div>
+                    )
+                    const counsellingEmpty = (
+                      <div className="rounded-lg border border-slate-200 bg-white p-3 text-xs">
+                        <div className="text-[10px] font-bold text-slate-900">COUNSELLING</div>
+                        <div className="mt-2 text-slate-600">No counselling records found</div>
+                      </div>
+                    )
 
                     return (
                       <div className="mt-3 space-y-3">
@@ -616,10 +971,13 @@ export default function Hospital_SearchPatients() {
                           <>
                             {visitKeys.length === 0 && (
                               <div className="rounded-lg border border-blue-800 bg-white p-3">
-                                <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                                <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
                                   {presEmpty}
                                   {labEmpty}
                                   {diagEmpty}
+                                  {therapyEmpty}
+                                  {counsellingEmpty}
+                                  {medEmpty}
                                 </div>
                               </div>
                             )}
@@ -627,6 +985,10 @@ export default function Hospital_SearchPatients() {
                               const presFor = presAll.filter((x: any) => toDay(x.createdAt) === vk)
                               const labFor = labAll.filter((x: any) => toDay(x.createdAt) === vk)
                               const diagFor = diagAll.filter((x: any) => toDay(x.createdAt) === vk)
+                              const therapyFor = therapyAll.filter((x: any) => toDay(x.createdAt) === vk)
+                              const counsellingFor = counsellingAll.filter((x: any) => toDay(x.createdAt) === vk)
+                              const historyFor = historyAll.filter((x: any) => toDay(x.createdAt || x.hxDate) === vk)
+                              const labEntriesFor = labEntriesAll.filter((x: any) => toDay(x.createdAt || x.entryDate) === vk)
 
                               return (
                                 <div key={`visit_${vk}`} className="rounded-lg border border-blue-800 bg-white p-3">
@@ -651,19 +1013,44 @@ export default function Hospital_SearchPatients() {
                                     </div>
 
                                     <div className="space-y-3">
-                                      {labFor.length ? labFor.map((lr: any) => (
-                                        <div key={`lab_${String(lr.id)}`} className="rounded-lg border border-slate-200 bg-white p-3 text-xs">
+                                      {historyFor.length ? historyFor.map((hx: any) => (
+                                        <div key={`hx_${String(hx._id || hx.id)}`} className="rounded-lg border border-slate-200 bg-white p-3 text-xs">
+                                          <div className="text-[10px] font-bold text-slate-900">MEDICAL CARD / HISTORY</div>
+                                          <div className="mt-1 font-semibold text-slate-800">{new Date(hx.submittedAt || hx.createdAt || hx.hxDate).toLocaleString()}</div>
+                                          <div className="mt-0.5 text-slate-600">By: {hx.hxBy || '-'}</div>
+                                          <div className="mt-2">
+                                            <button
+                                              type="button"
+                                              onClick={() => {
+                                                setPrevHistoryViewId(String(hx._id || hx.id))
+                                                setShowPrevHistoriesDlg(true)
+                                              }}
+                                              className="flex w-full items-center justify-center gap-1 rounded-md border border-blue-800 px-3 py-1.5 text-xs font-semibold text-blue-800 hover:bg-blue-50"
+                                            >
+                                              View History <Eye size={14} />
+                                            </button>
+                                          </div>
+                                        </div>
+                                      )) : medEmpty}
+                                    </div>
+
+                                    <div className="space-y-3">
+                                      {labEntriesFor.length ? labEntriesFor.map((le: any) => (
+                                        <div key={`labentry_${String(le._id || le.id)}`} className="rounded-lg border border-slate-200 bg-white p-3 text-xs">
                                           <div className="text-[10px] font-bold text-slate-900">LAB REPORT</div>
-                                          <div className="mt-1 font-semibold text-slate-800">{new Date(lr.createdAt).toLocaleString()}</div>
-                                          <div className="mt-0.5 text-slate-600">Token: {lr.tokenNo || '-'}</div>
-                                          <div className="mt-2 flex items-center justify-between gap-2">
-                                            <div className="text-slate-700">Status: {lr.status || '-'}</div>
-                                            <div className="flex items-center gap-2">
-                                              <>
-                                                <Link to={`/lab/results?orderId=${encodeURIComponent(lr.id)}&token=${encodeURIComponent(lr.tokenNo || '')}`} className="text-sky-700 hover:underline">Open Report</Link>
-                                                <button className="rounded-md border border-slate-300 px-2 py-1 text-xs" onClick={() => onLabPdf(String(lr.id), String(p.mrn || ''))} disabled={busy.lab === String(lr.id)}>{busy.lab === String(lr.id) ? 'Opening...' : 'Lab Report PDF'}</button>
-                                              </>
-                                            </div>
+                                          <div className="mt-1 font-semibold text-slate-800">{new Date(le.createdAt || le.entryDate).toLocaleString()}</div>
+                                          <div className="mt-0.5 text-slate-600">By: {le.hxBy || le.submittedBy || '-'}</div>
+                                          <div className="mt-2">
+                                            <button
+                                              type="button"
+                                              onClick={() => {
+                                                setPrevLabEntryViewId(String(le._id || le.id))
+                                                setShowPrevLabEntriesDlg(true)
+                                              }}
+                                              className="flex w-full items-center justify-center gap-1 rounded-md border border-blue-800 px-3 py-1.5 text-xs font-semibold text-blue-800 hover:bg-blue-50"
+                                            >
+                                              View Lab Entries <Eye size={14} />
+                                            </button>
                                           </div>
                                         </div>
                                       )) : labEmpty}
@@ -684,6 +1071,56 @@ export default function Hospital_SearchPatients() {
                                         </div>
                                       )) : diagEmpty}
                                     </div>
+
+                                    <div className="space-y-3">
+                                      {therapyFor.length ? therapyFor.map((th: any) => (
+                                        <div key={`therapy_${String(th.id)}`} className="rounded-lg border border-slate-200 bg-white p-3 text-xs">
+                                          <div className="text-[10px] font-bold text-slate-900">THERAPY</div>
+                                          <div className="mt-1 font-semibold text-slate-800">{new Date(th.createdAt).toLocaleString()}</div>
+                                          <div className="mt-0.5 text-slate-600">Package: {th.packageName || '-'}</div>
+                                          <div className="mt-2 text-slate-700">Status: {th.status || '-'}</div>
+                                          <div className="mt-2">
+                                            <button
+                                              type="button"
+                                              onClick={() => {
+                                                setSelectedTherapy(th)
+                                                setSelectedPatientForDialog(p)
+                                                setSelectedVisitDateForDialog(new Date(th.createdAt).toLocaleString())
+                                                setShowTherapyDetailsDlg(true)
+                                              }}
+                                              className="flex w-full items-center justify-center gap-1 rounded-md border border-blue-800 px-3 py-1.5 text-xs font-semibold text-blue-800 hover:bg-blue-50"
+                                            >
+                                              View Details <Eye size={14} />
+                                            </button>
+                                          </div>
+                                        </div>
+                                      )) : therapyEmpty}
+                                    </div>
+
+                                    <div className="space-y-3">
+                                      {counsellingFor.length ? counsellingFor.map((co: any) => (
+                                        <div key={`couns_${String(co.id)}`} className="rounded-lg border border-slate-200 bg-white p-3 text-xs">
+                                          <div className="text-[10px] font-bold text-slate-900">COUNSELLING</div>
+                                          <div className="mt-1 font-semibold text-slate-800">{new Date(co.createdAt).toLocaleString()}</div>
+                                          <div className="mt-0.5 text-slate-600">Package: {co.packageName || '-'}</div>
+                                          <div className="mt-2 text-slate-700">Status: {co.status || '-'}</div>
+                                          <div className="mt-2">
+                                            <button
+                                              type="button"
+                                              onClick={() => {
+                                                setSelectedCounselling(co)
+                                                setSelectedPatientForDialog(p)
+                                                setSelectedVisitDateForDialog(new Date(co.createdAt).toLocaleString())
+                                                setShowCounsellingDetailsDlg(true)
+                                              }}
+                                              className="flex w-full items-center justify-center gap-1 rounded-md border border-blue-800 px-3 py-1.5 text-xs font-semibold text-blue-800 hover:bg-blue-50"
+                                            >
+                                              View Details <Eye size={14} />
+                                            </button>
+                                          </div>
+                                        </div>
+                                      )) : counsellingEmpty}
+                                    </div>
                                   </div>
                                 </div>
                               )
@@ -700,23 +1137,689 @@ export default function Hospital_SearchPatients() {
         </div>
       )}
 
+      {showPrevLabEntriesDlg && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-3 sm:p-6" onClick={() => setShowPrevLabEntriesDlg(false)}>
+          <div className="w-full max-w-4xl overflow-hidden rounded-2xl bg-white shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3 sm:px-6">
+              <div className="text-base font-semibold text-slate-900">Previous Lab Entries</div>
+              <button type="button" className="rounded-md p-2 text-slate-600 hover:bg-slate-100" onClick={() => setShowPrevLabEntriesDlg(false)} aria-label="Close">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <div className="max-h-[80vh] overflow-y-auto px-4 py-4 sm:px-6">
+              {(() => {
+                // Find selected lab entry in details
+                let selected: any = null
+                let patientMrn = ''
+                for (const mrn in details) {
+                  const found = details[mrn].labEntries?.find((le: any) => String(le._id || le.id) === prevLabEntryViewId)
+                  if (found) {
+                    selected = found
+                    patientMrn = mrn
+                    break
+                  }
+                }
+
+                const toLabel = (key: string) =>
+                  String(key || '')
+                    .replace(/_/g, ' ')
+                    .replace(/([a-z])([A-Z])/g, '$1 $2')
+                    .replace(/\s+/g, ' ')
+                    .trim()
+
+                const formatValue = (v: any): string => {
+                  if (v == null) return ''
+                  if (typeof v === 'string') return v.trim()
+                  if (typeof v === 'number') return isFinite(v) ? String(v) : ''
+                  if (typeof v === 'boolean') return v ? 'Yes' : ''
+                  if (Array.isArray(v)) {
+                    const parts = v.map((x) => {
+                      if (x == null) return ''
+                      if (typeof x === 'string' || typeof x === 'number' || typeof x === 'boolean') return formatValue(x)
+                      if (typeof x === 'object') {
+                        const pick = (o: any, key: string) => {
+                          const vv = o?.[key]
+                          return typeof vv === 'string' ? vv.trim() : (typeof vv === 'number' && isFinite(vv) ? String(vv) : '')
+                        }
+                        const label = pick(x, 'label') || pick(x, 'name') || pick(x, 'title') || pick(x, 'type') || pick(x, 'status') || pick(x, 'value') || pick(x, 'description')
+                        if (label) return label
+                        const inner = formatValue(x)
+                        return inner
+                      }
+                      try { return String(x).trim() } catch { return '' }
+                    }).filter(Boolean)
+                    return parts.join(', ')
+                  }
+                  if (typeof v === 'object') {
+                    const keys = Object.keys(v || {})
+                    const boolKeys: string[] = []
+                    const parts: string[] = []
+                    for (const k of keys) {
+                      const vv = (v as any)[k]
+                      if (typeof vv === 'boolean') {
+                        if (vv) boolKeys.push(toLabel(k))
+                        continue
+                      }
+                      if (vv == null) continue
+                      if (typeof vv === 'string') { const t = vv.trim(); if (t) parts.push(`${toLabel(k)}: ${t}`); continue }
+                      if (typeof vv === 'number') { if (isFinite(vv)) parts.push(`${toLabel(k)}: ${vv}`); continue }
+                      if (Array.isArray(vv)) { const t = formatValue(vv); if (t) parts.push(`${toLabel(k)}: ${t}`); continue }
+                      if (typeof vv === 'object') {
+                        const inner = formatValue(vv)
+                        if (inner) parts.push(`${toLabel(k)}: ${inner}`)
+                        continue
+                      }
+                      try { const t = String(vv).trim(); if (t) parts.push(`${toLabel(k)}: ${t}`) } catch { }
+                    }
+                    const merged: string[] = []
+                    if (boolKeys.length) merged.push(boolKeys.join(', '))
+                    if (parts.length) merged.push(parts.join(' • '))
+                    return merged.join(' • ')
+                  }
+                  try { return String(v).trim() } catch { return '' }
+                }
+
+                const renderPairs = (obj: any) => {
+                  if (!obj || typeof obj !== 'object') return null
+                  const keys = Object.keys(obj || {})
+                  const rows = keys
+                    .map(k => ({ k, v: obj[k] }))
+                    .map(it => ({ ...it, txt: formatValue(it.v) }))
+                    .filter(it => !!it.txt)
+                  if (!rows.length) return null
+                  return (
+                    <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                      {rows.map(({ k, txt }) => (
+                        <div key={k} className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                          <div className="text-xs text-slate-500">{toLabel(k)}</div>
+                          <div className="mt-0.5 text-sm font-semibold text-slate-900">{txt}</div>
+                        </div>
+                      ))}
+                    </div>
+                  )
+                }
+
+                const tests = Array.isArray(selected?.tests) ? selected.tests : []
+                const labInformation = selected?.labInformation || {}
+                const semenAnalysis = selected?.semenAnalysis || {}
+
+                return (
+                  <div>
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                      <div>
+                        <div className="text-sm font-semibold text-slate-900">{details[patientMrn]?.patient?.fullName || '-'} <span className="text-xs font-normal text-slate-500">(MR: {patientMrn})</span></div>
+                        <div className="mt-1 text-xs text-slate-600">Entered By: {String(selected?.hxBy || '-')} • Entered On: {String(selected?.hxDate || selected?.entryDate || '-') || '-'}</div>
+                      </div>
+                      <button type="button" className="rounded-md border border-blue-800 px-3 py-2 text-sm font-semibold text-blue-800 hover:bg-blue-50" onClick={() => setShowPrevLabEntriesDlg(false)}>Close</button>
+                    </div>
+
+                    <div className="mt-4 space-y-3">
+                      {renderPairs(labInformation) && (
+                        <div className="rounded-xl border border-slate-200 bg-white p-4">
+                          <div className="text-sm font-semibold text-slate-800">Lab Information</div>
+                          {renderPairs(labInformation)}
+                        </div>
+                      )}
+
+                      {renderPairs(semenAnalysis) && (
+                        <div className="rounded-xl border border-slate-200 bg-white p-4">
+                          <div className="text-sm font-semibold text-slate-800">Semen Analysis</div>
+                          {renderPairs(semenAnalysis)}
+                        </div>
+                      )}
+
+                      <div className="rounded-xl border border-slate-200 bg-white p-4">
+                        <div className="text-sm font-semibold text-slate-800">Tests</div>
+                        {tests.length === 0 ? (
+                          <div className="mt-2 text-sm text-slate-600">No tests</div>
+                        ) : (
+                          <div className="mt-3 overflow-x-auto">
+                            <table className="min-w-full border-collapse text-sm">
+                              <thead>
+                                <tr className="bg-slate-50 text-left text-xs text-slate-600">
+                                  <th className="border border-slate-200 px-3 py-2">Test</th>
+                                  <th className="border border-slate-200 px-3 py-2">Normal</th>
+                                  <th className="border border-slate-200 px-3 py-2">Result</th>
+                                  <th className="border border-slate-200 px-3 py-2">Status</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {tests.map((t: any, i: number) => (
+                                  <tr key={i} className="text-slate-800">
+                                    <td className="border border-slate-200 px-3 py-2">{String(t?.testName || '')}</td>
+                                    <td className="border border-slate-200 px-3 py-2">{String(t?.normalValue || '')}</td>
+                                    <td className="border border-slate-200 px-3 py-2">{String(t?.result || '')}</td>
+                                    <td className="border border-slate-200 px-3 py-2">{String(t?.status || '')}</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )
+              })()}
+            </div>
+          </div>
+        </div>
+      )}
+
       {patientDetailsOpen && (
         <PatientDetailsDialog
           open={patientDetailsOpen}
           onClose={() => { setPatientDetailsOpen(false); setPatientDetailsRow(null) }}
           patient={patientDetailsRow}
+          visits={patientDetailsRow?.mrn ? details[patientDetailsRow.mrn]?.pres?.length || 0 : 0}
         />
+      )}
+
+      {showPrevHistoriesDlg && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-3 sm:p-6" onClick={() => setShowPrevHistoriesDlg(false)}>
+          <div className="w-full max-w-4xl overflow-hidden rounded-2xl bg-white shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3 sm:px-6">
+              <div>
+                <div className="text-base font-semibold text-slate-900">Previous Histories</div>
+                <div className="mt-1 flex items-center gap-3 text-xs">
+                  <div className="flex items-center gap-1">
+                    <span className="inline-block h-2 w-2 rounded-full bg-slate-900"></span>
+                    <span className="text-slate-600">History Taker</span>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <span className="inline-block h-2 w-2 rounded-full bg-blue-600"></span>
+                    <span className="text-blue-600">Doctor Edited</span>
+                  </div>
+                </div>
+              </div>
+              <button type="button" className="rounded-md p-2 text-slate-600 hover:bg-slate-100" onClick={() => setShowPrevHistoriesDlg(false)} aria-label="Close">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <div className="max-h-[80vh] overflow-y-auto px-4 py-4 sm:px-6">
+              {(() => {
+                // Find selected history in details
+                let selected: any = null
+                let patientMrn = ''
+                for (const mrn in details) {
+                  const found = details[mrn].history?.find((h: any) => String(h._id || h.id) === prevHistoryViewId)
+                  if (found) {
+                    selected = found
+                    patientMrn = mrn
+                    break
+                  }
+                }
+                
+                const originalData = (selected as any)?.data || {}
+                
+                // Merge with doctor's edits if available
+                const historyEdits = prevHistoryViewPrescription?.historyEdits || {}
+                const sectionsList: HistorySection[] = [
+                  'personalInfo', 'maritalStatus', 'coitus', 'health', 
+                  'sexualHistory', 'previousMedicalHistory', 'arrivalReference'
+                ]
+                const mergedData: any = {}
+                const allEditedPaths = new Set<string>()
+                for (const section of sectionsList) {
+                  const { data, editedPaths } = mergeHistoryWithEdits(
+                    originalData[section],
+                    historyEdits[section],
+                    section
+                  )
+                  mergedData[section] = data
+                  editedPaths.forEach(p => allEditedPaths.add(`${section}.${p}`))
+                }
+                
+                const sections: Array<{ title: string; key: HistorySection; value: any }> = [
+                  { title: 'Personal Information', key: 'personalInfo', value: mergedData?.personalInfo },
+                  { title: 'Marital Status', key: 'maritalStatus', value: mergedData?.maritalStatus },
+                  { title: 'Coitus', key: 'coitus', value: mergedData?.coitus },
+                  { title: 'Health', key: 'health', value: mergedData?.health },
+                  { title: 'Sexual History', key: 'sexualHistory', value: mergedData?.sexualHistory },
+                  { title: 'Previous Medical History', key: 'previousMedicalHistory', value: mergedData?.previousMedicalHistory },
+                  { title: 'Arrival Reference', key: 'arrivalReference', value: mergedData?.arrivalReference },
+                ]
+
+                const toLabel = (key: string) =>
+                  String(key || '')
+                    .replace(/_/g, ' ')
+                    .replace(/([a-z])([A-Z])/g, '$1 $2')
+                    .replace(/\s+/g, ' ')
+                    .trim()
+
+                const formatValue = (v: any): string => {
+                  if (v == null) return ''
+                  if (typeof v === 'string') return v.trim()
+                  if (typeof v === 'number') return isFinite(v) ? String(v) : ''
+                  if (typeof v === 'boolean') return v ? 'Yes' : ''
+                  if (Array.isArray(v)) {
+                    const parts = v.map((x) => {
+                      if (x == null) return ''
+                      if (typeof x === 'string' || typeof x === 'number' || typeof x === 'boolean') return formatValue(x)
+                      if (typeof x === 'object') {
+                        const pick = (o: any, key: string) => {
+                          const vv = o?.[key]
+                          return typeof vv === 'string' ? vv.trim() : (typeof vv === 'number' && isFinite(vv) ? String(vv) : '')
+                        }
+                        const label = pick(x, 'label') || pick(x, 'name') || pick(x, 'title') || pick(x, 'type') || pick(x, 'status') || pick(x, 'value') || pick(x, 'description')
+                        if (label) return label
+                        const inner = formatValue(x)
+                        return inner
+                      }
+                      try { return String(x).trim() } catch { return '' }
+                    }).filter(Boolean)
+                    return parts.join(', ')
+                  }
+                  if (typeof v === 'object') {
+                    const keys = Object.keys(v || {})
+                    const boolKeys: string[] = []
+                    const parts: string[] = []
+                    for (const k of keys) {
+                      const vv = (v as any)[k]
+                      if (typeof vv === 'boolean') {
+                        if (vv) boolKeys.push(toLabel(k))
+                        continue
+                      }
+                      if (vv == null) continue
+                      if (typeof vv === 'string') { const t = vv.trim(); if (t) parts.push(`${toLabel(k)}: ${t}`); continue }
+                      if (typeof vv === 'number') { if (isFinite(vv)) parts.push(`${toLabel(k)}: ${vv}`); continue }
+                      if (Array.isArray(vv)) { const t = formatValue(vv); if (t) parts.push(`${toLabel(k)}: ${t}`); continue }
+                      if (typeof vv === 'object') {
+                        const inner = formatValue(vv)
+                        if (inner) parts.push(`${toLabel(k)}: ${inner}`)
+                        continue
+                      }
+                      try { const t = String(vv).trim(); if (t) parts.push(`${toLabel(k)}: ${t}`) } catch { }
+                    }
+                    const merged: string[] = []
+                    if (boolKeys.length) merged.push(boolKeys.join(', '))
+                    if (parts.length) merged.push(parts.join(' • '))
+                    return merged.join(' • ')
+                  }
+                  try { return String(v).trim() } catch { return '' }
+                }
+
+                const isEditedExact = (fullPath: string): boolean => {
+                  if (!allEditedPaths) return false
+                  return allEditedPaths.has(fullPath)
+                }
+
+                const isEditedPath = (fullPath: string): boolean => {
+                  if (!allEditedPaths) return false
+                  if (allEditedPaths.has(fullPath)) return true
+                  for (const p of allEditedPaths) {
+                    if (p.startsWith(fullPath + '.')) return true
+                    if (fullPath.startsWith(p + '.')) return true
+                  }
+                  return false
+                }
+
+                const renderArrayPrimitiveChips = (arr: any[], fullPath: string) => {
+                  const parts = arr
+                    .map(v => (v == null ? '' : String(v).trim()))
+                    .filter(Boolean)
+                  if (!parts.length) return null
+                  return (
+                    <div className="mt-1 flex flex-wrap gap-2">
+                      {parts.map((t) => {
+                        const edited = isEditedExact(`${fullPath}.${t}`) || isEditedExact(fullPath)
+                        return (
+                          <span
+                            key={t}
+                            className={`rounded-md border px-2 py-0.5 text-sm font-semibold ${edited ? 'border-blue-200 bg-blue-50 text-blue-600' : 'border-slate-200 bg-slate-50 text-slate-900'}`}
+                            title={edited ? 'Edited by doctor' : 'Entered by history taker'}
+                          >
+                            {t}
+                          </span>
+                        )
+                      })}
+                    </div>
+                  )
+                }
+
+                const renderArrayOfObjects = (arr: any[], path: string) => {
+                  if (!Array.isArray(arr) || !arr.length) return null
+                  return (
+                    <div className="mt-2 space-y-3">
+                      {arr.map((item, idx) => {
+                        const itemPath = `${path}.${idx}`
+                        const itemKeys = Object.keys(item || {}).filter(ik => ik !== '_id' && ik !== 'id')
+                        if (!itemKeys.length) return null
+                        return (
+                          <div key={idx} className="rounded-lg border border-slate-200 bg-white p-3 shadow-sm">
+                            <div className="mb-2 text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                              {toLabel(path.split('.').pop() || '')} #{idx + 1}
+                            </div>
+                            <div className="grid grid-cols-2 gap-2">
+                              {itemKeys.map(ik => {
+                                const leafPath = `${itemPath}.${ik}`
+                                const val = item[ik]
+                                if (val == null) return null
+                                
+                                if (typeof val === 'object' && !Array.isArray(val)) {
+                                  return (
+                                    <div key={ik} className="rounded-md border border-slate-100 bg-slate-50 p-2">
+                                      <div className="text-[10px] font-medium text-slate-500">{toLabel(ik)}</div>
+                                      {renderObjectValue(val, leafPath)}
+                                    </div>
+                                  )
+                                }
+
+                                const txt = formatValue(val)
+                                if (!txt) return null
+                                const edited = isEditedExact(leafPath)
+                                return (
+                                  <div key={ik} className={`rounded-md border border-slate-100 p-2 ${edited ? 'bg-blue-50' : 'bg-slate-50'}`}>
+                                    <div className="text-[10px] text-slate-500">{toLabel(ik)}</div>
+                                    <div className={`mt-0.5 text-xs font-semibold ${edited ? 'text-blue-600' : 'text-slate-900'}`}>
+                                      {txt}
+                                    </div>
+                                  </div>
+                                )
+                              })}
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )
+                }
+
+                const renderObjectValue = (val: any, path: string) => {
+                  if (!val || typeof val !== 'object' || Array.isArray(val)) return null
+                  const keys2 = Object.keys(val || {})
+                  const boolItems: Array<{ key: string; label: string; edited: boolean }> = []
+                  const parts2: Array<{ key: string; text: string; edited: boolean }> = []
+                  
+                  const collectLeaves = (v: any, currentPath: string, prefixLabel: string = '') => {
+                    if (v == null) return
+                    if (typeof v === 'boolean') {
+                      if (v) boolItems.push({ key: currentPath, label: prefixLabel.trim(), edited: isEditedExact(currentPath) })
+                    } else if (typeof v === 'object' && !Array.isArray(v)) {
+                      Object.keys(v).forEach(k => {
+                        collectLeaves(v[k], `${currentPath}.${k}`, `${prefixLabel} ${toLabel(k)}`)
+                      })
+                    } else {
+                      const t = formatValue(v)
+                      if (t) parts2.push({ key: currentPath, text: `${prefixLabel.trim()}: ${t}`, edited: isEditedExact(currentPath) })
+                    }
+                  }
+
+                  for (const kk of keys2) {
+                    collectLeaves((val as any)[kk], `${path}.${kk}`, toLabel(kk))
+                  }
+                  if (!boolItems.length && !parts2.length) return null
+                  return (
+                    <div className="mt-0.5">
+                      {!!boolItems.length && (
+                        <div className="flex flex-wrap gap-2">
+                          {boolItems.map((b) => (
+                            <span
+                              key={b.key}
+                              className={`rounded-md border px-2 py-0.5 text-sm font-semibold ${b.edited ? 'border-blue-200 bg-blue-50 text-blue-600' : 'border-slate-200 bg-slate-50 text-slate-900'}`}
+                              title={b.edited ? 'Edited by doctor' : 'Entered by history taker'}
+                            >
+                              {b.label}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                      {!!parts2.length && (
+                        <div className="mt-1 text-sm font-semibold">
+                          {parts2.map((p, idx) => (
+                            <span key={p.key}>
+                              {idx > 0 ? <span className="text-slate-400"> • </span> : null}
+                              <span className={p.edited ? 'text-blue-600' : 'text-slate-900'}>{p.text}</span>
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )
+                }
+
+                const renderPairs = (obj: any, basePath?: string) => {
+                  if (!obj || typeof obj !== 'object') return null
+                  const keys = Object.keys(obj || {})
+                  const rows = keys
+                    .map(k => ({ k, v: (obj as any)[k] }))
+                    .map(it => ({ ...it, txt: formatValue(it.v) }))
+                    .filter(it => !!it.txt)
+                  if (!rows.length) return null
+
+                  const isMaritalStatus = basePath === 'maritalStatus'
+                  return (
+                    <div className={`mt-2 grid gap-2 ${isMaritalStatus ? 'grid-cols-1' : 'sm:grid-cols-2'}`}>
+                      {rows.map(({ k, txt }) => {
+                        const fullPath = basePath ? `${basePath}.${k}` : k
+                        const v = (obj as any)[k]
+                        const isEdited = isEditedExact(fullPath)
+                        const isArray = Array.isArray(v)
+                        const isPrimitiveArray = isArray && (v as any[]).every(x => x == null || typeof x !== 'object')
+                        const isObjectValue = !isArray && v != null && typeof v === 'object'
+                        const isArrayOfObjects = isArray && !isPrimitiveArray
+
+                        return (
+                          <div key={k} className={`rounded-lg border border-slate-200 p-3 ${isEdited ? 'bg-blue-50' : 'bg-slate-50'}`}>
+                            <div className="text-xs text-slate-500">{toLabel(k)}</div>
+                            {isPrimitiveArray ? (
+                              renderArrayPrimitiveChips(v as any[], fullPath)
+                            ) : isArrayOfObjects ? (
+                              renderArrayOfObjects(v as any[], fullPath)
+                            ) : isObjectValue ? (
+                              renderObjectValue(v, fullPath)
+                            ) : (
+                              <div className={`mt-0.5 text-sm font-semibold ${isEdited ? 'text-blue-600' : 'text-slate-900'}`}>
+                                {txt}
+                              </div>
+                            )}
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )
+                }
+
+                return (
+                  <div>
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                      <div>
+                        <div className="text-sm font-semibold text-slate-900">{details[patientMrn]?.patient?.fullName || '-'} <span className="text-xs font-normal text-slate-500">(MR: {patientMrn})</span></div>
+                        <div className="mt-1 text-xs text-slate-600">Hx By: {String(selected?.hxBy || '-') || '-'} • Hx Date: {String(selected?.hxDate || selected?.submittedAt || '-') || '-'}</div>
+                      </div>
+                      <button type="button" className="rounded-md border border-blue-800 px-3 py-2 text-sm font-semibold text-blue-800 hover:bg-blue-50" onClick={() => setShowPrevHistoriesDlg(false)}>Close</button>
+                    </div>
+
+                    <div className="mt-4 space-y-3">
+                      {sections.map(s => {
+                        const content = renderPairs(s.value, s.key)
+                        if (!content) return null
+                        return (
+                          <div key={s.title} className="rounded-xl border border-slate-200 bg-white p-4">
+                            <div className="text-sm font-semibold text-slate-800">{s.title}</div>
+                            {content}
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )
+              })()}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {importPreviewOpen && (
+        <ImportPreviewDialog
+          open={importPreviewOpen}
+          onClose={() => { setImportPreviewOpen(false); setImportPreviewData([]); setImportPreviewFile(null) }}
+          data={importPreviewData}
+          onConfirm={onConfirmImport}
+          importing={importing}
+        />
+      )}
+
+      {showTherapyDetailsDlg && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-3 sm:p-6" onClick={() => setShowTherapyDetailsDlg(false)}>
+          <div className="w-full max-w-2xl overflow-hidden rounded-2xl bg-white shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3 sm:px-6">
+              <div>
+                <div className="text-base font-semibold text-slate-900">Therapy Details</div>
+                <div className="text-[10px] font-medium text-slate-500 uppercase tracking-wider">{selectedVisitDateForDialog || '-'}</div>
+              </div>
+              <button type="button" className="rounded-md p-2 text-slate-600 hover:bg-slate-100" onClick={() => setShowTherapyDetailsDlg(false)}>
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <div className="max-h-[80vh] overflow-y-auto px-4 py-4 sm:px-6">
+              <div className="space-y-4">
+                <div className="mb-4 border-b border-slate-100 pb-4">
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                    <div>
+                      <div className="text-[10px] uppercase font-bold text-slate-400">Patient Name</div>
+                      <div className="text-sm font-medium text-slate-900">{selectedPatientForDialog?.fullName || '-'}</div>
+                    </div>
+                    <div>
+                      <div className="text-[10px] uppercase font-bold text-slate-400">MR Number</div>
+                      <div className="text-sm font-medium text-slate-900">{selectedPatientForDialog?.mrn || '-'}</div>
+                    </div>
+                    <div>
+                      <div className="text-[10px] uppercase font-bold text-slate-400">Phone</div>
+                      <div className="text-sm font-medium text-slate-900">{selectedPatientForDialog?.phoneNormalized || selectedPatientForDialog?.phone || '-'}</div>
+                    </div>
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                    <div className="text-xs text-slate-500">Package</div>
+                    <div className="mt-1 text-sm font-semibold">{selectedTherapy?.packageName || '-'}</div>
+                  </div>
+                  <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                    <div className="text-xs text-slate-500">Status</div>
+                    <div className="mt-1 text-sm font-semibold">{selectedTherapy?.status || '-'}</div>
+                  </div>
+                </div>
+                {selectedTherapy?.tests?.length > 0 && (
+                  <div className="rounded-lg border border-slate-200 p-3">
+                    <div className="mb-2 text-xs font-bold text-slate-900 uppercase">Machines</div>
+                    <div className="space-y-1">
+                      {selectedTherapy.tests.map((t: any, i: number) => {
+                        const getMachineType = (name: string) => {
+                          const lower = (name || '').toLowerCase()
+                          if (lower.includes('chi')) return 'CHi'
+                          if (lower.includes('eswt')) return 'ESWT'
+                          if (lower.includes('m/s') || lower.includes('ms')) return 'M/S'
+                          if (lower.includes('mam')) return 'MAM'
+                          if (lower.includes('u/s') || lower.includes('us')) return 'U/S'
+                          if (lower.includes('mcg')) return 'MCG'
+                          if (lower.includes('mpro')) return 'Mpro'
+                          if (lower.includes('ximen')) return 'XIMEN'
+                          return '-'
+                        }
+                        return (
+                          <div key={i} className="flex justify-between items-center text-sm py-1 border-b border-slate-50 last:border-0">
+                            <span className="text-slate-700">{t.name}</span>
+                            <span className="font-medium text-blue-700 bg-blue-50 px-2 py-0.5 rounded text-[10px] uppercase">
+                              {getMachineType(t.name)}
+                            </span>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )}
+                {selectedTherapy?.machineSettings && (
+                  <div className="rounded-lg border border-slate-200 p-3">
+                    <div className="mb-2 text-xs font-bold text-slate-900">MACHINE SETTINGS</div>
+                    <pre className="whitespace-pre-wrap text-xs text-slate-700">
+                      {JSON.stringify(selectedTherapy.machineSettings, null, 2)}
+                    </pre>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showCounsellingDetailsDlg && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-3 sm:p-6" onClick={() => setShowCounsellingDetailsDlg(false)}>
+          <div className="w-full max-w-2xl overflow-hidden rounded-2xl bg-white shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3 sm:px-6">
+              <div>
+                <div className="text-base font-semibold text-slate-900">Counselling Details</div>
+                <div className="text-[10px] font-medium text-slate-500 uppercase tracking-wider">{selectedVisitDateForDialog || '-'}</div>
+              </div>
+              <button type="button" className="rounded-md p-2 text-slate-600 hover:bg-slate-100" onClick={() => setShowCounsellingDetailsDlg(false)}>
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <div className="max-h-[80vh] overflow-y-auto px-4 py-4 sm:px-6">
+              <div className="space-y-4">
+                <div className="mb-4 border-b border-slate-100 pb-4">
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                    <div>
+                      <div className="text-[10px] uppercase font-bold text-slate-400">Patient Name</div>
+                      <div className="text-sm font-medium text-slate-900">{selectedPatientForDialog?.fullName || '-'}</div>
+                    </div>
+                    <div>
+                      <div className="text-[10px] uppercase font-bold text-slate-400">MR Number</div>
+                      <div className="text-sm font-medium text-slate-900">{selectedPatientForDialog?.mrn || '-'}</div>
+                    </div>
+                    <div>
+                      <div className="text-[10px] uppercase font-bold text-slate-400">Phone</div>
+                      <div className="text-sm font-medium text-slate-900">{selectedPatientForDialog?.phoneNormalized || selectedPatientForDialog?.phone || '-'}</div>
+                    </div>
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                    <div className="text-xs text-slate-500">Package</div>
+                    <div className="mt-1 text-sm font-semibold">{selectedCounselling?.packageName || '-'}</div>
+                  </div>
+                  <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                    <div className="text-xs text-slate-500">Status</div>
+                    <div className="mt-1 text-sm font-semibold">{selectedCounselling?.status || '-'}</div>
+                  </div>
+                </div>
+                {(selectedCounselling?.discount > 0) && (
+                  <div className="flex flex-col items-end px-3 py-2 bg-amber-50 rounded-lg border border-amber-100">
+                    <div className="text-[10px] font-bold text-amber-600 uppercase">Discount Applied</div>
+                    <div className="text-sm font-semibold text-amber-700">
+                      -{selectedCounselling.discountType === '%' 
+                        ? `${selectedCounselling.discount}% (Rs. ${Math.round((selectedCounselling.subtotal * selectedCounselling.discount) / 100)})` 
+                        : `Rs. ${selectedCounselling.discount}`}
+                    </div>
+                    <div className="mt-1 pt-1 border-t border-amber-200 w-full text-right">
+                      <span className="text-xs text-slate-500 mr-2">Net Amount:</span>
+                      <span className="text-base font-bold text-slate-900">Rs. {selectedCounselling.net || selectedCounselling.subtotal}</span>
+                    </div>
+                  </div>
+                )}
+                {selectedCounselling?.notes && (
+                  <div className="rounded-lg border border-slate-200 p-3">
+                    <div className="mb-2 text-xs font-bold text-slate-900 uppercase">Counselling Notes</div>
+                    <div className="text-sm text-slate-700 whitespace-pre-wrap bg-slate-50 p-2 rounded-md border border-slate-100 italic">
+                      "{selectedCounselling.notes}"
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )
 }
 
-function PatientDetailsDialog({ open, onClose, patient }: { open: boolean; onClose: () => void; patient: any }) {
+function PatientDetailsDialog({ open, onClose, patient, visits }: { open: boolean; onClose: () => void; patient: any; visits?: number }) {
   if (!open) return null
   const p = patient || {}
   const fullName = String(p.fullName || '-')
   const mrn = String(p.mrn || '-')
-  const visitCount = p.visitCount != null ? String(p.visitCount) : '-'
+  const visitCount = visits != null ? String(visits) : (p.visitCount != null ? String(p.visitCount) : '-')
   const phone = String(p.phoneNormalized || p.phone || '-')
   const fatherName = String(p.fatherName || '-')
   const guardianRel = String(p.guardianRel || '-')
@@ -762,6 +1865,83 @@ function Info({ label, value, full }: { label: string; value: string; full?: boo
     <div className={`${full ? 'sm:col-span-2' : ''} rounded-lg border border-slate-200 bg-slate-50 px-3 py-2`}>
       <div className="text-xs font-medium text-slate-500">{label}</div>
       <div className="mt-0.5 text-sm text-slate-800 break-words">{value || '-'}</div>
+    </div>
+  )
+}
+
+function ImportPreviewDialog({ open, onClose, data, onConfirm, importing }: { open: boolean; onClose: () => void; data: any[]; onConfirm: () => void; importing: boolean }) {
+  if (!open) return null
+  
+  const previewRows = data.slice(0, 100) // Show first 100 rows
+  const totalRows = data.length
+  
+  return (
+    <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/50 px-4 py-4">
+      <div className="w-full max-w-7xl overflow-hidden rounded-xl bg-white shadow-2xl">
+        <div className="flex items-center justify-between border-b border-slate-200 px-5 py-3">
+          <div>
+            <h3 className="text-lg font-semibold text-slate-800">Import Patients from Excel</h3>
+            <div className="text-sm text-slate-500">{totalRows.toLocaleString()} records found</div>
+          </div>
+          <button onClick={onClose} className="rounded-md border border-slate-200 p-2 text-slate-600 hover:bg-slate-50 hover:text-slate-900" aria-label="Close">
+            <X size={18} />
+          </button>
+        </div>
+
+        <div className="max-h-[60vh] overflow-auto">
+          <table className="w-full text-sm">
+            <thead className="sticky top-0 bg-slate-100">
+              <tr>
+                <th className="px-3 py-2 text-left font-medium text-slate-700">#</th>
+                <th className="px-3 py-2 text-left font-medium text-slate-700">MR Number</th>
+                <th className="px-3 py-2 text-left font-medium text-slate-700">Name</th>
+                <th className="px-3 py-2 text-left font-medium text-slate-700">Phone</th>
+                <th className="px-3 py-2 text-left font-medium text-slate-700">Age</th>
+                <th className="px-3 py-2 text-left font-medium text-slate-700">Gender</th>
+                <th className="px-3 py-2 text-left font-medium text-slate-700">Last Visit</th>
+                <th className="px-3 py-2 text-left font-medium text-slate-700">Doctor</th>
+                <th className="px-3 py-2 text-left font-medium text-slate-700">Address</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-200">
+              {previewRows.map((row, idx) => (
+                <tr key={idx} className="hover:bg-slate-50">
+                  <td className="px-3 py-2 text-slate-600">{idx}</td>
+                  <td className="px-3 py-2 text-slate-800">{row.mrn || '0'}</td>
+                  <td className="px-3 py-2 font-medium text-slate-800">{row.fullName || '-'}</td>
+                  <td className="px-3 py-2 text-slate-600">{row.phone || '-'}</td>
+                  <td className="px-3 py-2 text-slate-600">{row.age || '-'}</td>
+                  <td className="px-3 py-2 text-slate-600">{row.gender || '-'}</td>
+                  <td className="px-3 py-2 text-slate-600">{row.lastVisit || '-'}</td>
+                  <td className="px-3 py-2 text-slate-600">{row.doctor || '-'}</td>
+                  <td className="px-3 py-2 text-slate-600">{row.address || '-'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {totalRows > 100 && (
+            <div className="px-4 py-2 text-center text-sm text-slate-500">
+              ... and {totalRows - 100} more records
+            </div>
+          )}
+        </div>
+
+        <div className="flex items-center justify-between border-t border-slate-200 px-5 py-3">
+          <div className="text-sm text-slate-500">
+            Expected columns: <span className="font-medium">MR Number, Name, Phone, Age, Gender, Last Visit, Doctor, Address, Father Name</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <button onClick={onClose} className="rounded-md border border-slate-300 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50">Cancel</button>
+            <button 
+              onClick={onConfirm} 
+              disabled={importing}
+              className="rounded-md bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700 disabled:opacity-50"
+            >
+              {importing ? 'Importing...' : `Import ${totalRows.toLocaleString()} Patients`}
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
   )
 }

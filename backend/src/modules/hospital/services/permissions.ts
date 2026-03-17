@@ -84,9 +84,14 @@ export function normalizePermissions(raw: PermissionsByPortal, nodes: NodeRow[])
       const keys: string[] = []
       for (const p of paths) {
         const n = idx.byPath.get(p)
-        if (n?.key) keys.push(String(n.key))
+        if (n?.key) {
+          keys.push(String(n.key))
+        } else {
+          // If no node matches the path, keep the path as a fallback key
+          keys.push(p)
+        }
       }
-      if (keys.length > 0) permissionKeys[portalKey] = uniq(keys)
+      permissionKeys[portalKey] = uniq(keys)
       continue
     }
 
@@ -108,10 +113,19 @@ export function normalizePermissions(raw: PermissionsByPortal, nodes: NodeRow[])
     const paths: string[] = []
     for (const k of permissionKeys[portalKey]) {
       const n = idx.byKey.get(k)
-      if (n?.type === 'page' && n?.path) paths.push(String(n.path))
+      if (n?.type === 'page' && n?.path) {
+        paths.push(String(n.path))
+      } else if (isPathLike(k)) {
+        // If it looks like a path already (legacy/custom/fallback), keep it
+        paths.push(k)
+      } else {
+        // Fallback: If it's a key but no node found, keep it as is 
+        // to prevent loss in frontend if frontend can handle it
+        paths.push(k)
+      }
     }
 
-    if (paths.length > 0) permissionsPaths[portalKey] = uniq(paths)
+    permissionsPaths[portalKey] = uniq(paths)
   }
 
   return { permissionsPaths, permissionKeys }

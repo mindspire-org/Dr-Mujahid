@@ -4,7 +4,7 @@ import { hospitalApi } from '../../utils/api'
 type DoctorSession = { id: string; name: string; username: string }
 type Notification = { id: string; doctorId: string; message: string; createdAt: string; read?: boolean; type?: string; payload?: any }
 
-const apiBaseURL = (import.meta as any).env?.VITE_API_URL || 'http://localhost:4000/api'
+const apiBaseURL = (import.meta as any).env?.VITE_API_URL || ((typeof window !== 'undefined' && (window.location?.protocol === 'file:' || /Electron/i.test(navigator.userAgent || ''))) ? 'http://127.0.0.1:4000/api' : '/api')
 
 export default function Doctor_Notifications() {
   const [doc, setDoc] = useState<DoctorSession | null>(null)
@@ -36,8 +36,24 @@ export default function Doctor_Notifications() {
     })()
 
     // Open SSE stream
-    const url = `${apiBaseURL}/hospital/notifications/stream?doctorId=${encodeURIComponent(doc.id)}`
-    const es = new EventSource(url, { withCredentials: false })
+    const url = `${apiBaseURL.replace('/api', '')}/api/hospital/notifications/stream?doctorId=${encodeURIComponent(doc.id)}`.replace('//api', '/api')
+    // Definitive absolute URL for EventSource to avoid port 8080 issues on localhost
+    let finalUrl = url
+    if (typeof window !== 'undefined') {
+      const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+      if (isLocal) {
+        const pathOnly = url.split('?')[0]
+        const path = pathOnly.startsWith('http') ? new URL(pathOnly).pathname : pathOnly
+        const cleanPath = path.startsWith('/api') ? path : `/api${path}`
+        // Hardcode port 4000 for local development stream
+        finalUrl = `http://${window.location.hostname}:4000${cleanPath}`.replace(/\/+/g, '/').replace('http:/', 'http://')
+        const search = url.includes('?') ? url.split('?')[1] : ''
+        if (search) finalUrl += `?${search}`
+      } else if (url.startsWith('/api')) {
+        finalUrl = window.location.origin + url
+      }
+    }
+    const es = new EventSource(finalUrl, { withCredentials: false })
     esRef.current = es
     es.onopen = () => setConnected(true)
     es.onerror = () => setConnected(false)

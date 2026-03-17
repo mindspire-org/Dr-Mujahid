@@ -420,6 +420,82 @@ body {
 .finance-scope.dark .btn-outline-navy { background-color: var(--navy) !important; border-color: var(--navy) !important; color: #ffffff !important; }
 .finance-scope.dark .btn-outline-navy:hover { background-color: var(--navy-600) !important; }
 
+/* Counselling: scoped dark mode fallback */
+.counselling-scope.dark { color-scheme: dark; }
+.counselling-scope.dark { background: #0b1220; color: #e2e8f0; }
+.counselling-scope.dark header { background-color: rgba(15,23,42,0.8) !important; border-color: #334155 !important; }
+.counselling-scope.dark aside { background-color: #0b1220 !important; border-color: #334155 !important; color: #cbd5e1 !important; }
+.counselling-scope.dark .bg-white { background-color: #0f172a !important; }
+.counselling-scope.dark .bg-slate-50 { background-color: #0b1220 !important; }
+.counselling-scope.dark .bg-slate-100 { background-color: #111827 !important; }
+.counselling-scope.dark .bg-white\/60 { background-color: rgba(255,255,255,0.08) !important; }
+.counselling-scope.dark .bg-slate-200 { background-color: #1f2937 !important; }
+.counselling-scope.dark .bg-slate-300 { background-color: #374151 !important; }
+.counselling-scope.dark .bg-sky-50,
+.counselling-scope.dark .bg-violet-50,
+.counselling-scope.dark .bg-fuchsia-50,
+.counselling-scope.dark .bg-amber-50,
+.counselling-scope.dark .bg-emerald-50,
+.counselling-scope.dark .bg-green-50,
+.counselling-scope.dark .bg-blue-50,
+.counselling-scope.dark .bg-cyan-50,
+.counselling-scope.dark .bg-indigo-50,
+.counselling-scope.dark .bg-teal-50,
+.counselling-scope.dark .bg-rose-50,
+.counselling-scope.dark .bg-yellow-50 { background-color: #111827 !important; }
+.counselling-scope.dark .text-slate-900 { color: #e5e7eb !important; }
+.counselling-scope.dark .text-slate-800 { color: #e2e8f0 !important; }
+.counselling-scope.dark .text-slate-700 { color: #cbd5e1 !important; }
+.counselling-scope.dark .text-slate-600 { color: #cbd5e1 !important; }
+.counselling-scope.dark .text-slate-500 { color: #94a3b8 !important; }
+.counselling-scope.dark .text-slate-400 { color: #94a3b8 !important; }
+.counselling-scope.dark .text-slate-300 { color: #cbd5e1 !important; }
+.counselling-scope.dark .border-slate-200 { border-color: #334155 !important; }
+.counselling-scope.dark .border-slate-100 { border-color: #334155 !important; }
+.counselling-scope.dark .border-slate-300 { border-color: #475569 !important; }
+.counselling-scope.dark .border-slate-400 { border-color: #64748b !important; }
+.counselling-scope.dark .border-sky-100,
+.counselling-scope.dark .border-violet-100,
+.counselling-scope.dark .border-fuchsia-100,
+.counselling-scope.dark .border-amber-100,
+.counselling-scope.dark .border-emerald-100,
+.counselling-scope.dark .border-green-100 { border-color: #334155 !important; }
+.counselling-scope.dark .border-emerald-200,
+.counselling-scope.dark .border-fuchsia-200,
+.counselling-scope.dark .border-amber-200,
+.counselling-scope.dark .border-green-200,
+.counselling-scope.dark .border-sky-200,
+.counselling-scope.dark .border-yellow-200,
+.counselling-scope.dark .border-rose-200,
+.counselling-scope.dark .border-indigo-200,
+.counselling-scope.dark .border-cyan-200,
+.counselling-scope.dark .border-teal-200,
+.counselling-scope.dark .border-blue-200 { border-color: #334155 !important; }
+.counselling-scope.dark .bg-sky-100,
+.counselling-scope.dark .bg-violet-100,
+.counselling-scope.dark .bg-fuchsia-100,
+.counselling-scope.dark .bg-amber-100,
+.counselling-scope.dark .bg-emerald-100,
+.counselling-scope.dark .bg-green-100,
+.counselling-scope.dark .bg-blue-100,
+.counselling-scope.dark .bg-cyan-100,
+.counselling-scope.dark .bg-indigo-100,
+.counselling-scope.dark .bg-teal-100,
+.counselling-scope.dark .bg-rose-100,
+.counselling-scope.dark .bg-yellow-100 { background-color: #111827 !important; }
+.counselling-scope.dark .text-emerald-700 { color: #34d399 !important; }
+.counselling-scope.dark .text-green-700 { color: #22c55e !important; }
+.counselling-scope.dark .text-amber-700 { color: #fbbf24 !important; }
+.counselling-scope.dark .text-violet-700 { color: #a78bfa !important; }
+.counselling-scope.dark .hover\:bg-slate-50:hover { background-color: #111827 !important; }
+.counselling-scope.dark .hover\:bg-slate-100:hover { background-color: #1f2937 !important; }
+.counselling-scope.dark .divide-slate-200 > :not([hidden]) ~ :not([hidden]) { border-color: #334155 !important; }
+.counselling-scope.dark input, .counselling-scope.dark select, .counselling-scope.dark textarea { background-color: #0f172a !important; color: #e2e8f0 !important; border-color: #334155 !important; }
+.counselling-scope.dark input::placeholder, .counselling-scope.dark textarea::placeholder { color: #64748b !important; }
+/* Outline navy button in dark (Counselling) */
+.counselling-scope.dark .btn-outline-navy { background-color: var(--navy) !important; border-color: var(--navy) !important; color: #ffffff !important; }
+.counselling-scope.dark .btn-outline-navy:hover { background-color: var(--navy-600) !important; }
+
 /* Reception: scoped dark mode fallback */
 .reception-scope.dark { color-scheme: dark; }
 .reception-scope.dark { background: #0b1220; color: #e2e8f0; }

@@ -40,14 +40,14 @@ export type PrescriptionPdfData = {
   labNotes?: string
   diagnosticTests?: string[]
   diagnosticNotes?: string
-  diagnosticDiscount?: number
+  diagnosticDiscount?: string
   therapyTests?: string[]
   therapyNotes?: string
-  therapyDiscount?: number
+  therapyDiscount?: string
   therapyPlan?: any
   therapyMachines?: any
   counselling?: any
-  counsellingDiscount?: number
+  counsellingDiscount?: string
   createdAt?: string | Date
 }
 

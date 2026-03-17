@@ -13,6 +13,7 @@ const TokenSchema = new Schema({
   amount: { type: Number },
   fee: { type: Number },
   discount: { type: Number },
+  discountType: { type: String, enum: ['PKR', '%'], default: 'PKR' },
   receptionistName: { type: String },
   paymentMethod: { type: String },
   paymentRef: { type: String },
@@ -55,6 +56,7 @@ export type HospitalTokenDoc = {
   amount?: number
   fee?: number
   discount?: number
+  discountType?: 'PKR' | '%'
   receptionistName?: string
   paymentMethod?: string
   paymentRef?: string

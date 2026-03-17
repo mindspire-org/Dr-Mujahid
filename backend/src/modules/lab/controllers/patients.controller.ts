@@ -1,9 +1,38 @@
 import { Request, Response } from 'express'
 import { LabPatient } from '../models/Patient'
 import { LabCounter } from '../models/Counter'
+import { HospitalSettings } from '../../hospital/models/Settings'
 import { patientFindOrCreateSchema } from '../validators/patient'
 
 function normDigits(s?: string){ return (s||'').replace(/\D+/g,'') }
+
+async function nextMrn(){
+  const key = 'lab_mrn_mr7553'
+  
+  // Get settings to check for custom starting number
+  const settings = await HospitalSettings.findOne().lean()
+  const mrStart = settings?.mrStart || 1
+  
+  // Check current counter value
+  let existingCounter = await LabCounter.findById(key).lean()
+  const currentSeq = (existingCounter as any)?.seq || 0
+  
+  // If no counter exists OR current seq is less than mrStart-1, reset to mrStart-1
+  const targetSeq = Math.max(0, mrStart - 1)
+  if (!existingCounter) {
+    // Initialize counter to mrStart - 1, so first increment gives mrStart
+    await LabCounter.create({ _id: key, seq: targetSeq })
+  } else if (currentSeq < targetSeq) {
+    // Reset counter to mrStart - 1 if current is lower
+    await LabCounter.findByIdAndUpdate(key, { $set: { seq: targetSeq } })
+  }
+  
+  const c = await LabCounter.findByIdAndUpdate(key, { $inc: { seq: 1 } }, { upsert: true, new: true, setDefaultsOnInsert: true })
+  const seq = Number(c.seq || 1)
+  return String(seq)
+}
+
+function normLower(s?: string){ return (s||'').trim().toLowerCase().replace(/\s+/g,' ') }
 
 export async function getByMrn(req: Request, res: Response){
   const mrn = String((req.query as any).mrn || '').trim()
@@ -11,14 +40,6 @@ export async function getByMrn(req: Request, res: Response){
   const pat = await LabPatient.findOne({ mrn }).lean()
   if (!pat) return res.status(404).json({ error: 'Patient not found' })
   res.json({ patient: pat })
-}
-function normLower(s?: string){ return (s||'').trim().toLowerCase().replace(/\s+/g,' ') }
-
-async function nextMrn(){
-  const key = 'lab_mrn_mr7553'
-  const c = await LabCounter.findByIdAndUpdate(key, { $inc: { seq: 1 } }, { upsert: true, new: true, setDefaultsOnInsert: true })
-  const seq = Number(c.seq || 1)
-  return `MR7553${seq}`
 }
 
 export async function findOrCreate(req: Request, res: Response){

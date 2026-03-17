@@ -9,7 +9,7 @@ type PresRow = { id: string; patientName: string; mrNo?: string; diagnosis?: str
 
 type Notification = { id: string; doctorId: string; message: string; createdAt: string; read?: boolean }
 
-const apiBaseURL = (import.meta as any).env?.VITE_API_URL || 'http://localhost:4000/api'
+const apiBaseURL = (import.meta as any).env?.VITE_API_URL || ((typeof window !== 'undefined' && (window.location?.protocol === 'file:' || /Electron/i.test(navigator.userAgent || ''))) ? 'http://127.0.0.1:4000/api' : '/api')
 
 export default function Doctor_Dashboard() {
   const [doc, setDoc] = useState<DoctorSession | null>(null)
@@ -64,8 +64,24 @@ export default function Doctor_Dashboard() {
           setUnreadCount(arr.filter(n => !n.read).length)
         } catch { setUnreadCount(0) }
       })()
-    const url = `${apiBaseURL}/hospital/notifications/stream?doctorId=${encodeURIComponent(doc.id)}`
-    const es = new EventSource(url)
+    const url = `${apiBaseURL.replace('/api', '')}/api/hospital/notifications/stream?doctorId=${encodeURIComponent(doc.id)}`.replace('//api', '/api')
+    // Definitive absolute URL for EventSource to avoid port 8080 issues on localhost
+    let finalUrl = url
+    if (typeof window !== 'undefined') {
+      const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+      if (isLocal) {
+        const pathOnly = url.split('?')[0]
+        const path = pathOnly.startsWith('http') ? new URL(pathOnly).pathname : pathOnly
+        const cleanPath = path.startsWith('/api') ? path : `/api${path}`
+        // Hardcode port 4000 for local development stream
+        finalUrl = `http://${window.location.hostname}:4000${cleanPath}`.replace(/\/+/g, '/').replace('http:/', 'http://')
+        const search = url.includes('?') ? url.split('?')[1] : ''
+        if (search) finalUrl += `?${search}`
+      } else if (url.startsWith('/api')) {
+        finalUrl = window.location.origin + url
+      }
+    }
+    const es = new EventSource(finalUrl)
     esRef.current = es
     // Connection events handled silently
     es.addEventListener('doctor-notification', () => {
@@ -147,9 +163,9 @@ export default function Doctor_Dashboard() {
         <div className="text-xs sm:text-sm text-slate-600">Welcome</div>
         <div className="mt-1 text-lg sm:text-xl font-bold text-slate-800">Dr. {doc?.name || 'Doctor'}</div>
         <div className="mt-3 flex flex-wrap gap-2">
-          <Link to="/doctor/prescription" className="rounded-md bg-sky-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-sky-700">+ New Prescription</Link>
-          <Link to="/doctor/prescription-history" className="rounded-md border border-slate-300 bg-white/50 px-3 py-1.5 text-xs font-semibold text-slate-800 hover:bg-white/80">History</Link>
-          <Link to="/doctor/patients" className="rounded-md border border-slate-300 bg-white/50 px-3 py-1.5 text-xs font-semibold text-slate-800 hover:bg-white/80">Patients</Link>
+          <Link to="/doctor/prescription" className="rounded-md border border-blue-800 bg-white px-3 py-1.5 text-xs font-semibold text-blue-800 shadow-sm hover:bg-blue-50">+ New Prescription</Link>
+          <Link to="/doctor/prescription-history" className="rounded-md border border-blue-800 bg-white px-3 py-1.5 text-xs font-semibold text-blue-800 shadow-sm hover:bg-blue-50">History</Link>
+          <Link to="/doctor/patients" className="rounded-md border border-blue-800 bg-white px-3 py-1.5 text-xs font-semibold text-blue-800 shadow-sm hover:bg-blue-50">Patients</Link>
         </div>
       </div>
 

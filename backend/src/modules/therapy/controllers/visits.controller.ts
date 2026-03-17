@@ -5,6 +5,7 @@ import { TherapyCounter } from '../models/TherapyCounter'
 import { TherapyPayment } from '../models/TherapyPayment'
 import { TherapyVisit } from '../models/TherapyVisit'
 import { therapyVisitCreateSchema, therapyVisitQuerySchema, therapyVisitUpdateSchema } from '../validators/visit'
+import { postTherapyTokenJournal } from './finance_ledger'
 
 function normDigits(s?: string) {
   return (s || '').replace(/\D+/g, '')
@@ -52,9 +53,24 @@ export async function list(req: Request, res: Response) {
   if (name) filter['patient.fullName'] = new RegExp(String(name).trim(), 'i')
   if (from || to) {
     const f: any = {}
-    if (from) f.$gte = new Date(String(from)).toISOString()
-    if (to) f.$lte = new Date(String(to)).toISOString()
-    filter.createdAtIso = f
+    if (from) {
+      const fromDate = new Date(String(from))
+      fromDate.setUTCHours(0, 0, 0, 0)
+      f.$gte = fromDate.toISOString()
+    }
+    if (to) {
+      const toDate = new Date(String(to))
+      toDate.setUTCHours(23, 59, 59, 999)
+      f.$lte = toDate.toISOString()
+    }
+    // Check both createdAtIso and createdAt
+    filter.$and = filter.$and || []
+    filter.$and.push({
+      $or: [
+        { createdAtIso: f },
+        { createdAt: f }
+      ]
+    })
   }
 
   const lim = Math.min(1000, Number(limit || 50))
@@ -144,7 +160,7 @@ export async function create(req: Request, res: Response) {
   const nowIso = new Date().toISOString()
   const tokenNo = await nextTokenNo()
 
-  const visit = await TherapyVisit.create({
+  const visitData: any = {
     tokenNo,
     patientId,
     patient: patientSnap,
@@ -155,6 +171,7 @@ export async function create(req: Request, res: Response) {
     tests: data.tests,
     subtotal,
     discount,
+    discountType: data.discountType || 'PKR',
     net,
 
     duesBefore,
@@ -174,7 +191,41 @@ export async function create(req: Request, res: Response) {
 
     createdAtIso: nowIso,
     updatedAtIso: nowIso,
-  })
+  }
+
+  // Debug log to verify what's being saved
+  console.log('Creating Therapy Visit:', JSON.stringify(visitData, null, 2))
+
+  const visit = await TherapyVisit.create(visitData)
+
+  // Create Finance Journal entry
+  console.log('Attempting to create Finance Journal for visit:', visit._id);
+  console.log('Transaction Data:', {
+    net,
+    amountReceived: clamp0(data.amountReceived),
+    paymentMethod: data.paymentMethod,
+    receivedToAccountCode: data.receivedToAccountCode,
+    user: (req as any).user?._id || (req as any).user?.username
+  });
+
+  try {
+    const journal = await postTherapyTokenJournal({
+      visitId: String(visit._id),
+      dateIso: nowIso.slice(0, 10),
+      net: net,
+      amountReceived: clamp0(data.amountReceived),
+      patientId: patientId,
+      patientName: patientSnap?.fullName,
+      mrn: patientSnap?.mrn,
+      tokenNo: tokenNo,
+      paymentMethod: data.paymentMethod,
+      receivedToAccountCode: data.receivedToAccountCode,
+      createdBy: (req as any).user?._id || (req as any).user?.username,
+    })
+    console.log('Finance Journal created successfully:', journal?._id || 'No journal returned');
+  } catch (journalErr) {
+    console.error('Failed to create finance journal for therapy visit:', journalErr)
+  }
 
   await TherapyAccount.findOneAndUpdate(
     { patientId },
@@ -235,4 +286,42 @@ export async function update(req: Request, res: Response) {
   const doc = await TherapyVisit.findByIdAndUpdate(id, { $set: allowed }, { new: true })
   if (!doc) return res.status(404).json({ message: 'Visit not found' })
   res.json({ visit: doc })
+}
+
+export async function updateSessionStatus(req: Request, res: Response) {
+  try {
+    const { id } = req.params
+    const { sessionStatus } = req.body
+    if (!['Queued', 'Completed'].includes(sessionStatus)) {
+      return res.status(400).json({ message: 'Invalid session status' })
+    }
+    const visit = await TherapyVisit.findByIdAndUpdate(
+      id,
+      { $set: { sessionStatus } },
+      { new: true }
+    ).lean()
+    if (!visit) return res.status(404).json({ message: 'Visit not found' })
+    res.json({ visit })
+  } catch (e: any) {
+    res.status(500).json({ message: e.message })
+  }
+}
+
+export async function returnVisit(req: Request, res: Response) {
+  try {
+    const { id } = req.params
+    const { reason } = req.body
+    if (!reason) {
+      return res.status(400).json({ message: 'Return reason is required' })
+    }
+    const visit = await TherapyVisit.findByIdAndUpdate(
+      id,
+      { $set: { status: 'returned', returnReason: reason } },
+      { new: true }
+    ).lean()
+    if (!visit) return res.status(404).json({ message: 'Visit not found' })
+    res.json({ visit })
+  } catch (e: any) {
+    res.status(500).json({ message: e.message })
+  }
 }

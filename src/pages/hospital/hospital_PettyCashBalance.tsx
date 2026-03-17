@@ -5,6 +5,7 @@ export default function Hospital_PettyCashBalance() {
   const [pettyAccounts, setPettyAccounts] = useState<Array<{ id: string; code: string; name: string }>>([])
   const [bankAccounts, setBankAccounts] = useState<any[]>([])
   const [pettyCode, setPettyCode] = useState('')
+  const [pettyAccountName, setPettyAccountName] = useState('')
   const [senderAccountCode, setSenderAccountCode] = useState(() => {
     try { return String(localStorage.getItem('hospital.petty.senderAccountCode') || '') } catch { return '' }
   })
@@ -26,6 +27,8 @@ export default function Hospital_PettyCashBalance() {
 
   const [ledgerRows, setLedgerRows] = useState<any[]>([])
   const [ledgerLoading, setLedgerLoading] = useState(false)
+
+  const [successDialog, setSuccessDialog] = useState<{ open: boolean; sender?: string; receiver?: string; amount?: number }>({ open: false })
 
   const loadLedger = async (code: string, from?: string, to?: string) => {
     const acct = String(code || '').trim().toUpperCase()
@@ -72,8 +75,10 @@ export default function Hospital_PettyCashBalance() {
           if (!cancelled) {
             setPettyAccounts(petty)
             setBankAccounts(bankRaw)
-            const code = String(mine?.account?.code || '')
+            const code = String(mine?.account?.code || '').trim().toUpperCase()
+            const name = String(mine?.account?.name || '')
             setPettyCode(code)
+            setPettyAccountName(name || code)
             setPettyFilterCode(code)
 
             if (code) {
@@ -261,7 +266,7 @@ export default function Hospital_PettyCashBalance() {
           <div>
             <label className="mb-1 block text-sm font-medium text-slate-700">Petty Cash Account(Receiver)</label>
             <select value={pettyCode} disabled className="w-full rounded-md border border-slate-300 bg-slate-50 px-3 py-2 text-sm">
-              <option value={pettyCode}>{pettyCode || 'No petty cash assigned'}</option>
+              <option value={pettyCode}>{pettyCode ? `${pettyCode} — ${pettyAccountName}` : 'No petty cash assigned'}</option>
             </select>
           </div>
           <div className="sm:col-span-2">
@@ -315,9 +320,28 @@ export default function Hospital_PettyCashBalance() {
                   await loadLedger(pettyCode, pettyFrom || undefined, pettyTo || undefined)
                 }
                 setPettyFilterCode(pettyCode)
-                showToast('Funds received to your petty cash')
 
-                // Reset fields (keep date as-is)
+                const sender = bankAccounts.find((b: any) => {
+                  const finCode = String(b.financeAccountCode || `BANK_${String(b.accountNumber || '').slice(-4)}`.toUpperCase()).trim().toUpperCase()
+                  return finCode === senderAccountCode
+                })
+                let senderName = ''
+                if (sender) {
+                  senderName = `${sender.bankName || ''} — ${sender.accountTitle || ''}`.trim()
+                } else {
+                  const p = pettyAccounts.find(a => a.code === senderAccountCode)
+                  senderName = p?.name || senderAccountCode
+                }
+                const receiver = pettyAccounts.find(a => a.code === pettyCode)
+                const receiverName = receiver?.name || pettyCode
+
+                setSuccessDialog({
+                  open: true,
+                  sender: `${senderAccountCode}${senderName ? ` — ${senderName}` : ''}`,
+                  receiver: `${pettyCode}${receiverName ? ` — ${receiverName}` : ''}`,
+                  amount: Number(amount || 0)
+                })
+
                 setSenderAccountCode('')
                 setAmount(0)
                 setMemo('')
@@ -541,6 +565,47 @@ export default function Hospital_PettyCashBalance() {
             <div className="mt-4 flex justify-end">
               <button className="btn" onClick={() => setViewTxn(null)}>Close</button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {successDialog.open && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div className="fixed inset-0 bg-black/50" onClick={() => setSuccessDialog({ open: false })}></div>
+          <div className="relative z-50 w-full max-w-md bg-white rounded-2xl shadow-xl p-6 m-4 text-center">
+            <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-green-100">
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+              </svg>
+            </div>
+            <h3 className="text-xl font-semibold text-slate-800 mb-4">Transfer Successful</h3>
+            <div className="mb-6 space-y-3">
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-slate-500">From:</span>
+                <span className="font-medium text-slate-700">{successDialog.sender}</span>
+              </div>
+              <div className="flex items-center justify-center">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 8l4 4m0 0l-4 4m4-4H3" />
+                </svg>
+              </div>
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-slate-500">To:</span>
+                <span className="font-medium text-slate-700">{successDialog.receiver}</span>
+              </div>
+              <div className="pt-3 border-t border-slate-200">
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-slate-500">Amount transferred:</span>
+                  <span className="font-semibold text-green-600">Rs. {new Intl.NumberFormat('en-PK').format(Number(successDialog.amount || 0))}</span>
+                </div>
+              </div>
+            </div>
+            <button
+              className="w-full rounded-lg bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700"
+              onClick={() => setSuccessDialog({ open: false })}
+            >
+              OK
+            </button>
           </div>
         </div>
       )}

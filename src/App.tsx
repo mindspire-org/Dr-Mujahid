@@ -5,10 +5,13 @@ import Hospital_Login from './pages/hospital/hospital_Login'
 import TherapyLab_Login from './pages/therapyLab/therapyLab_Login'
 import TherapyLab_Layout from './pages/therapyLab/therapyLab_Layout'
 import Hospital_Layout from './pages/hospital/hospital_Layout'
+import TherapyLab_Dashboard from './pages/therapyLab/therapyLab_Dashboard'
 import TherapyLab_TokenGenerator from './pages/therapyLab/therapyLab_TokenGenerator'
+import TherapyLab_TodayTokens from './pages/therapyLab/therapyLab_TodayTokens'
+import TherapyLab_TokenHistory from './pages/therapyLab/therapyLab_TokenHistory'
+import TherapyLab_CreditPatients from './pages/therapyLab/therapyLab_CreditPatients'
 import TherapyLab_Packages from './pages/therapyLab/therapyLab_MachinePackages'
-import TherapyLab_Management from './pages/therapyLab/therapyLab_Management'
-import ErrorBoundary from './components/ErrorBoundary'
+import TherapyLab_Appointments from './pages/therapyLab/therapyLab_Appointments'
 import Hospital_BedManagement from './pages/hospital/hospital_BedManagement'
 import Hospital_TokenGenerator from './pages/hospital/hospital_TokenGenerator'
 import Hospital_TodayTokens from './pages/hospital/hospital_TodayTokens'
@@ -188,14 +191,22 @@ import Aesthetic_ProcedureCatalog from './pages/aesthetic/aesthetic_ProcedureCat
 import Aesthetic_DoctorFinance from './pages/aesthetic/aesthetic_DoctorFinance'
 import Aesthetic_DoctorPayouts from './pages/aesthetic/aesthetic_DoctorPayouts'
 
+import Counselling_TodayTokens from './pages/counselling/counselling_TodayTokens'
+import Counselling_TokenHistory from './pages/counselling/counselling_TokenHistory'
+import Counselling_TokenGenerator from './pages/counselling/counselling_TokenGenerator'
+import Counselling_Packages from './pages/counselling/counselling_Packages'
+import Counselling_CreditPatients from './pages/counselling/counselling_CreditPatients'
+import Counselling_Dashboard from './pages/counselling/counselling_Dashboard'
+import Counselling_Appointments from './pages/counselling/counselling_Appointments'
 import Counselling_Login from './pages/counselling/counselling_Login'
+import Counselling_Layout from './components/counselling/Counselling_Layout'
 
 import { hospitalApi } from './utils/api'
 
 export default function App() {
   useEffect(() => {
     const DEFAULT_TITLE = 'MindSpire HMS'
-    const DEFAULT_ICON = '/hospital_icon.ico'
+    const DEFAULT_ICON = '/mcclogo.png'
 
     const applyBranding = (raw: any) => {
       const name = String(raw?.name || '').trim() || DEFAULT_TITLE
@@ -248,28 +259,30 @@ export default function App() {
       <Route path="/hospital/login" element={<Hospital_Login />} />
       <Route path="/therapy-lab/login" element={<TherapyLab_Login />} />
       <Route path="/counselling/login" element={<Counselling_Login />} />
+      <Route path="/counselling" element={<Counselling_Layout />}>
+        <Route index element={<Counselling_Dashboard />} />
+        <Route path="today-tokens" element={<Counselling_TodayTokens />} />
+        <Route path="token-history" element={<Counselling_TokenHistory />} />
+        <Route path="token-generator" element={<Counselling_TokenGenerator />} />
+        <Route path="packages" element={<Counselling_Packages />} />
+        <Route path="credit-patients" element={<Counselling_CreditPatients />} />
+        <Route path="appointments" element={<Counselling_Appointments />} />
+        <Route path="manage-petty-cash" element={<Hospital_PettyCashBalance />} />
+        <Route path="manage-bank-balance" element={<Hospital_ManageBankBalance />} />
+        <Route path="notifications" element={<Hospital_Notifications />} />
+      </Route>
       <Route path="/therapy-lab" element={<TherapyLab_Layout />}>
-        <Route index element={<Navigate to="lab-reports-entry" replace />} />
+        <Route index element={<TherapyLab_Dashboard />} />
+        <Route path="token-generator" element={<TherapyLab_TokenGenerator />} />
+        <Route path="today-tokens" element={<TherapyLab_TodayTokens />} />
+        <Route path="token-history" element={<TherapyLab_TokenHistory />} />
+        <Route path="credit-patients" element={<TherapyLab_CreditPatients />} />
+        <Route path="packages" element={<TherapyLab_Packages />} />
+        <Route path="appointments" element={<TherapyLab_Appointments />} />
         <Route path="lab-reports-entry" element={<Hospital_LabReportsEntry />} />
         <Route path="manage-petty-cash" element={<Hospital_PettyCashBalance />} />
         <Route path="manage-bank-balance" element={<Hospital_ManageBankBalance />} />
         <Route path="notifications" element={<Hospital_Notifications />} />
-        <Route
-          path="token-generator"
-          element={
-            <ErrorBoundary
-              title="Therapy Token Generator crashed"
-              localStorageKeysToClear={[
-                'therapyLab.therapyMachines.custom',
-                'therapyLab.therapyMachines.hidden',
-              ]}
-            >
-              <TherapyLab_TokenGenerator />
-            </ErrorBoundary>
-          }
-        />
-        <Route path="packages" element={<TherapyLab_Packages />} />
-        <Route path="management" element={<TherapyLab_Management />} />
       </Route>
       <Route path="/aesthetic/login" element={<Aesthetic_Login />} />
       <Route path="/hospital" element={<Hospital_Layout />}>
@@ -474,6 +487,8 @@ export default function App() {
         <Route path="pharmacy-reports" element={<Pharmacy_Reports />} />
         <Route path="lab-reports" element={<Lab_Reports />} />
         <Route path="diagnostics-dashboard" element={<Diagnostic_Dashboard />} />
+        <Route path="counselling-dashboard" element={<Counselling_Dashboard />} />
+        <Route path="therapy-dashboard" element={<TherapyLab_Dashboard />} />
         <Route path="staff-dashboard" element={<Hospital_StaffDashboard />} />
         <Route path="hospital-dashboard" element={<Hospital_Dashboard />} />
         <Route path="manage-bank-balance" element={<Hospital_ManageBankBalance />} />
@@ -498,6 +513,16 @@ export default function App() {
         <Route path="diagnostic/token-generator" element={<Diagnostic_TokenGenerator />} />
         <Route path="diagnostic/sample-tracking" element={<Diagnostic_SampleTracking />} />
         <Route path="diagnostic/appointments" element={<Diagnostic_Appointments />} />
+        <Route path="counselling/today-tokens" element={<Counselling_TodayTokens />} />
+        <Route path="counselling/token-history" element={<Counselling_TokenHistory />} />
+        <Route path="counselling/token-generator" element={<Counselling_TokenGenerator />} />
+        <Route path="counselling/credit-patients" element={<Counselling_CreditPatients />} />
+        <Route path="therapy/token-generator" element={<TherapyLab_TokenGenerator />} />
+        <Route path="therapy/today-tokens" element={<TherapyLab_TodayTokens />} />
+        <Route path="therapy/token-history" element={<TherapyLab_TokenHistory />} />
+        <Route path="therapy/credit-patients" element={<TherapyLab_CreditPatients />} />
+        <Route path="therapy/appointments" element={<TherapyLab_Appointments />} />
+        <Route path="counselling/appointments" element={<Counselling_Appointments />} />
       </Route>
     </Routes>
   )
