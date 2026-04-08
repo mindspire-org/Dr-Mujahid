@@ -4,7 +4,7 @@ import { ProcedureSession } from '../models/ProcedureSession'
 import { AestheticCounter } from '../models/Counter'
 import { LabPatient } from '../../lab/models/Patient'
 import { LabCounter } from '../../lab/models/Counter'
-import { HospitalSettings } from '../../hospital/models/Settings'
+import { HospitalSettings, HospitalSettingsDoc } from '../../hospital/models/Settings'
 
 function dateKey(dateIso?: string){
   const d = dateIso ? new Date(dateIso) : new Date()
@@ -26,7 +26,7 @@ async function nextMrn(){
   const key = 'lab_mrn_mr7553'
   
   // Get settings to check for custom starting number
-  const settings = await HospitalSettings.findOne().lean()
+  const settings = await HospitalSettings.findOne().lean() as HospitalSettingsDoc | null
   const mrStart = settings?.mrStart || 1
   
   // Check current counter value

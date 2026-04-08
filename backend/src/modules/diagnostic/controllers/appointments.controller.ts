@@ -3,7 +3,7 @@ import { DiagnosticAppointment } from '../models/Appointment'
 import { diagnosticAppointmentCreateSchema, diagnosticAppointmentQuerySchema, diagnosticAppointmentUpdateSchema } from '../validators/appointment'
 import { LabPatient } from '../../lab/models/Patient'
 import { LabCounter } from '../../lab/models/Counter'
-import { HospitalSettings } from '../../hospital/models/Settings'
+import { HospitalSettings, HospitalSettingsDoc } from '../../hospital/models/Settings'
 
 function handleError(res: Response, e: any){
   if (e?.name === 'ZodError') return res.status(400).json({ error: e.errors?.[0]?.message || 'Invalid payload' })
@@ -19,7 +19,7 @@ async function nextMrn(){
   const key = 'lab_mrn_mr7553'
   
   // Get settings to check for custom starting number
-  const settings = await HospitalSettings.findOne().lean()
+  const settings = await HospitalSettings.findOne().lean() as HospitalSettingsDoc | null
   const mrStart = settings?.mrStart || 1
   
   // Check current counter value
