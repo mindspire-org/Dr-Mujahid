@@ -47,9 +47,9 @@ export default function Doctor_PrescriptionHistory() {
   const diagEditRef = useRef<any>(null)
   const [editVitalsDisplay, setEditVitalsDisplay] = useState<any>({})
   const [editDiagDisplay, setEditDiagDisplay] = useState<{ testsText?: string; notes?: string }>({})
-  const [confirmDlg, setConfirmDlg] = useState<{ open: boolean; type?: 'lab' | 'pharmacy' | 'diagnostic' | 'delete'; target?: Prescription | null }>({ open: false })
+  const [confirmDlg, setConfirmDlg] = useState<{ open: boolean; type?: 'lab' | 'pharmacy' | 'diagnostic' | 'therapy' | 'counselling' | 'delete'; target?: Prescription | null }>({ open: false })
   const [toast, setToast] = useState<{ msg: string; kind: 'success' | 'error' } | null>(null)
-  const [refFlags, setRefFlags] = useState<Record<string, { ph?: boolean; lab?: boolean; diag?: boolean }>>({})
+  const [refFlags, setRefFlags] = useState<Record<string, { ph?: boolean; lab?: boolean; diag?: boolean; thy?: boolean; coun?: boolean }>>({})
   useEffect(() => {
     try {
       const raw = localStorage.getItem('doctor.session')
@@ -109,15 +109,19 @@ export default function Doctor_PrescriptionHistory() {
       setTotal(Number(res?.total || items.length))
       // load referral flags for visible range
       try {
-        const [ph, lb, dg] = await Promise.all([
+        const [ph, lb, dg, thy, coun] = await Promise.all([
           hospitalApi.listReferrals({ type: 'pharmacy', doctorId: doc.id, from: from || undefined, to: to || undefined, page: 1, limit: 200 }) as any,
           hospitalApi.listReferrals({ type: 'lab', doctorId: doc.id, from: from || undefined, to: to || undefined, page: 1, limit: 200 }) as any,
           hospitalApi.listReferrals({ type: 'diagnostic', doctorId: doc.id, from: from || undefined, to: to || undefined, page: 1, limit: 200 }) as any,
+          hospitalApi.listReferrals({ type: 'therapy', doctorId: doc.id, from: from || undefined, to: to || undefined, page: 1, limit: 200 }) as any,
+          hospitalApi.listReferrals({ type: 'counselling', doctorId: doc.id, from: from || undefined, to: to || undefined, page: 1, limit: 200 }) as any,
         ])
-        const map: Record<string, { ph?: boolean; lab?: boolean; diag?: boolean }> = {}
+        const map: Record<string, { ph?: boolean; lab?: boolean; diag?: boolean; thy?: boolean; coun?: boolean }> = {}
           ; (ph?.referrals || []).forEach((r: any) => { const pid = String(r.prescriptionId || ''); if (!pid) return; map[pid] = { ...(map[pid] || {}), ph: true } })
           ; (lb?.referrals || []).forEach((r: any) => { const pid = String(r.prescriptionId || ''); if (!pid) return; map[pid] = { ...(map[pid] || {}), lab: true } })
           ; (dg?.referrals || []).forEach((r: any) => { const pid = String(r.prescriptionId || ''); if (!pid) return; map[pid] = { ...(map[pid] || {}), diag: true } })
+          ; (thy?.referrals || []).forEach((r: any) => { const pid = String(r.prescriptionId || ''); if (!pid) return; map[pid] = { ...(map[pid] || {}), thy: true } })
+          ; (coun?.referrals || []).forEach((r: any) => { const pid = String(r.prescriptionId || ''); if (!pid) return; map[pid] = { ...(map[pid] || {}), coun: true } })
         setRefFlags(map)
       } catch { }
     } catch {
@@ -255,10 +259,70 @@ export default function Doctor_PrescriptionHistory() {
     }
   }
 
-  function openConfirm(type: 'lab' | 'pharmacy' | 'diagnostic' | 'delete', p: Prescription) {
+  async function referToTherapy(p: Prescription) {
+    try {
+      if (!doc?.id) { setToast({ msg: 'Session missing', kind: 'error' }); return }
+      let tests: string[] | undefined
+      let notes: string | undefined
+      try {
+        const res: any = await hospitalApi.getPrescription(p.id)
+        const pres = res?.prescription
+        if (pres?.therapyTests?.length) {
+          tests = pres.therapyTests as string[]
+        } else if (pres?.therapyPlan?.packages && String(pres.therapyPlan.packages).trim()) {
+          // fallback: use therapyPlan.packages (e.g. "10") as the test/package identifier
+          tests = [String(pres.therapyPlan.packages).trim()]
+        }
+        if (pres?.therapyNotes) notes = String(pres.therapyNotes)
+      } catch { }
+      await hospitalApi.createReferral({ type: 'therapy', encounterId: p.encounterId, doctorId: doc.id, prescriptionId: p.id, tests, notes })
+      try { window.dispatchEvent(new CustomEvent('doctor:pres-saved')) } catch { }
+      setToast({ msg: 'Therapy referral created', kind: 'success' })
+      setRefFlags(prev => ({ ...prev, [p.id]: { ...(prev[p.id] || {}), thy: true } }))
+    } catch (e: any) {
+      setToast({ msg: e?.message || 'Failed to create therapy referral', kind: 'error' })
+    }
+  }
+
+  async function referToCounselling(p: Prescription) {
+    try {
+      if (!doc?.id) { setToast({ msg: 'Session missing', kind: 'error' }); return }
+      let notes: string | undefined
+      try {
+        const res: any = await hospitalApi.getPrescription(p.id)
+        const pres = res?.prescription
+        if (pres?.counselling) {
+          const c = pres.counselling
+          if (typeof c === 'string') {
+            notes = c.trim()
+          } else if (typeof c === 'object') {
+            const parts: string[] = []
+            if (c.lcc) parts.push(`LCC: ${c.lcc}${c.lccMonth ? ` (${c.lccMonth})` : ''}`)
+            const pkg = c.package
+            if (pkg) {
+              if (pkg.d4) parts.push(`D4${pkg.d4Month ? ` (${pkg.d4Month})` : ''}`)
+              if (pkg.r4) parts.push(`R4${pkg.r4Month ? ` (${pkg.r4Month})` : ''}`)
+            }
+            if (c.note && String(c.note).trim()) parts.push(String(c.note).trim())
+            notes = parts.join(' • ')
+          }
+        }
+      } catch { }
+      await hospitalApi.createReferral({ type: 'counselling', encounterId: p.encounterId, doctorId: doc.id, prescriptionId: p.id, notes })
+      try { window.dispatchEvent(new CustomEvent('doctor:pres-saved')) } catch { }
+      setToast({ msg: 'Counselling referral created', kind: 'success' })
+      setRefFlags(prev => ({ ...prev, [p.id]: { ...(prev[p.id] || {}), coun: true } }))
+    } catch (e: any) {
+      setToast({ msg: e?.message || 'Failed to create counselling referral', kind: 'error' })
+    }
+  }
+
+  function openConfirm(type: 'lab' | 'pharmacy' | 'diagnostic' | 'therapy' | 'counselling' | 'delete', p: Prescription) {
     if (type === 'pharmacy' && (refFlags[p.id]?.ph)) { setToast({ msg: 'Already referred to pharmacy', kind: 'success' }); return }
     if (type === 'lab' && (refFlags[p.id]?.lab)) { setToast({ msg: 'Already referred to lab', kind: 'success' }); return }
     if (type === 'diagnostic' && (refFlags[p.id]?.diag)) { setToast({ msg: 'Already referred to diagnostic', kind: 'success' }); return }
+    if (type === 'therapy' && (refFlags[p.id]?.thy)) { setToast({ msg: 'Already referred to therapy', kind: 'success' }); return }
+    if (type === 'counselling' && (refFlags[p.id]?.coun)) { setToast({ msg: 'Already referred to counselling', kind: 'success' }); return }
     setConfirmDlg({ open: true, type, target: p })
   }
 
@@ -270,6 +334,8 @@ export default function Doctor_PrescriptionHistory() {
     if (t === 'pharmacy') await referToPharmacy(p)
     if (t === 'lab') await referToLab(p)
     if (t === 'diagnostic') await referToDiagnostic(p)
+    if (t === 'therapy') await referToTherapy(p)
+    if (t === 'counselling') await referToCounselling(p)
     if (t === 'delete') await deletePres(p.id)
   }
 
@@ -499,6 +565,26 @@ export default function Doctor_PrescriptionHistory() {
                       >Refer to Diagnostic</button>
                     )
                   })()}
+                  {(() => {
+                    const done = !!refFlags[p.id]?.thy; return (
+                      <button
+                        className={`rounded-md px-3 py-1 text-sm ${done ? 'border-blue-300 bg-blue-50 text-blue-700' : 'border border-slate-300'}`}
+                        disabled={done}
+                        title={done ? 'Already referred to therapy' : ''}
+                        onClick={() => openConfirm('therapy', p)}
+                      >Refer to Therapy</button>
+                    )
+                  })()}
+                  {(() => {
+                    const done = !!refFlags[p.id]?.coun; return (
+                      <button
+                        className={`rounded-md px-3 py-1 text-sm ${done ? 'border-blue-300 bg-blue-50 text-blue-700' : 'border border-slate-300'}`}
+                        disabled={done}
+                        title={done ? 'Already referred to counselling' : ''}
+                        onClick={() => openConfirm('counselling', p)}
+                      >Refer to Counselling</button>
+                    )
+                  })()}
                   <button
                     className="rounded-md border border-slate-300 px-3 py-1 text-sm"
                     onClick={() => navigate('/doctor/prescription', { state: { prescriptionId: p.id, encounterId: p.encounterId } })}
@@ -558,7 +644,7 @@ export default function Doctor_PrescriptionHistory() {
           <div className="w-full max-w-sm rounded-xl bg-white p-4">
             <div className="mb-3 text-lg font-semibold text-slate-800">{confirmDlg.type === 'delete' ? 'Delete Prescription' : 'Confirm Referral'}</div>
             <div className="text-sm text-slate-700">
-              {confirmDlg.type === 'delete' ? 'Are you sure you want to delete this prescription? This action cannot be undone.' : `Create a ${confirmDlg.type === 'pharmacy' ? 'Pharmacy' : confirmDlg.type === 'lab' ? 'Lab' : 'Diagnostic'} referral for this prescription?`}
+              {confirmDlg.type === 'delete' ? 'Are you sure you want to delete this prescription? This action cannot be undone.' : `Create a ${confirmDlg.type === 'pharmacy' ? 'Pharmacy' : confirmDlg.type === 'lab' ? 'Lab' : confirmDlg.type === 'diagnostic' ? 'Diagnostic' : confirmDlg.type === 'therapy' ? 'Therapy' : 'Counselling'} referral for this prescription?`}
             </div>
             <div className="mt-4 flex items-center justify-end gap-2">
               <button onClick={() => setConfirmDlg({ open: false })} className="btn-outline-navy">Cancel</button>

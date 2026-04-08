@@ -73,7 +73,7 @@ export async function manualDoctorEarning(data: { doctorId: string; departmentId
   return await FinanceJournal.create({ dateIso, refType: 'manual_doctor_earning', refId: data.doctorId, memo: data.memo, lines })
 }
 
-export async function postOpdTokenJournal(args: { tokenId: string; dateIso: string; fee: number; doctorId?: string; departmentId?: string; patientId?: string; patientName?: string; mrn?: string; tokenNo?: string; paidMethod?: 'Cash'|'Bank'|'AR'; receivedToAccountCode?: string; createdBy?: string }){
+export async function postOpdTokenJournal(args: { tokenId: string; dateIso: string; fee: number; amountReceived?: number; paymentStatus?: string; doctorId?: string; departmentId?: string; patientId?: string; patientName?: string; mrn?: string; tokenNo?: string; paidMethod?: 'Cash'|'Bank'|'AR'; receivedToAccountCode?: string; createdBy?: string }){
   // Idempotency: avoid duplicate posting for same token
   const existing = await FinanceJournal.findOne({ refType: 'opd_token', refId: args.tokenId }).lean()
   if (existing) return existing as any
@@ -90,12 +90,21 @@ export async function postOpdTokenJournal(args: { tokenId: string; dateIso: stri
   if (args.patientName) tagsBase.patientName = args.patientName
   if (args.mrn) tagsBase.mrn = args.mrn
 
-  const lines: JournalLine[] = [
-    { account: debitAccount, debit: args.fee, tags: { ...tagsBase } },
-    { account: 'OPD_REVENUE', credit: args.fee, tags: { ...tagsBase } },
-    { account: 'DOCTOR_SHARE_EXPENSE', debit: share, tags: { ...tagsBase } },
-    { account: 'DOCTOR_PAYABLE', credit: share, tags: { ...tagsBase } },
-  ]
+  const totalFee = args.fee || 0
+  const isUnpaid = args.paymentStatus === 'unpaid' || args.paidMethod === 'AR'
+
+  // Use actual amount received for the cash/bank debit; remainder goes to AR (dues)
+  const cashReceived = isUnpaid ? 0 : round2(Math.min(Math.max(0, args.amountReceived ?? totalFee), totalFee))
+
+  const lines: JournalLine[] = []
+
+  if (cashReceived > 0) {
+    lines.push({ account: debitAccount, debit: cashReceived, tags: { ...tagsBase } })
+  }
+  lines.push({ account: 'OPD_REVENUE', credit: totalFee, tags: { ...tagsBase } })
+  lines.push({ account: 'DOCTOR_SHARE_EXPENSE', debit: share, tags: { ...tagsBase } })
+  lines.push({ account: 'DOCTOR_PAYABLE', credit: share, tags: { ...tagsBase } })
+
   const memo = `OPD Token ${args.tokenNo ? ('#'+args.tokenNo) : ''}`.trim()
   return await FinanceJournal.create({ dateIso: args.dateIso || todayIso(), createdBy: args.createdBy, refType: 'opd_token', refId: args.tokenId, memo, lines })
 }

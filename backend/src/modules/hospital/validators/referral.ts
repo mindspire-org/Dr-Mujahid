@@ -1,7 +1,7 @@
 import { z } from 'zod'
 
 export const createReferralSchema = z.object({
-  type: z.enum(['lab','pharmacy','diagnostic']),
+  type: z.enum(['lab','pharmacy','diagnostic','therapy','counselling']),
   encounterId: z.string().min(1),
   doctorId: z.string().min(1),
   prescriptionId: z.string().optional(),

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { hospitalApi, labApi } from '../../utils/api'
+import { hospitalApi } from '../../utils/api'
 
 export default function Pharmacy_PrescriptionIntake(){
   const { id } = useParams()
@@ -8,6 +8,7 @@ export default function Pharmacy_PrescriptionIntake(){
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string>('')
   const [header, setHeader] = useState<{ patient?: string; mrn?: string; doctor?: string; date?: string } | null>(null)
+  const [fullPatient, setFullPatient] = useState<any>(null)
   const [items, setItems] = useState<Array<{ name: string; frequency?: string; duration?: string; qty: number }>>([])
 
   useEffect(() => { (async () => {
@@ -19,8 +20,12 @@ export default function Pharmacy_PrescriptionIntake(){
       let mrn = prescription?.encounterId?.patientId?.mrn || ''
       try {
         if (mrn) {
-          const resp: any = await labApi.getPatientByMrn(mrn)
-          patName = resp?.patient?.fullName || patName
+          const resp: any = await hospitalApi.searchPatients({ mrn, limit: 1 })
+          const p = (resp?.patients || [])[0]
+          if (p) {
+            patName = p.fullName || patName
+            setFullPatient(p)
+          }
         }
       } catch {}
       setHeader({ patient: patName, mrn, doctor: prescription?.encounterId?.doctorId?.name || '-', date: dt.toLocaleString() })
@@ -46,8 +51,22 @@ export default function Pharmacy_PrescriptionIntake(){
     try {
       const lines = items.map(it => ({ name: it.name, qty: Math.max(1, it.qty|0) }))
       localStorage.setItem('pharmacy.pos.pendingAddLines', JSON.stringify(lines))
+      // Also pass patient info so POS can pre-fill the payment dialog
+      if (header) {
+        const p = fullPatient || {}
+        localStorage.setItem('pharmacy.pos.pendingPatient', JSON.stringify({
+          patientName: p.fullName || header.patient || '',
+          mrn: p.mrn || header.mrn || '',
+          phone: p.phoneNormalized || p.phone || '',
+          age: p.age != null && p.age !== '' ? String(p.age) : '',
+          gender: p.gender || '',
+          guardianRel: p.guardianRel || '',
+          guardianName: p.fatherName || p.guardianName || '',
+          cnic: p.cnicNormalized || p.cnic || '',
+          address: p.address || '',
+        }))
+      }
       navigate('/pharmacy/pos')
-      // POS will read the storage and add lines automatically
     } catch (e) {
       alert('Failed to forward to POS')
     }

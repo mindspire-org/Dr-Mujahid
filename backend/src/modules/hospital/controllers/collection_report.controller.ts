@@ -154,10 +154,12 @@ function inferCounterparty(line: any, j: any) {
   if (supplierName) return { kind: 'supplier' as const, name: supplierName }
   if (String(tags?.staffId || '').trim()) return { kind: 'supplier' as const, name: supplierName || 'Staff' }
 
-  if (rt === 'hospital_credit_patient_payment' || rt === 'therp_credit_rev' || rt === 'couns_credit_rev') {
+  if (rt === 'hospital_credit_patient_payment' || rt === 'therp_credit_rev' || rt === 'couns_credit_rev' || rt === 'pharmacy_credit_payment') {
     const parts = memo.split('—')
     const nm = parts.length > 1 ? String(parts.slice(1).join('—')).trim() : ''
-    return { kind: 'customer' as const, name: nm }
+    // strip trailing " (customerId) by actorUsername" suffix
+    const clean = nm.replace(/\s*\([^)]+\).*$/, '').trim()
+    return { kind: 'customer' as const, name: clean }
   }
 
   return { kind: 'unknown' as const, name: '' }
@@ -205,6 +207,10 @@ function inferTransactionType(j: any) {
   if (rt === 'diag_credit_payment') return 'Diag_Credit_Rev'
 
   if (rt === 'doctor_payout') return 'Doc_Payout'
+
+  if (rt === 'pharmacy_sale') return 'Pharmacy_Rev'
+  if (rt === 'pharmacy_return') return 'Pharmacy_Return'
+  if (rt === 'pharmacy_credit_payment') return 'Pharm_Credit_Rev'
 
   if (rt === 'expense_payment') {
     const tags = (lines.find(l => l?.tags)?.tags) || {}
@@ -400,7 +406,7 @@ export async function collectionReport(req: Request, res: Response) {
     { $addFields: { allLines: '$lines' } },
     { $unwind: '$lines' },
     { $match: { 'lines.account': { $in: accountCodes }, $or: [{ 'lines.debit': { $gt: 0 } }, { 'lines.credit': { $gt: 0 } }] } },
-    { $project: { _id: 1, txId: 1, dateIso: 1, createdAt: 1, createdBy: 1, refType: 1, refId: 1, memo: 1, line: '$lines', allLines: 1 } },
+    { $project: { _id: 1, txId: 1, dateIso: 1, createdAt: 1, createdBy: 1, createdByUsername: 1, refType: 1, refId: 1, memo: 1, line: '$lines', allLines: 1 } },
     { $sort: { dateIso: 1, createdAt: 1, _id: 1 } },
     { $limit: limit },
   ])
@@ -477,11 +483,12 @@ export async function collectionReport(req: Request, res: Response) {
 
     const u = r?.createdBy ? userById.get(String(r.createdBy)) : null
     const du = !u && r?.createdBy ? diagUserById.get(String(r.createdBy)) : null
+    const rawCreatedBy = r?.createdByUsername ? String(r.createdByUsername) : (r?.createdBy ? String(r.createdBy) : '')
     const transBy = u
       ? `${String(u.fullName || u.username || '').trim()}-${String(u.role || '').trim()}`.replace(/-$/, '')
       : (du
         ? `${String(du.username || '').trim()}-${String(du.role || '').trim()}`.replace(/-$/, '')
-        : (r?.createdBy ? String(r.createdBy) : ''))
+        : rawCreatedBy)
 
     const dateIso = String(r?.dateIso || '')
     const date = safeDateLabel(dateIso)
@@ -548,7 +555,10 @@ export async function collectionReport(req: Request, res: Response) {
       inferredTxnType === 'Therapy_Rev' ||
       inferredTxnType === 'Counselling_Rev' ||
       inferredTxnType === 'Therp_Credit_Rev' ||
-      inferredTxnType === 'Couns_Credit_Rev'
+      inferredTxnType === 'Couns_Credit_Rev' ||
+      inferredTxnType === 'Pharmacy_Rev' ||
+      inferredTxnType === 'Pharmacy_Return' ||
+      inferredTxnType === 'Pharm_Credit_Rev'
     ) {
       invoiceNo = ''
     }
@@ -567,6 +577,7 @@ export async function collectionReport(req: Request, res: Response) {
     if (inferredTxnType === 'Therapy_Rev' || inferredTxnType === 'Therp_Credit_Rev') dept = 'Therapy'
     if (inferredTxnType === 'Counselling_Rev' || inferredTxnType === 'Couns_Credit_Rev') dept = 'Counselling'
     if (inferredTxnType === 'OPD_Return') dept = 'OPD'
+    if (inferredTxnType === 'Pharmacy_Rev' || inferredTxnType === 'Pharmacy_Return' || inferredTxnType === 'Pharm_Credit_Rev') dept = 'Pharmacy'
     if (inferredTxnType === 'Doc_Payout' || inferredTxnType === 'Expense' || String(inferredTxnType).startsWith('Expense-')) dept = 'OPD'
     if (inferredTxnType === 'Salary') {
       const salaryDept = inferDepartmentNameForSalary(line)

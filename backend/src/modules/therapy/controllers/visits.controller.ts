@@ -259,6 +259,15 @@ export async function create(req: Request, res: Response) {
   }
 
   const after = await TherapyAccount.findOne({ patientId }).lean()
+
+  // Auto-complete the referral if this visit was created from one
+  if (data.fromReferralId) {
+    try {
+      const { HospitalReferral } = await import('../../hospital/models/Referral')
+      await HospitalReferral.findByIdAndUpdate(String(data.fromReferralId), { $set: { status: 'completed' } })
+    } catch { /* non-fatal */ }
+  }
+
   res.status(201).json({ visit, payment, account: after })
 }
 

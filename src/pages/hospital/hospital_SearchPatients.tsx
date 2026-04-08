@@ -11,6 +11,7 @@ import { printUpperGIEndoscopyReport } from '../../components/diagnostic/diagnos
 import { previewLabReportPdf } from '../../utils/printLabReport'
 import { Eye, X, Download } from 'lucide-react'
 import { mergeHistoryWithEdits, type HistorySection } from '../../utils/historyEdits'
+import HospitalPharmacyDetailsDialog from '../../components/hospital/hospital_PharmacyDetailsDialog'
 
 export default function Hospital_SearchPatients() {
   const location = useLocation()
@@ -338,6 +339,9 @@ export default function Hospital_SearchPatients() {
   const [prevLabEntryViewId, setPrevLabEntryViewId] = useState('')
   const [prevHistoryViewId, setPrevHistoryViewId] = useState('')
   const [prevHistoryViewPrescription, setPrevHistoryViewPrescription] = useState<any>(null)
+  const [pharmacyDlgMrn, setPharmacyDlgMrn] = useState('')
+  const [pharmacyDlgName, setPharmacyDlgName] = useState('')
+  const [pharmacyDlgOpen, setPharmacyDlgOpen] = useState(false)
 
   // Fetch prescription for history view to get historyEdits
   useEffect(() => {
@@ -742,6 +746,18 @@ export default function Hospital_SearchPatients() {
                                     {diagEmpty}
                                     {therapyEmpty}
                                     {counsellingEmpty}
+                                    <div className="rounded-lg border border-slate-200 bg-white p-3 text-xs">
+                                      <div className="text-[10px] font-bold text-slate-900">PHARMACY</div>
+                                      <div className="mt-2">
+                                        <button
+                                          type="button"
+                                          onClick={() => { setPharmacyDlgMrn(String(p.mrn || '')); setPharmacyDlgName(String(p.fullName || '')); setPharmacyDlgOpen(true) }}
+                                          className="flex w-full items-center justify-center gap-1 rounded-md border border-blue-800 px-3 py-1.5 text-xs font-semibold text-blue-800 hover:bg-blue-50"
+                                        >
+                                          View Details <Eye size={14} />
+                                        </button>
+                                      </div>
+                                    </div>
                                   </div>
                                 </div>
                               )}
@@ -885,6 +901,20 @@ export default function Hospital_SearchPatients() {
                                           </div>
                                         )) : medEmpty}
                                       </div>
+
+                                      <div className="rounded-lg border border-slate-200 bg-white p-3 text-xs">
+                                        <div className="text-[10px] font-bold text-slate-900">PHARMACY</div>
+                                        <div className="mt-1 text-slate-600">{vk}</div>
+                                        <div className="mt-2">
+                                          <button
+                                            type="button"
+                                            onClick={() => { setPharmacyDlgMrn(String(p.mrn || '')); setPharmacyDlgName(String(p.fullName || '')); setPharmacyDlgOpen(true) }}
+                                            className="flex w-full items-center justify-center gap-1 rounded-md border border-blue-800 px-3 py-1.5 text-xs font-semibold text-blue-800 hover:bg-blue-50"
+                                          >
+                                            View Details <Eye size={14} />
+                                          </button>
+                                        </div>
+                                      </div>
                                     </div>
                                   </div>
                                 )
@@ -978,6 +1008,18 @@ export default function Hospital_SearchPatients() {
                                   {therapyEmpty}
                                   {counsellingEmpty}
                                   {medEmpty}
+                                  <div className="rounded-lg border border-slate-200 bg-white p-3 text-xs">
+                                    <div className="text-[10px] font-bold text-slate-900">PHARMACY</div>
+                                    <div className="mt-2">
+                                      <button
+                                        type="button"
+                                        onClick={() => { setPharmacyDlgMrn(String(p.mrn || '')); setPharmacyDlgName(String(p.fullName || '')); setPharmacyDlgOpen(true) }}
+                                        className="flex w-full items-center justify-center gap-1 rounded-md border border-blue-800 px-3 py-1.5 text-xs font-semibold text-blue-800 hover:bg-blue-50"
+                                      >
+                                        View Details <Eye size={14} />
+                                      </button>
+                                    </div>
+                                  </div>
                                 </div>
                               </div>
                             )}
@@ -1120,6 +1162,20 @@ export default function Hospital_SearchPatients() {
                                           </div>
                                         </div>
                                       )) : counsellingEmpty}
+                                    </div>
+
+                                    <div className="rounded-lg border border-slate-200 bg-white p-3 text-xs">
+                                      <div className="text-[10px] font-bold text-slate-900">PHARMACY</div>
+                                      <div className="mt-1 text-slate-600">{vk}</div>
+                                      <div className="mt-2">
+                                        <button
+                                          type="button"
+                                          onClick={() => { setPharmacyDlgMrn(String(p.mrn || '')); setPharmacyDlgName(String(p.fullName || '')); setPharmacyDlgOpen(true) }}
+                                          className="flex w-full items-center justify-center gap-1 rounded-md border border-blue-800 px-3 py-1.5 text-xs font-semibold text-blue-800 hover:bg-blue-50"
+                                        >
+                                          View Details <Eye size={14} />
+                                        </button>
+                                      </div>
                                     </div>
                                   </div>
                                 </div>
@@ -1314,6 +1370,13 @@ export default function Hospital_SearchPatients() {
           visits={patientDetailsRow?.mrn ? details[patientDetailsRow.mrn]?.pres?.length || 0 : 0}
         />
       )}
+
+      <HospitalPharmacyDetailsDialog
+        open={pharmacyDlgOpen}
+        onClose={() => setPharmacyDlgOpen(false)}
+        mrn={pharmacyDlgMrn}
+        patientName={pharmacyDlgName}
+      />
 
       {showPrevHistoriesDlg && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-3 sm:p-6" onClick={() => setShowPrevHistoriesDlg(false)}>

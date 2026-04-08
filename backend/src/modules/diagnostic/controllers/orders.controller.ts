@@ -199,25 +199,28 @@ export async function create(req: Request, res: Response){
     )
   } catch {}
 
-  // Finance: post diagnostic order journal (paid => selected/CASH/BANK, unpaid => AR)
+  // Finance: post diagnostic order journal (paid => selected/CASH/BANK, unpaid => DIAGNOSTIC_REVENUE)
   try {
     const existing = await FinanceJournal.findOne({ refType: 'diag_order', refId: String((doc as any)._id) }).lean()
     if (!existing){
       const receivedTo = String((doc as any).receivedToAccountCode || (data as any).receivedToAccountCode || '').trim().toUpperCase()
       const paidMethod = String((doc as any).paymentMethod || '').toUpperCase() === 'CARD' ? 'Bank' : 'Cash'
-      const debitAccount = (paymentStatus === 'unpaid') ? 'AR' : (receivedTo || (paidMethod === 'Bank' ? 'BANK' : 'CASH'))
-      const amt = Number((doc as any).net || (doc as any).subtotal || 0)
-      if (debitAccount && amt > 0){
+      const cashAccount = receivedTo || (paidMethod === 'Bank' ? 'BANK' : 'CASH')
+      const totalNet = Number((doc as any).net || (doc as any).subtotal || 0)
+      const cashReceived = paymentStatus === 'unpaid' ? 0 : Math.min(Math.max(0, amountReceivedNow), totalNet)
+      if (totalNet > 0){
+        const lines: any[] = []
+        if (cashReceived > 0) {
+          lines.push({ account: cashAccount, debit: cashReceived })
+        }
+        lines.push({ account: 'DIAGNOSTIC_REVENUE', credit: totalNet })
         await FinanceJournal.create({
           dateIso: new Date().toISOString().slice(0,10),
           createdBy,
           refType: 'diag_order',
           refId: String((doc as any)._id),
           memo: `Diagnostic Order ${String((doc as any).tokenNo || '')}`.trim(),
-          lines: [
-            { account: debitAccount, debit: amt },
-            { account: 'DIAGNOSTIC_REVENUE', credit: amt },
-          ],
+          lines,
         })
       }
     }

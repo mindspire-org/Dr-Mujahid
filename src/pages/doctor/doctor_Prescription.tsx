@@ -1297,7 +1297,17 @@ export default function Doctor_Prescription() {
 
   async function searchMedicines(q: string) {
     try {
-      if (!q || q.trim().length < 2) { setMedNameSuggestions([]); return }
+      if (!q || q.trim().length < 2) {
+        // Restore preloaded list when query is cleared
+        try {
+          const res: any = await pharmacyApi.getAllMedicines()
+          const list: string[] = Array.isArray(res?.medicines)
+            ? res.medicines.map((m: any) => String(m.name || '').trim()).filter(Boolean)
+            : []
+          setMedNameSuggestions(list)
+        } catch { setMedNameSuggestions([]) }
+        return
+      }
       const res: any = await pharmacyApi.searchMedicines(q.trim())
       const list: string[] = Array.isArray(res?.suggestions)
         ? res.suggestions.map((m: any) => String(m.name || '').trim()).filter(Boolean)
@@ -1307,7 +1317,7 @@ export default function Doctor_Prescription() {
             ? res.map((m: any) => String(m.name || m.genericName || m || '').trim()).filter(Boolean)
             : []
       const uniq = Array.from(new Set(list))
-      setMedNameSuggestions(uniq.slice(0, 20))
+      setMedNameSuggestions(uniq)
     } catch { setMedNameSuggestions([]) }
   }
   const addAfter = (i: number) => {
@@ -4245,6 +4255,7 @@ export default function Doctor_Prescription() {
                             onChange={(v) => { setMed(idx, 'name', v); searchMedicines(v) }}
                             suggestions={medNameSuggestions}
                             placeholder="Medicine name"
+                            maxSuggestions={10000}
                           />
                         </div>
                         <div className="col-span-6 sm:col-span-2">

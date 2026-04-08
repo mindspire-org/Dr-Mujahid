@@ -15,11 +15,10 @@ export function pharmacyAuth(req: Request, res: Response, next: NextFunction) {
       return
     }
     if (scope === 'hospital') {
-      const role = String(payload?.role || '')
       const permissions = (payload?.permissions && typeof payload.permissions === 'object') ? payload.permissions : null
       const pharmacyPerm = permissions ? (permissions as any).pharmacy : null
       const canPharmacy = Array.isArray(pharmacyPerm) && pharmacyPerm.length > 0
-      if (!canPharmacy && role !== 'Admin') return res.status(401).json({ message: 'Invalid token' })
+      if (!canPharmacy) return res.status(401).json({ message: 'Invalid token' })
       ;(req as any).user = payload
       next()
       return

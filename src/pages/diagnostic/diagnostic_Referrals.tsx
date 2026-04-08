@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useLocation } from 'react-router-dom'
 import { hospitalApi } from '../../utils/api'
 
 export default function Diagnostic_Referrals() {
   const navigate = useNavigate()
+  const { pathname } = useLocation()
+  const isReception = pathname.startsWith('/reception')
   const [list, setList] = useState<any[]>([])
   const [status, setStatus] = useState<'pending' | 'completed' | 'cancelled' | 'all'>('all')
   const [q, setQ] = useState('')
@@ -12,6 +14,8 @@ export default function Diagnostic_Referrals() {
   const [total, setTotal] = useState(0)
   const [from, setFrom] = useState('')
   const [to, setTo] = useState('')
+  const [cancelDialog, setCancelDialog] = useState<{ id: string; name: string } | null>(null)
+  const [cancelling, setCancelling] = useState(false)
 
   useEffect(() => { load() }, [status, page, limit, from, to])
 
@@ -23,20 +27,15 @@ export default function Diagnostic_Referrals() {
     } catch { setList([]); setTotal(0) }
   }
 
-  async function mark(id: string, st: 'completed' | 'cancelled' | 'pending') {
+  async function confirmCancel() {
+    if (!cancelDialog) return
+    setCancelling(true)
     try {
-      await hospitalApi.updateReferralStatus(id, st)
-      if ((st === 'completed' || st === 'cancelled') && status === 'pending') {
-        setPage(1)
-        setStatus('all')
-      } else {
-        await load()
-      }
-    } catch (e: any) { alert(e?.message || 'Failed') }
-  }
-  async function remove(id: string) {
-    if (!confirm('Delete this referral?')) return
-    try { await hospitalApi.deleteReferral(id); await load() } catch (e: any) { alert(e?.message || 'Failed') }
+      await hospitalApi.updateReferralStatus(cancelDialog.id, 'cancelled')
+      setCancelDialog(null)
+      await load()
+    } catch (e: any) { alert(e?.message || 'Failed to cancel') }
+    finally { setCancelling(false) }
   }
 
   const filtered = useMemo(() => {
@@ -45,6 +44,7 @@ export default function Diagnostic_Referrals() {
   }, [list, q])
 
   return (
+    <>
     <div className="space-y-4">
       <div className="rounded-xl border border-slate-200 bg-white p-3 sm:p-4">
         <div className="flex flex-col gap-4">
@@ -89,19 +89,43 @@ export default function Diagnostic_Referrals() {
           {filtered.map((r: any) => (
             <div key={r._id} className="px-4 py-3 text-sm">
               <div className="font-medium">{r.encounterId?.patientId?.fullName || '-'} <span className="text-xs text-slate-500">{r.encounterId?.patientId?.mrn || ''}</span></div>
-              <div className="text-xs text-slate-600">{new Date(r.createdAt).toLocaleString()} • Status: {r.status} • By: Dr. {r.encounterId?.doctorId?.name || '-'}</div>
+              <div className="flex flex-wrap items-center gap-2 text-xs text-slate-600">
+                <span>{new Date(r.createdAt).toLocaleString()}</span>
+                <span>•</span>
+                <span className={`inline-flex items-center rounded-full px-2 py-0.5 font-medium ${r.status === 'completed' ? 'bg-emerald-100 text-emerald-700' : r.status === 'cancelled' ? 'bg-rose-100 text-rose-700' : 'bg-yellow-100 text-yellow-700'}`}>{r.status === 'completed' ? 'Completed' : r.status === 'cancelled' ? 'Cancelled' : 'Pending'}</span>
+                <span>•</span>
+                <span>By: Dr. {r.encounterId?.doctorId?.name || '-'}</span>
+              </div>
               {(r.tests || []).length > 0 && <div className="mt-1 text-xs text-slate-700"><span className="font-semibold">Tests:</span> {(r.tests || []).join(', ')}</div>}
               {r.notes && <div className="mt-1 text-xs text-slate-700"><span className="font-semibold">Notes:</span> {r.notes}</div>}
               <div className="mt-2 flex flex-wrap items-center gap-2">
                 <button
                   className="rounded-md border border-sky-300 bg-sky-50 px-3 py-1 text-sm text-sky-700"
                   title="Process referral"
-                  onClick={() => {
+                  hidden={r.status === 'completed'}
+                  onClick={async () => {
                     const p = r?.encounterId?.patientId || {}
                     const d = r?.encounterId?.doctorId || {}
-                    navigate('/diagnostic/token-generator', {
+                    // Resolve tests: use referral.tests if present, else fetch from prescription
+                    let resolvedTests: string[] = Array.isArray(r?.tests) ? r.tests.filter(Boolean) : []
+                    if (!resolvedTests.length && r?.prescriptionId) {
+                      try {
+                        const res: any = await hospitalApi.getReferral(String(r._id))
+                        const ref = res?.referral
+                        const direct: string[] = Array.isArray(ref?.tests) ? ref.tests.filter(Boolean) : []
+                        if (direct.length) {
+                          resolvedTests = direct
+                        } else {
+                          const pres = ref?.prescriptionId
+                          const fromPres: string[] = Array.isArray(pres?.diagnosticTests) ? pres.diagnosticTests.filter(Boolean) : []
+                          if (fromPres.length) resolvedTests = fromPres
+                        }
+                      } catch { }
+                    }
+                    navigate(isReception ? '/reception/diagnostic/token-generator' : '/diagnostic/token-generator', {
                       state: {
                         fromReferralId: r._id,
+                        prescriptionId: r?.prescriptionId || undefined,
                         encounterId: r?.encounterId?._id || r?.encounterId,
                         patient: {
                           mrn: p.mrn,
@@ -113,15 +137,13 @@ export default function Diagnostic_Referrals() {
                           cnic: p.cnicNormalized || p.cnic,
                         },
                         referringConsultant: d?.name ? `Dr. ${d.name}` : undefined,
-                        requestedTests: r?.tests || [],
+                        requestedTests: resolvedTests,
                         notes: r?.notes || '',
                       }
                     })
                   }}
                 >Process</button>
-                <button className="rounded-md border border-emerald-300 bg-emerald-50 px-3 py-1 text-sm text-emerald-700" onClick={() => mark(r._id, 'completed')}>Mark Completed</button>
-                <button className="rounded-md border border-slate-300 px-3 py-1 text-sm" onClick={() => mark(r._id, 'pending')}>Mark Pending</button>
-                <button className="rounded-md border border-rose-300 bg-rose-50 px-3 py-1 text-sm text-rose-700" onClick={() => remove(r._id)}>Delete</button>
+                {r.status !== 'completed' && <button className="rounded-md border border-orange-300 bg-orange-50 px-3 py-1 text-sm text-orange-700" onClick={() => setCancelDialog({ id: r._id, name: r.encounterId?.patientId?.fullName || 'this referral' })}>Cancel</button>}
               </div>
             </div>
           ))}
@@ -134,5 +156,20 @@ export default function Diagnostic_Referrals() {
         </div>
       </div>
     </div>
+
+    {/* Cancel Confirmation Dialog */}
+    {cancelDialog && (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+        <div className="w-full max-w-sm rounded-xl bg-white p-6 shadow-xl">
+          <div className="mb-1 text-base font-semibold text-slate-900">Cancel Referral</div>
+          <p className="mb-5 text-sm text-slate-600">Are you sure you want to cancel the referral for <span className="font-medium text-slate-800">{cancelDialog.name}</span>? This will mark it as cancelled.</p>
+          <div className="flex justify-end gap-2">
+            <button className="rounded-md border border-slate-300 px-4 py-1.5 text-sm text-slate-700 hover:bg-slate-50" onClick={() => setCancelDialog(null)} disabled={cancelling}>Keep</button>
+            <button className="rounded-md bg-orange-600 px-4 py-1.5 text-sm text-white hover:bg-orange-700 disabled:opacity-60" onClick={confirmCancel} disabled={cancelling}>{cancelling ? 'Cancelling...' : 'Yes, Cancel'}</button>
+          </div>
+        </div>
+      </div>
+    )}
+    </>
   )
 }

@@ -20,7 +20,7 @@ export async function listAccountTransactions(req: Request, res: Response){
   const rows: any[] = await FinanceJournal.aggregate([
     { $match: { dateIso: { $gte: from, $lte: to }, 'lines.account': code } },
     { $addFields: { txId: { $ifNull: ['$txId', { $concat: ['TXN-', { $toString: '$_id' }] }] } } },
-    { $project: { txId: 1, dateIso: 1, createdAt: 1, createdBy: 1, refType: 1, refId: 1, memo: 1, lines: 1 } },
+    { $project: { txId: 1, dateIso: 1, createdAt: 1, createdBy: 1, createdByUsername: 1, refType: 1, refId: 1, memo: 1, lines: 1 } },
     { $addFields: {
       myLine: {
         $first: {
@@ -48,6 +48,20 @@ export async function listAccountTransactions(req: Request, res: Response){
           },
         },
       },
+      // First non-empty tags.createdBy across all lines
+      anyLineCreatedBy: {
+        $reduce: {
+          input: '$lines',
+          initialValue: '',
+          in: {
+            $cond: [
+              { $gt: [{ $strLenCP: { $ifNull: ['$$value', ''] } }, 0] },
+              '$$value',
+              { $ifNull: ['$$this.tags.createdBy', ''] },
+            ],
+          },
+        },
+      },
     } },
     { $project: {
       _id: 1,
@@ -55,6 +69,7 @@ export async function listAccountTransactions(req: Request, res: Response){
       dateIso: 1,
       createdAt: 1,
       createdBy: 1,
+      createdByUsername: 1,
       refType: 1,
       refId: 1,
       memo: 1,
@@ -62,13 +77,30 @@ export async function listAccountTransactions(req: Request, res: Response){
       debit: { $ifNull: ['$myLine.debit', 0] },
       credit: { $ifNull: ['$myLine.credit', 0] },
       receiver: '$myLine.tags.receiver',
+      lineCreatedBy: {
+        $cond: [
+          { $gt: [{ $strLenCP: { $ifNull: ['$createdByUsername', ''] } }, 0] },
+          '$createdByUsername',
+          {
+            $cond: [
+              { $gt: [{ $strLenCP: { $ifNull: ['$myLine.tags.createdBy', ''] } }, 0] },
+              '$myLine.tags.createdBy',
+              { $ifNull: ['$anyLineCreatedBy', ''] },
+            ],
+          },
+        ],
+      },
       counterparties: 1,
     } },
     { $sort: { dateIso: -1, createdAt: -1, _id: -1 } },
     { $limit: limit },
   ])
 
-  const createdByVals = Array.from(new Set(rows.map(r => r?.createdBy ? String(r.createdBy) : '').filter(Boolean)))
+  const createdByVals = Array.from(new Set(rows.map(r => {
+    const cb = r?.createdBy ? String(r.createdBy) : ''
+    const lcb = r?.lineCreatedBy ? String(r.lineCreatedBy) : ''
+    return cb || lcb
+  }).filter(Boolean)))
   const oidRe = /^[a-f0-9]{24}$/i
   const oidIds = createdByVals.filter(v => oidRe.test(v))
   const usernames = createdByVals.filter(v => !oidRe.test(v))
@@ -87,7 +119,6 @@ export async function listAccountTransactions(req: Request, res: Response){
       const username = String(u.username || '').trim()
       const fullName = u.fullName != null ? String(u.fullName) : undefined
       const role = u.role != null ? String(u.role) : undefined
-
       usersByKey[id] = { id, username, fullName, role }
       if (username) usersByKey[username] = { id, username, fullName, role }
     }
@@ -98,12 +129,12 @@ export async function listAccountTransactions(req: Request, res: Response){
     txId: String(r.txId || `TXN-${String(r._id)}`),
     dateIso: String(r.dateIso || ''),
     createdAt: r.createdAt,
-    createdBy: r.createdBy != null ? String(r.createdBy) : undefined,
+    createdBy: r.createdBy != null ? String(r.createdBy) : (r.lineCreatedBy != null ? String(r.lineCreatedBy) : undefined),
     user: (() => {
-      const key = r?.createdBy != null ? String(r.createdBy) : ''
+      const key = r?.createdBy != null ? String(r.createdBy) : (r?.lineCreatedBy != null ? String(r.lineCreatedBy) : '')
       if (!key) return undefined
       const u = usersByKey[key]
-      if (!u) return { id: key }
+      if (!u) return { id: key, username: key }
       return { id: u.id, username: u.username, fullName: u.fullName, role: u.role }
     })(),
     refType: r.refType != null ? String(r.refType) : undefined,

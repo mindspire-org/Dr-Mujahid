@@ -30,7 +30,7 @@ const nav = [
   { to: '/pharmacy/sales-history', label: 'Sales History', Icon: FileText },
   { to: '/pharmacy/referrals', label: 'Referrals', Icon: ClipboardList },
   { to: '/pharmacy/suppliers', label: 'Suppliers', Icon: Truck },
-  { to: '/pharmacy/customers', label: 'Credit Customers', Icon: Users },
+  { to: '/pharmacy/credit-customers', label: 'Credit Customers', Icon: Users },
   { to: '/pharmacy/companies', label: 'Companies', Icon: Building2 },
   { to: '/pharmacy/returns', label: 'Returns', Icon: RefreshCw },
   { to: '/pharmacy/expenses', label: 'Expenses', Icon: Receipt },
@@ -114,7 +114,12 @@ export default function Pharmacy_Sidebar({ collapsed = false, onExpand, mobileOp
       if (!allowed) return true
       if (allowed.includes('*')) return true
       const t = normalizePath(to)
-      return allowed.map(normalizePath).includes(t)
+      const normalizedAllowed = allowed.map(normalizePath)
+      // Exact match
+      if (normalizedAllowed.includes(t)) return true
+      // Prefix match: if '/pharmacy' is allowed, also allow '/pharmacy/credit-customers'
+      if (normalizedAllowed.some(a => a && t.startsWith(a + '/'))) return true
+      return false
     }
 
     setItems(nav.filter(it => canSee(it.to)))

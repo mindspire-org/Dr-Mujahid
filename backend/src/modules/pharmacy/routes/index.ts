@@ -42,6 +42,9 @@ r.put('/customers/:id', Customers.update)
 r.delete('/customers/:id', Customers.remove)
 r.post('/customers/:id/payment', Customers.recordPayment)
 r.get('/customers/:id/payments', Customers.listPayments)
+r.get('/credit-customers', Customers.listCreditCustomers)
+r.post('/customers/:id/pay', Customers.payCreditCustomer)
+r.get('/accounts/:key', Customers.getAccount)
 
 // Expenses
 r.get('/expenses', Expenses.list)

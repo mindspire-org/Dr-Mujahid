@@ -39,6 +39,7 @@ interface TokenRow {
 
 export default function Counselling_TodayTokens() {
   const [rows, setRows] = useState<TokenRow[]>([])
+  const [liveDues, setLiveDues] = useState<Record<string, number>>({})
   const [query, setQuery] = useState('')
   const [rowsPerPage, setRowsPerPage] = useState(10)
   const [page, setPage] = useState(1)
@@ -186,7 +187,26 @@ export default function Counselling_TodayTokens() {
       sessionStatus: t.sessionStatus || 'Queued',
       raw: t,
     }))
-    setRows(items.filter(r => r.status !== 'cancelled'))
+    const filtered = items.filter(r => r.status !== 'cancelled')
+    setRows(filtered)
+
+    // Fetch live account dues for each unique patient
+    const uniquePatientIds = Array.from(new Set(
+      filtered.map(r => String(r.raw?.patientId || '')).filter(Boolean)
+    ))
+    if (uniquePatientIds.length) {
+      const results = await Promise.allSettled(
+        uniquePatientIds.map(pid => counsellingApi.getAccount(pid) as Promise<any>)
+      )
+      const map: Record<string, number> = {}
+      results.forEach((res, i) => {
+        if (res.status === 'fulfilled') {
+          const a = res.value?.account
+          map[uniquePatientIds[i]] = Math.max(0, Number(a?.dues || 0))
+        }
+      })
+      setLiveDues(map)
+    }
   }
 
   const filtered = useMemo(() => {
@@ -440,6 +460,7 @@ export default function Counselling_TodayTokens() {
               <Th>Fee</Th>
               <Th>Payment Status</Th>
               <Th>Status</Th>
+              <Th>Dues</Th>
               <Th>Discount</Th>
               <Th>Print</Th>
               <Th>Actions</Th>
@@ -497,6 +518,9 @@ export default function Counselling_TodayTokens() {
                       </div>
                     )}
                   </div>
+                </Td>
+                <Td className="font-bold text-red-600">
+                  Rs. {(liveDues[String(r.raw?.patientId || '')] ?? 0).toLocaleString()}
                 </Td>
                 <Td>
                   {r.discountType === '%' ? `${r.discount}%` : `Rs. ${Number(r.discount || 0).toLocaleString()}`}

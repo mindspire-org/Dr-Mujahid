@@ -37,10 +37,11 @@ export function labAuth(req: Request, res: Response, next: NextFunction) {
         return
       }
       
-      // For other lab routes, require lab permissions
+      // For other lab routes, require lab or therapyLab permissions
       const permissions = (payload?.permissions && typeof payload.permissions === 'object') ? payload.permissions : null
       const labPerm = permissions ? (permissions as any).lab : null
-      const canLab = Array.isArray(labPerm) && labPerm.length > 0
+      const therapyLabPerm = permissions ? (permissions as any).therapyLab : null
+      const canLab = (Array.isArray(labPerm) && labPerm.length > 0) || (Array.isArray(therapyLabPerm) && therapyLabPerm.length > 0)
       if (!canLab && role !== 'Admin') return res.status(401).json({ message: 'Invalid token' })
       ;(req as any).user = payload
       next()

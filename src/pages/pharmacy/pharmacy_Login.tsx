@@ -21,18 +21,13 @@ export default function Pharmacy_Login() {
     e.preventDefault()
     try {
       setError('')
-      const res: any = await hospitalApi.loginHospitalUser(username.trim(), password)
+      const res: any = await hospitalApi.loginHospitalUser(username.trim(), password, 'pharmacy')
       const u = res?.user
       const token = res?.token
       const permissions = (u?.permissions && typeof u.permissions === 'object') ? u.permissions : undefined
 
-      const canPharmacy = (() => {
-        if (String(u?.role || '') === 'Admin') return true
-        const arr = (permissions as any)?.pharmacy
-        return Array.isArray(arr) && arr.length > 0
-      })()
-
-      if (!canPharmacy) {
+      const arr = (permissions as any)?.pharmacy
+      if (!Array.isArray(arr) || arr.length === 0) {
         setError('Not permitted')
         return
       }

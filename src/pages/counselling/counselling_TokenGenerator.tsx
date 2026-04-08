@@ -26,6 +26,7 @@ export default function Counselling_TokenGenerator() {
   const skipLookupKeyRef = useRef<string | null>(null)
   const lastPromptKeyRef = useRef<string | null>(null)
   const autoMrnAppliedRef = useRef<boolean>(false)
+  const autoPackagesAppliedRef = useRef<boolean>(false)
   const [selectPatientOpen, setSelectPatientOpen] = useState(false)
   const [phoneMatches, setPhoneMatches] = useState<any[]>([])
   const lastPhonePromptRef = useRef<string | null>(null)
@@ -111,16 +112,64 @@ export default function Counselling_TokenGenerator() {
           }
         }
       }
-      if (Array.isArray(st?.requestedPackages)) setRequestedTests(st.requestedPackages.map((x: any) => String(x)))
+      if (Array.isArray(st?.requestedPackages) && st.requestedPackages.length > 0) {
+        setRequestedTests(st.requestedPackages.map((x: any) => String(x)))
+      } else if ((st?.fromReferralId || st?.prescriptionId) && !autoPackagesAppliedRef.current) {
+        autoPackagesAppliedRef.current = true
+        ;(async () => {
+          try {
+            let counsellingObj: any = null
+            let directTests: string[] = []
+
+            // Step 1: try referral.tests directly
+            if (st?.fromReferralId) {
+              const res: any = await hospitalApi.getReferral(String(st.fromReferralId))
+              const ref = res?.referral
+              directTests = Array.isArray(ref?.tests) ? ref.tests.map((x: any) => String(x)).filter(Boolean) : []
+              if (directTests.length) { setRequestedTests(directTests); return }
+              // grab counselling object from populated prescription
+              counsellingObj = ref?.prescriptionId?.counselling || null
+            }
+
+            // Step 2: fetch prescription directly if needed
+            if (!counsellingObj && st?.prescriptionId) {
+              const res: any = await hospitalApi.getPrescription(String(st.prescriptionId))
+              counsellingObj = res?.prescription?.counselling || null
+            }
+
+            // Step 3: extract package names from counselling.package object
+            // e.g. { d4: true, r4: true } → ['D4', 'R4']
+            if (counsellingObj && typeof counsellingObj === 'object') {
+              const pkg = counsellingObj.package
+              if (pkg && typeof pkg === 'object') {
+                const names = Object.entries(pkg)
+                  .filter(([, v]) => !!v)
+                  .map(([k]) => k.toUpperCase())
+                if (names.length) { setRequestedTests(names); return }
+              }
+              // fallback: counselling as plain string
+              if (typeof counsellingObj === 'string' && counsellingObj.trim()) {
+                setRequestedTests([counsellingObj.trim()])
+              }
+            }
+          } catch { }
+        })()
+      }
       if (st?.fromReferralId) setFromReferralId(String(st.fromReferralId))
       if (st?.referringConsultant) setReferringConsultant(String(st.referringConsultant))
     } catch { }
-  }, [location?.key, navState, selectedPatient])
+  }, [location?.key])
 
   useEffect(() => {
     if (!requestedTests.length || !packages.length) return
-    const set = new Set(requestedTests.map(s => String(s).trim().toLowerCase()))
-    const ids = packages.filter(p => set.has(String(p.name).trim().toLowerCase())).map(p => p.id)
+    const normalize = (s: string) => String(s).trim().toLowerCase()
+    const requested = requestedTests.map(normalize)
+    const ids = packages
+      .filter(p => {
+        const pName = normalize(p.name)
+        return requested.some(r => pName === r || pName.includes(r) || r.includes(pName))
+      })
+      .map(p => p.id)
     if (ids.length) {
       setSelected(prev => Array.from(new Set([...prev, ...ids])))
     }
@@ -235,6 +284,15 @@ export default function Counselling_TokenGenerator() {
   const [payToAccounts, setPayToAccounts] = useState<Array<{ code: string; label: string }>>([])
   const [paymentMethod, setPaymentMethod] = useState<'Cash' | 'Card'>('Cash')
   const [accountNumberIban, setAccountNumberIban] = useState('')
+
+  // Auto-fill amount received with net fee when payment status is paid
+  useEffect(() => {
+    if (paymentStatus === 'unpaid') {
+      setAmountReceivedNow('0')
+    } else {
+      setAmountReceivedNow(net > 0 ? String(net) : '0')
+    }
+  }, [net, paymentStatus])
 
   useEffect(() => {
     let mounted = true

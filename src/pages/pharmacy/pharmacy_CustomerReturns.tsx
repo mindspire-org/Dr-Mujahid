@@ -5,14 +5,18 @@ import Pharmacy_ReturnSlipDialog from '../../components/pharmacy/pharmacy_Return
 
 type Row = {
   id: string
-  datetime: string // ISO
+  datetime: string
   billNo: string
+  mrn: string
   customer: string
   medicines: string
   qtyEach: string
   qty: number
   amount: number
+  received: number
+  duesAfter: number
   payment: 'cash' | 'card' | 'credit'
+  user: string
   saleRaw: any
 }
 
@@ -32,6 +36,7 @@ export default function Pharmacy_Returns() {
   const [totalPages, setTotalPages] = useState(1)
   const [searchTick, setSearchTick] = useState(0)
   const [rows, setRows] = useState<Row[]>([])
+  const [currentDuesMap, setCurrentDuesMap] = useState<Record<string, number>>({})
   const [, setLoading] = useState(false)
   const [selectedSale, setSelectedSale] = useState<any|null>(null)
   const [slip, setSlip] = useState<{ open:boolean; billNo:string; customer?:string; lines:{ name:string; qty:number; amount:number }[]; total:number }>({ open:false, billNo:'', customer:'', lines:[], total:0 })
@@ -53,18 +58,38 @@ export default function Pharmacy_Returns() {
             id: s._id,
             datetime: s.datetime,
             billNo: s.billNo,
+            mrn: s.mrn || '',
             customer: s.customer || 'Walk-in',
             medicines: meds,
             qtyEach,
             qty,
             amount: Number(s.total || 0),
+            received: Number(s.amountReceivedNow ?? s.total ?? 0),
+            duesAfter: Number(s.duesAfter || 0),
             payment: String(s.payment || 'Cash').toLowerCase() as any,
+            user: s.createdBy || '',
             saleRaw: s,
           }
         })
         setRows(mapped)
         setTotal(Number(res.total || mapped.length || 0))
         setTotalPages(Number(res.totalPages || 1))
+
+        // Fetch current dues for each unique patient
+        const keys = Array.from(new Set(
+          items.map((s: any) => String(s.mrn || s.phone || '').trim()).filter(Boolean)
+        )) as string[]
+        if (keys.length) {
+          const results = await Promise.allSettled(
+            keys.map(k => (pharmacyApi as any).getPharmacyAccount(k).then((r: any) => ({ key: k, dues: Number(r?.account?.dues || 0) })))
+          )
+          if (!mounted) return
+          const map: Record<string, number> = {}
+          for (const r of results) {
+            if (r.status === 'fulfilled') map[(r.value as any).key] = (r.value as any).dues
+          }
+          setCurrentDuesMap(map)
+        }
       } catch (e) { console.error(e) }
       setLoading(false)
     })()
@@ -119,11 +144,15 @@ export default function Pharmacy_Returns() {
               <tr>
                 <th className="px-4 py-2 font-medium">Date/Time</th>
                 <th className="px-4 py-2 font-medium">Bill No</th>
+                <th className="px-4 py-2 font-medium">MR #</th>
                 <th className="px-4 py-2 font-medium">Customer</th>
                 <th className="px-4 py-2 font-medium">Medicines</th>
                 <th className="px-4 py-2 font-medium">Qty (each)</th>
                 <th className="px-4 py-2 font-medium">Qty</th>
-                <th className="px-4 py-2 font-medium">Amount</th>
+                <th className="px-4 py-2 font-medium">Total</th>
+                <th className="px-4 py-2 font-medium">Received</th>
+                <th className="px-4 py-2 font-medium">Dues After</th>
+                <th className="px-4 py-2 font-medium">User</th>
                 <th className="px-4 py-2 font-medium">Payment</th>
                 <th className="px-4 py-2 font-medium">Actions</th>
               </tr>
@@ -133,18 +162,28 @@ export default function Pharmacy_Returns() {
                 <tr key={r.id} className="hover:bg-slate-50/50">
                   <td className="px-4 py-2">{formatDateTime(r.datetime)}</td>
                   <td className="px-4 py-2">{r.billNo}</td>
+                  <td className="px-4 py-2">{r.mrn || '-'}</td>
                   <td className="px-4 py-2">{r.customer}</td>
                   <td className="px-4 py-2">{r.medicines}</td>
                   <td className="px-4 py-2">{r.qtyEach}</td>
                   <td className="px-4 py-2">{r.qty}</td>
                   <td className="px-4 py-2">Rs {r.amount.toFixed(2)}</td>
+                  <td className="px-4 py-2">Rs {r.received.toFixed(2)}</td>
+                  <td className="px-4 py-2">{(() => {
+                    const key = r.mrn || ''
+                    const current = key && currentDuesMap[key] != null ? currentDuesMap[key] : r.duesAfter
+                    return current > 0
+                      ? <span className="text-rose-600">Rs {current.toFixed(2)}</span>
+                      : <span className="text-emerald-600">0</span>
+                  })()}</td>
+                  <td className="px-4 py-2">{r.user || '-'}</td>
                   <td className="px-4 py-2">{r.payment}</td>
                   <td className="px-4 py-2"><button onClick={()=>setSelectedSale(r.saleRaw)} className="btn-outline-navy text-xs">Select</button></td>
                 </tr>
               ))}
               {filtered.length === 0 && (
                 <tr>
-                  <td colSpan={9} className="px-4 py-12 text-center text-slate-500">No results</td>
+                  <td colSpan={13} className="px-4 py-12 text-center text-slate-500">No results</td>
                 </tr>
               )}
             </tbody>
@@ -173,7 +212,8 @@ export default function Pharmacy_Returns() {
           customer: selectedSale.customer,
           payment: selectedSale.payment,
           discountPct: selectedSale.discountPct,
-          lines: (selectedSale.lines || []).map((l:any)=>({ medicineId: l.medicineId, name: l.name, unitPrice: l.unitPrice, qty: l.qty }))
+          lines: (selectedSale.lines || []).map((l:any)=>({ medicineId: l.medicineId, name: l.name, unitPrice: l.unitPrice, qty: l.qty })),
+          accountCode: selectedSale.accountCode,
         } : null}
         onSubmitted={({ returnDoc })=>{
           setSelectedSale(null)

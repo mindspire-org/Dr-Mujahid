@@ -296,10 +296,13 @@ export async function get(req: Request, res: Response) {
     const patientId = String(req.params.patientId || '').trim()
     if (!patientId) return res.status(400).json({ error: 'patientId is required' })
 
-    const p: any = await LabPatient.findById(patientId).lean()
-    if (!p) return res.status(404).json({ error: 'Patient not found' })
+    let snap: { mrn?: string; fullName?: string; phone?: string } = {}
+    try {
+      const p: any = await LabPatient.findById(patientId).lean()
+      if (p) snap = { mrn: p?.mrn, fullName: p?.fullName, phone: p?.phoneNormalized || p?.phone }
+    } catch {}
 
-    const acct = await ensureAccount(patientId, { mrn: p?.mrn, fullName: p?.fullName, phone: p?.phoneNormalized || p?.phone })
+    const acct = await ensureAccount(patientId, snap)
     return res.json({ account: { dues: acct.dues, advance: acct.advance } })
   } catch {
     return res.json({ account: { dues: 0, advance: 0 } })

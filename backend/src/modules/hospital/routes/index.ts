@@ -123,6 +123,7 @@ r.delete('/opd/prescriptions/:id', Prescriptions.remove)
 // Referrals (OPD)
 r.post('/opd/referrals', Referrals.create)
 r.get('/opd/referrals', Referrals.list)
+r.get('/opd/referrals/:id', Referrals.getById)
 r.patch('/opd/referrals/:id/status', Referrals.updateStatus)
 r.delete('/opd/referrals/:id', Referrals.remove)
 

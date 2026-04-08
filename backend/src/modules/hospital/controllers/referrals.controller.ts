@@ -3,6 +3,17 @@ import { HospitalReferral } from '../models/Referral'
 import { HospitalEncounter } from '../models/Encounter'
 import { createReferralSchema, updateReferralStatusSchema } from '../validators/referral'
 
+export async function getById(req: Request, res: Response){
+  const { id } = req.params as any
+  const row = await HospitalReferral.findById(String(id))
+    .populate({ path: 'encounterId', select: 'doctorId patientId startAt', populate: [{ path: 'doctorId', select: 'name' }, { path: 'patientId', select: 'fullName mrn phoneNormalized phone gender address fatherName cnicNormalized cnic' }] })
+    .populate({ path: 'doctorId', select: 'name' })
+    .populate({ path: 'prescriptionId', select: 'diagnosticTests diagnosticNotes labTests labNotes therapyTests therapyNotes therapyPlan counselling' })
+    .lean()
+  if (!row) return res.status(404).json({ error: 'Referral not found' })
+  res.json({ referral: row })
+}
+
 export async function create(req: Request, res: Response){
   const data = createReferralSchema.parse(req.body)
   const enc = await HospitalEncounter.findById(data.encounterId)

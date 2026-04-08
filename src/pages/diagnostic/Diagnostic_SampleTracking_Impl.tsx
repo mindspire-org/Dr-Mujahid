@@ -7,6 +7,7 @@ import { Eye, Pencil, Printer, Trash2, X } from 'lucide-react'
 
 type Order = {
   id: string
+  patientId?: string
   createdAt: string
   patient: { mrn?: string; fullName: string; phone?: string; cnic?: string; guardianName?: string }
   tests: string[]
@@ -86,6 +87,7 @@ export default function Diagnostic_SampleTracking() {
 
   // data
   const [orders, setOrders] = useState<Order[]>([])
+  const [liveDues, setLiveDues] = useState<Record<string, number>>({})
   const [total, setTotal] = useState(0)
   const [totalPages, setTotalPages] = useState(1)
   const [notice, setNotice] = useState<{ text: string; kind: 'success' | 'error' } | null>(null)
@@ -98,6 +100,7 @@ export default function Diagnostic_SampleTracking() {
         const res = await diagnosticApi.listOrders({ q: q || undefined, from: from || undefined, to: to || undefined, status: undefined as any, page, limit: rows }) as any
         const items: Order[] = (res.items || []).map((x: any) => ({
           id: String(x._id),
+          patientId: x.patientId ? String(x.patientId) : undefined,
           createdAt: x.createdAt || new Date().toISOString(),
           patient: x.patient || { fullName: '-', phone: '' },
           tests: x.tests || [],
@@ -131,7 +134,31 @@ export default function Diagnostic_SampleTracking() {
           accountNumberIban: x.accountNumberIban || '',
           receivedToAccountCode: x.receivedToAccountCode || '',
         }))
-        if (mounted) { setOrders(items); setTotal(Number(res.total || items.length || 0)); setTotalPages(Number(res.totalPages || 1)) }
+        if (mounted) {
+          setOrders(items)
+          setTotal(Number(res.total || items.length || 0))
+          setTotalPages(Number(res.totalPages || 1))
+
+          // Fetch live dues for each unique patient
+          const uniquePatientIds = Array.from(new Set(
+            items.map(o => o.patientId || '').filter(Boolean)
+          ))
+          if (uniquePatientIds.length) {
+            Promise.allSettled(
+              uniquePatientIds.map(pid => diagnosticApi.getAccount(pid) as Promise<any>)
+            ).then(results => {
+              if (!mounted) return
+              const map: Record<string, number> = {}
+              results.forEach((res, i) => {
+                if (res.status === 'fulfilled') {
+                  const a = res.value?.account
+                  map[uniquePatientIds[i]] = Math.max(0, Number(a?.dues || 0))
+                }
+              })
+              setLiveDues(map)
+            })
+          }
+        }
       } catch (e) { if (mounted) { setOrders([]); setTotal(0); setTotalPages(1) } }
     })(); return () => { mounted = false }
   }, [q, from, to, status, page, rows])
@@ -373,6 +400,7 @@ export default function Diagnostic_SampleTracking() {
               <th className="px-4 py-3 font-semibold">MR No</th>
               <th className="px-4 py-3 font-semibold">Phone</th>
               <th className="px-4 py-3 font-semibold">Payment Status</th>
+              <th className="px-4 py-3 font-semibold">Dues</th>
               <th className="px-4 py-3 font-semibold">Sample Time</th>
               <th className="px-4 py-3 font-semibold">Status</th>
               <th className="px-4 py-3 font-semibold">Actions</th>
@@ -406,6 +434,9 @@ export default function Diagnostic_SampleTracking() {
                           {String(o.paymentStatus || 'paid').toUpperCase()}
                         </span>
                       </div>
+                    </td>
+                    <td className="px-4 py-2 whitespace-nowrap font-bold text-red-600">
+                      Rs. {(o.patientId != null && liveDues[o.patientId] != null ? liveDues[o.patientId] : 0).toLocaleString()}
                     </td>
                     <td className="px-4 py-2 whitespace-nowrap">
                       <input type="time" value={sampleTime} onChange={e => setSampleTimeForItem(o.id, String(tid), e.target.value)} className="rounded-md border border-slate-300 px-2 py-1" />

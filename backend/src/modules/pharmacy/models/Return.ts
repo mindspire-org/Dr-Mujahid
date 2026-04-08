@@ -9,12 +9,14 @@ const LineSchema = new Schema({
 
 const ReturnSchema = new Schema({
   type: { type: String, enum: ['Customer','Supplier'], required: true },
-  datetime: { type: String, required: true }, // ISO
-  reference: { type: String, required: true }, // billNo or invoice
-  party: { type: String, required: true }, // customer name or supplier name
+  datetime: { type: String, required: true },
+  reference: { type: String, required: true },
+  party: { type: String, required: true },
   items: { type: Number, required: true },
   total: { type: Number, required: true },
   lines: { type: [LineSchema], default: [] },
+  accountCode: { type: String },
+  createdByUsername: { type: String },
 }, { timestamps: true })
 
 export type ReturnDoc = {

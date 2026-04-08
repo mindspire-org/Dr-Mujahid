@@ -1,6 +1,6 @@
 import { NavLink, useNavigate } from 'react-router-dom'
 import { useEffect, useState } from 'react'
-import { LogOut, ScrollText, Ticket, Package, ClipboardList, Wallet, Bell, X, History, CreditCard, LayoutDashboard } from 'lucide-react'
+import { LogOut, ScrollText, Ticket, Package, ClipboardList, Wallet, Bell, X, History, CreditCard, LayoutDashboard, GitMerge } from 'lucide-react'
 import { hospitalApi } from '../../utils/api'
 import PortalSwitcher from '../../components/PortalSwitcher'
 
@@ -12,6 +12,7 @@ export const therapyLabSidebarNav = [
   { to: '/therapy-lab/credit-patients', label: 'Credit Patients', icon: CreditCard },
   { to: '/therapy-lab/packages', label: 'Packages', icon: Package },
   { to: '/therapy-lab/appointments', label: 'Appointments', icon: ClipboardList },
+  { to: '/therapy-lab/referrals', label: 'Referrals', icon: GitMerge },
   { to: '/therapy-lab/lab-reports-entry', label: 'Lab Reports Entry', icon: ScrollText },
   { to: '/therapy-lab/manage-petty-cash', label: 'Manage Petty Cash', icon: Wallet },
   { to: '/therapy-lab/manage-bank-balance', label: 'Manage Bank Balance', icon: Wallet },

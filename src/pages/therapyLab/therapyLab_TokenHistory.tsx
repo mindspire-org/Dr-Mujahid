@@ -48,6 +48,7 @@ export default function TherapyLab_TokenHistory() {
   const [from, setFrom] = useState(today)
   const [to, setTo] = useState(today)
   const [rows, setRows] = useState<TokenRow[]>([])
+  const [liveDues, setLiveDues] = useState<Record<string, number>>({})
   const [showSlip, setShowSlip] = useState(false)
   const [slipData, setSlipData] = useState<TherapyLabTokenSlipData | null>(null)
   const [showDetails, setShowDetails] = useState(false)
@@ -114,8 +115,27 @@ export default function TherapyLab_TokenHistory() {
       sessionStatus: t.sessionStatus || 'Queued',
       raw: t,
     }))
-    setRows(items.filter(r => r.status !== 'cancelled'))
+    const filtered = items.filter(r => r.status !== 'cancelled')
+    setRows(filtered)
     setPage(1)
+
+    // Fetch live account dues for each unique patient
+    const uniquePatientIds = Array.from(new Set(
+      filtered.map(r => String(r.raw?.patientId || '')).filter(Boolean)
+    ))
+    if (uniquePatientIds.length) {
+      const results = await Promise.allSettled(
+        uniquePatientIds.map(pid => therapyApi.getAccount(pid) as Promise<any>)
+      )
+      const map: Record<string, number> = {}
+      results.forEach((res, i) => {
+        if (res.status === 'fulfilled') {
+          const a = res.value?.account
+          map[uniquePatientIds[i]] = Math.max(0, Number(a?.dues || 0))
+        }
+      })
+      setLiveDues(map)
+    }
   }
 
   useEffect(() => {
@@ -476,7 +496,7 @@ export default function TherapyLab_TokenHistory() {
                   </div>
                 </Td>
                 <Td className="font-bold text-red-600">
-                  Rs. {Number(r.duesAfter || 0).toLocaleString()}
+                  Rs. {(liveDues[String(r.raw?.patientId || '')] ?? 0).toLocaleString()}
                 </Td>
                 <Td>
                   {r.discountType === '%' ? (() => {

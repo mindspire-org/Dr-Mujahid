@@ -12,6 +12,7 @@ import TherapyLab_TokenHistory from './pages/therapyLab/therapyLab_TokenHistory'
 import TherapyLab_CreditPatients from './pages/therapyLab/therapyLab_CreditPatients'
 import TherapyLab_Packages from './pages/therapyLab/therapyLab_MachinePackages'
 import TherapyLab_Appointments from './pages/therapyLab/therapyLab_Appointments'
+import TherapyLab_Referrals from './pages/therapyLab/therapyLab_Referrals'
 import Hospital_BedManagement from './pages/hospital/hospital_BedManagement'
 import Hospital_TokenGenerator from './pages/hospital/hospital_TokenGenerator'
 import Hospital_TodayTokens from './pages/hospital/hospital_TodayTokens'
@@ -127,8 +128,8 @@ import Pharmacy_PrescriptionIntake from './pages/pharmacy/pharmacy_PrescriptionI
 import Pharmacy_Referrals from './pages/pharmacy/pharmacy_Referrals'
 import Pharmacy_Inventory from './pages/pharmacy/pharmacy_Inventory'
 import Pharmacy_AddInvoicePage from './components/pharmacy/pharmacy_AddInvoicePage'
-import Pharmacy_Customers from './pages/pharmacy/pharmacy_Customers'
 import Pharmacy_Suppliers from './pages/pharmacy/pharmacy_Suppliers'
+import Pharmacy_CreditCustomers from './pages/pharmacy/pharmacy_CreditCustomers'
 import Pharmacy_Companies from './pages/pharmacy/pharmacy_Companies'
 import Pharmacy_Settings from './pages/pharmacy/pharmacy_Settings'
 import Pharmacy_PayInOut from './pages/pharmacy/pharmacy_PayInOut'
@@ -198,6 +199,7 @@ import Counselling_Packages from './pages/counselling/counselling_Packages'
 import Counselling_CreditPatients from './pages/counselling/counselling_CreditPatients'
 import Counselling_Dashboard from './pages/counselling/counselling_Dashboard'
 import Counselling_Appointments from './pages/counselling/counselling_Appointments'
+import Counselling_Referrals from './pages/counselling/counselling_Referrals'
 import Counselling_Login from './pages/counselling/counselling_Login'
 import Counselling_Layout from './components/counselling/Counselling_Layout'
 
@@ -267,6 +269,7 @@ export default function App() {
         <Route path="packages" element={<Counselling_Packages />} />
         <Route path="credit-patients" element={<Counselling_CreditPatients />} />
         <Route path="appointments" element={<Counselling_Appointments />} />
+        <Route path="referrals" element={<Counselling_Referrals />} />
         <Route path="manage-petty-cash" element={<Hospital_PettyCashBalance />} />
         <Route path="manage-bank-balance" element={<Hospital_ManageBankBalance />} />
         <Route path="notifications" element={<Hospital_Notifications />} />
@@ -279,7 +282,7 @@ export default function App() {
         <Route path="credit-patients" element={<TherapyLab_CreditPatients />} />
         <Route path="packages" element={<TherapyLab_Packages />} />
         <Route path="appointments" element={<TherapyLab_Appointments />} />
-        <Route path="lab-reports-entry" element={<Hospital_LabReportsEntry />} />
+        <Route path="referrals" element={<TherapyLab_Referrals />} />
         <Route path="manage-petty-cash" element={<Hospital_PettyCashBalance />} />
         <Route path="manage-bank-balance" element={<Hospital_ManageBankBalance />} />
         <Route path="notifications" element={<Hospital_Notifications />} />
@@ -445,8 +448,8 @@ export default function App() {
         <Route path="inventory" element={<Pharmacy_Inventory />} />
         <Route path="inventory/add-invoice" element={<Pharmacy_AddInvoicePage />} />
         <Route path="inventory/edit-invoice/:id" element={<Pharmacy_AddInvoicePage />} />
-        <Route path="customers" element={<Pharmacy_Customers />} />
         <Route path="suppliers" element={<Pharmacy_Suppliers />} />
+        <Route path="credit-customers" element={<Pharmacy_CreditCustomers />} />
         <Route path="companies" element={<Pharmacy_Companies />} />
         <Route path="sales-history" element={<Pharmacy_SalesHistory />} />
         <Route path="purchase-history" element={<Pharmacy_PurchaseHistory />} />
@@ -513,6 +516,7 @@ export default function App() {
         <Route path="diagnostic/token-generator" element={<Diagnostic_TokenGenerator />} />
         <Route path="diagnostic/sample-tracking" element={<Diagnostic_SampleTracking />} />
         <Route path="diagnostic/appointments" element={<Diagnostic_Appointments />} />
+        <Route path="diagnostic/referrals" element={<Diagnostic_Referrals />} />
         <Route path="counselling/today-tokens" element={<Counselling_TodayTokens />} />
         <Route path="counselling/token-history" element={<Counselling_TokenHistory />} />
         <Route path="counselling/token-generator" element={<Counselling_TokenGenerator />} />
@@ -522,7 +526,9 @@ export default function App() {
         <Route path="therapy/token-history" element={<TherapyLab_TokenHistory />} />
         <Route path="therapy/credit-patients" element={<TherapyLab_CreditPatients />} />
         <Route path="therapy/appointments" element={<TherapyLab_Appointments />} />
+        <Route path="therapy/referrals" element={<TherapyLab_Referrals />} />
         <Route path="counselling/appointments" element={<Counselling_Appointments />} />
+        <Route path="counselling/referrals" element={<Counselling_Referrals />} />
       </Route>
     </Routes>
   )

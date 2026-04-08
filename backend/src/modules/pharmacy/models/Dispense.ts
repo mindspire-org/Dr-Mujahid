@@ -14,6 +14,26 @@ const DispenseSchema = new Schema({
   billNo: { type: String, required: true, index: true },
   customerId: { type: String },
   customer: { type: String, default: 'Walk-in' },
+  mrn: { type: String },
+  phone: { type: String },
+  age: { type: String },
+  gender: { type: String },
+  guardianRel: { type: String },
+  guardianName: { type: String },
+  cnic: { type: String },
+  address: { type: String },
+  paymentStatus: { type: String, enum: ['paid', 'unpaid'], default: 'paid' },
+  accountCode: { type: String },
+  paymentMethodDetail: { type: String },
+  amountReceivedNow: { type: Number, default: 0 },
+  duesBefore: { type: Number, default: 0 },
+  advanceBefore: { type: Number, default: 0 },
+  advanceApplied: { type: Number, default: 0 },
+  duesPaid: { type: Number, default: 0 },
+  paidForToday: { type: Number, default: 0 },
+  advanceAdded: { type: Number, default: 0 },
+  duesAfter: { type: Number, default: 0 },
+  advanceAfter: { type: Number, default: 0 },
   payment: { type: String, enum: ['Cash','Card','Credit'], default: 'Cash' },
   discountPct: { type: Number, default: 0 },
   lineDiscountTotal: { type: Number, default: 0 },
@@ -32,6 +52,26 @@ export type DispenseDoc = {
   billNo: string
   customerId?: string
   customer?: string
+  mrn?: string
+  phone?: string
+  age?: string
+  gender?: string
+  guardianRel?: string
+  guardianName?: string
+  cnic?: string
+  address?: string
+  paymentStatus?: 'paid' | 'unpaid'
+  accountCode?: string
+  paymentMethodDetail?: string
+  amountReceivedNow?: number
+  duesBefore?: number
+  advanceBefore?: number
+  advanceApplied?: number
+  duesPaid?: number
+  paidForToday?: number
+  advanceAdded?: number
+  duesAfter?: number
+  advanceAfter?: number
   payment: 'Cash'|'Card'|'Credit'
   discountPct?: number
   lineDiscountTotal?: number
