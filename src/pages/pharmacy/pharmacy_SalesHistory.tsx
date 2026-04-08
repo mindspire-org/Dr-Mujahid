@@ -6,14 +6,18 @@ import SuggestField from '../../components/SuggestField'
 
 type Row = {
   id: string
-  datetime: string // ISO string
+  datetime: string
   billNo: string
+  mrn: string
   customer: string
   medicines: string
   qtyEach: string
   qty: number
   amount: number
+  received: number
+  duesAfter: number
   payment: 'Cash' | 'Card' | 'Credit'
+  paymentStatus?: string
   user?: string
 }
 
@@ -59,6 +63,8 @@ export default function Pharmacy_SalesHistory() {
     if (changed) setPage(1)
   }, [location.search])
 
+  const [currentDuesMap, setCurrentDuesMap] = useState<Record<string, number>>({})
+
   useEffect(() => {
     let mounted = true
     const load = async () => {
@@ -75,18 +81,38 @@ export default function Pharmacy_SalesHistory() {
             id: s._id,
             datetime: s.datetime,
             billNo: s.billNo,
+            mrn: s.mrn || '',
             customer: s.customer || 'Walk-in',
             medicines: meds.join(', '),
             qtyEach: qtyEach.join(', '),
             qty: qtySum,
             amount: s.total || 0,
+            received: Number(s.amountReceivedNow ?? s.total ?? 0),
+            duesAfter: Number(s.duesAfter || 0),
             payment: s.payment || 'Cash',
+            paymentStatus: s.paymentStatus || 'paid',
             user: s.createdBy || '',
           } as Row
         })
         setRows(mapped)
         setTotal(Number(res.total || mapped.length || 0))
         setTotalPages(Number(res.totalPages || 1))
+
+        // Fetch current dues for each unique patient from PharmacyAccount
+        const keys = Array.from(new Set(
+          items.map((s: any) => String(s.mrn || s.phone || '').trim()).filter(Boolean)
+        ))
+        if (keys.length) {
+          const results = await Promise.allSettled(
+            keys.map(k => (pharmacyApi as any).getPharmacyAccount(k).then((r: any) => ({ key: k, dues: Number(r?.account?.dues || 0) })))
+          )
+          if (!mounted) return
+          const map: Record<string, number> = {}
+          for (const r of results) {
+            if (r.status === 'fulfilled') map[r.value.key] = r.value.dues
+          }
+          setCurrentDuesMap(map)
+        }
       } catch (e) { console.error(e) }
     }
     load()
@@ -258,11 +284,14 @@ export default function Pharmacy_SalesHistory() {
                 <tr>
                   <th className="whitespace-nowrap px-4 py-2 font-medium">Date/Time</th>
                   <th className="whitespace-nowrap px-4 py-2 font-medium">Bill No</th>
+                  <th className="whitespace-nowrap px-4 py-2 font-medium">MR #</th>
                   <th className="whitespace-nowrap px-4 py-2 font-medium">Customer</th>
                   <th className="whitespace-nowrap px-4 py-2 font-medium">Medicines</th>
                   <th className="whitespace-nowrap px-4 py-2 font-medium">Qty (each)</th>
                   <th className="whitespace-nowrap px-4 py-2 font-medium">Qty</th>
-                  <th className="whitespace-nowrap px-4 py-2 font-medium">Amount</th>
+                  <th className="whitespace-nowrap px-4 py-2 font-medium">Total</th>
+                  <th className="whitespace-nowrap px-4 py-2 font-medium">Received</th>
+                  <th className="whitespace-nowrap px-4 py-2 font-medium">Dues After</th>
                   <th className="whitespace-nowrap px-4 py-2 font-medium">User</th>
                   <th className="whitespace-nowrap px-4 py-2 font-medium">Payment</th>
                   <th className="whitespace-nowrap px-4 py-2 font-medium">Actions</th>
@@ -273,11 +302,20 @@ export default function Pharmacy_SalesHistory() {
                   <tr key={r.id} className="hover:bg-slate-50/50">
                     <td className="px-4 py-2">{formatDateTime(r.datetime)}</td>
                     <td className="px-4 py-2">{r.billNo}</td>
+                    <td className="px-4 py-2">{r.mrn || '-'}</td>
                     <td className="px-4 py-2">{r.customer}</td>
                     <td className="px-4 py-2">{r.medicines}</td>
                     <td className="px-4 py-2">{r.qtyEach}</td>
                     <td className="px-4 py-2">{r.qty}</td>
                     <td className="px-4 py-2">Rs {r.amount.toFixed(2)}</td>
+                    <td className="px-4 py-2">Rs {r.received.toFixed(2)}</td>
+                    <td className="px-4 py-2">{(() => {
+                      const key = r.mrn || ''
+                      const current = key && currentDuesMap[key] != null ? currentDuesMap[key] : r.duesAfter
+                      return current > 0
+                        ? <span className="text-rose-600">Rs {current.toFixed(2)}</span>
+                        : <span className="text-emerald-600">0</span>
+                    })()}</td>
                     <td className="px-4 py-2">{r.user || '-'}</td>
                     <td className="px-4 py-2">{r.payment}</td>
                     <td className="px-4 py-2"><button onClick={() => { const s = rawSales.find(x => x._id === r.id); if (s) { setReceiptSale(s); setReceiptOpen(true) } }} className="rounded-md border border-slate-200 px-2 py-1 text-xs hover:bg-slate-50">Reprint</button></td>
@@ -314,7 +352,23 @@ export default function Pharmacy_SalesHistory() {
         discountPct={receiptSale?.discountPct || 0}
         lineDiscountRs={Number(receiptSale?.lineDiscountTotal || 0)}
         taxPct={Number(receiptSale?.taxPct || 0)}
+        currency={receiptSale?.currency}
         customer={receiptSale?.customer}
+        accountCode={receiptSale?.accountCode}
+        paymentMethod={receiptSale?.paymentMethodDetail}
+        amountReceivedNow={Number(receiptSale?.amountReceivedNow ?? receiptSale?.total ?? 0)}
+        createdAt={receiptSale?.datetime}
+        paymentStatus={receiptSale?.paymentStatus}
+        payPreviousDues={receiptSale?.payPreviousDues}
+        useAdvance={receiptSale?.useAdvance}
+        duesBefore={Number(receiptSale?.duesBefore || 0)}
+        advanceBefore={Number(receiptSale?.advanceBefore || 0)}
+        advanceApplied={Number(receiptSale?.advanceApplied || 0)}
+        duesPaid={Number(receiptSale?.duesPaid || 0)}
+        paidForToday={Number(receiptSale?.paidForToday || 0)}
+        advanceAdded={Number(receiptSale?.advanceAdded || 0)}
+        duesAfter={Number(receiptSale?.duesAfter || 0)}
+        advanceAfter={Number(receiptSale?.advanceAfter || 0)}
       />
     </>
   )

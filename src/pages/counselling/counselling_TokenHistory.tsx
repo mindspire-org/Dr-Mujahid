@@ -46,6 +46,7 @@ export default function Counselling_TokenHistory() {
   const [from, setFrom] = useState(today)
   const [to, setTo] = useState(today)
   const [rows, setRows] = useState<TokenRow[]>([])
+  const [liveDues, setLiveDues] = useState<Record<string, number>>({})
   const [showSlip, setShowSlip] = useState(false)
   const [slipData, setSlipData] = useState<CounsellingTokenSlipData | null>(null)
   const [hospitalSettings, setHospitalSettings] = useState<any>(null)
@@ -167,8 +168,27 @@ export default function Counselling_TokenHistory() {
       sessionStatus: t.sessionStatus || 'Queued',
       raw: t,
     }))
-    setRows(items.filter(r => r.status !== 'cancelled'))
+    const filtered = items.filter(r => r.status !== 'cancelled')
+    setRows(filtered)
     setPage(1)
+
+    // Fetch live account dues for each unique patient
+    const uniquePatientIds = Array.from(new Set(
+      filtered.map(r => String(r.raw?.patientId || '')).filter(Boolean)
+    ))
+    if (uniquePatientIds.length) {
+      const results = await Promise.allSettled(
+        uniquePatientIds.map(pid => counsellingApi.getAccount(pid) as Promise<any>)
+      )
+      const map: Record<string, number> = {}
+      results.forEach((res, i) => {
+        if (res.status === 'fulfilled') {
+          const a = res.value?.account
+          map[uniquePatientIds[i]] = Math.max(0, Number(a?.dues || 0))
+        }
+      })
+      setLiveDues(map)
+    }
   }
 
   const filtered = useMemo(() => {
@@ -353,6 +373,7 @@ export default function Counselling_TokenHistory() {
               <Th>Fee</Th>
               <Th>Payment Status</Th>
               <Th>Status</Th>
+              <Th>Dues</Th>
               <Th>Discount</Th>
               <Th>Print</Th>
               <Th>Actions</Th>
@@ -410,6 +431,9 @@ export default function Counselling_TokenHistory() {
                       </div>
                     )}
                   </div>
+                </Td>
+                <Td className="font-bold text-red-600">
+                  Rs. {(liveDues[String(r.raw?.patientId || '')] ?? Number(r.duesAfter || 0)).toLocaleString()}
                 </Td>
                 <Td>
                   {r.discountType === '%' ? `${r.discount}%` : `Rs. ${Number(r.discount || 0).toLocaleString()}`}

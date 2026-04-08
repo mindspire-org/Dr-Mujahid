@@ -2,7 +2,7 @@ import { useMemo, useState, useEffect, useRef } from 'react'
 import { useLocation } from 'react-router-dom'
 import TherapyLab_TokenSlip from '../../components/therapyLab/TherapyLab_TokenSlip'
 import type { TherapyLabTokenSlipData } from '../../components/therapyLab/TherapyLab_TokenSlip'
-import { therapyApi } from '../../utils/api'
+import { therapyApi, hospitalApi } from '../../utils/api'
 import { Plus, Trash2, X } from 'lucide-react'
 
 type Patient = {
@@ -116,6 +116,8 @@ export default function TherapyLab_TokenGenerator() {
 
   const [fromReferralId, setFromReferralId] = useState<string>('')
   const [referringConsultant, setReferringConsultant] = useState('')
+  const [requestedPackageNames, setRequestedPackageNames] = useState<string[]>([])
+  const autoPackagesAppliedRef = useRef<boolean>(false)
 
   const [packages, setPackages] = useState<TherapyPackage[]>([])
   const [packagesLoading, setPackagesLoading] = useState(false)
@@ -491,18 +493,49 @@ export default function TherapyLab_TokenGenerator() {
       if (st?.fromReferralId) setFromReferralId(String(st.fromReferralId))
       if (st?.referringConsultant) setReferringConsultant(String(st.referringConsultant))
 
-      if (st?.requestedPackages && Array.isArray(st.requestedPackages) && packages.length > 0) {
-        const pkgNames = st.requestedPackages.map((n: any) => String(n).trim().toLowerCase())
-        const found = packages.find(p => pkgNames.includes(String(p.packageName || '').trim().toLowerCase()))
-        if (found) {
-          setSelectedPackageId(String(found._id))
-          if (found.machinePreset) {
-            applyMachinePreset(found.machinePreset)
-          }
-        }
+      // Collect requested package names — matching happens in a separate effect
+      if (Array.isArray(st?.requestedPackages) && st.requestedPackages.length > 0) {
+        setRequestedPackageNames(st.requestedPackages.map((n: any) => String(n).trim()))
+      } else if (st?.fromReferralId && !autoPackagesAppliedRef.current) {
+        autoPackagesAppliedRef.current = true
+        ;(async () => {
+          try {
+            const { hospitalApi: hApi } = await import('../../utils/api')
+            const res: any = await hApi.getReferral(String(st.fromReferralId))
+            const ref = res?.referral
+            const direct: string[] = Array.isArray(ref?.tests) ? ref.tests.map((x: any) => String(x)).filter(Boolean) : []
+            if (direct.length) { setRequestedPackageNames(direct); return }
+            const pres = ref?.prescriptionId
+            const fromPres: string[] = Array.isArray(pres?.therapyTests) ? pres.therapyTests.map((x: any) => String(x)).filter(Boolean) : []
+            if (fromPres.length) { setRequestedPackageNames(fromPres); return }
+            // fallback: therapyPlan.packages (e.g. "10")
+            if (pres?.therapyPlan?.packages && String(pres.therapyPlan.packages).trim()) {
+              setRequestedPackageNames([String(pres.therapyPlan.packages).trim()])
+            }
+          } catch { }
+        })()
       }
     } catch { }
-  }, [location?.key, packages])
+  }, [location?.key])
+
+  // When packages load OR requestedPackageNames changes, fuzzy-match and auto-select
+  useEffect(() => {
+    if (!requestedPackageNames.length || !packages.length) return
+    const normalize = (s: string) => String(s).trim().toLowerCase()
+    const requested = requestedPackageNames.map(normalize)
+    const found = packages.find(pkg => {
+      const pName = normalize(pkg.packageName || '')
+      const pNum = String(pkg.package ?? '')
+      return requested.some(r =>
+        pName === r || pName.includes(r) || r.includes(pName) ||
+        pNum === r.replace(/\D/g, '')
+      )
+    })
+    if (found) {
+      setSelectedPackageId(String(found._id))
+      if (found.machinePreset) applyMachinePreset(found.machinePreset)
+    }
+  }, [requestedPackageNames, packages])
 
   const selectedMachines = useMemo(() => {
     const rows: Array<{ id: string; name: string; details?: any }> = []
@@ -606,6 +639,15 @@ export default function TherapyLab_TokenGenerator() {
   const [paymentStatus, setPaymentStatus] = useState<'paid' | 'unpaid'>('paid')
   const [payToAccounts, setPayToAccounts] = useState<Array<{ code: string; label: string }>>([])
 
+  // Auto-fill amount received with net fee when payment status is paid
+  useEffect(() => {
+    if (paymentStatus === 'unpaid') {
+      setAmountReceivedNow('0')
+    } else {
+      setAmountReceivedNow(net > 0 ? String(net) : '0')
+    }
+  }, [net, paymentStatus])
+
   useEffect(() => {
     let mounted = true
     ;(async () => {
@@ -654,9 +696,12 @@ export default function TherapyLab_TokenGenerator() {
 
         if (mounted) {
           setPayToAccounts(opts)
-          const storedPayTo = localStorage.getItem('therapyLab.receivedToAccountCode')
-          if (storedPayTo) setReceivedToAccountCode(storedPayTo)
-          else if (myCode) setReceivedToAccountCode(myCode)
+          if (myCode) {
+            setReceivedToAccountCode(myCode)
+          } else {
+            const storedPayTo = localStorage.getItem('therapyLab.receivedToAccountCode')
+            if (storedPayTo) setReceivedToAccountCode(storedPayTo)
+          }
         }
       } catch {
         if (mounted) setPayToAccounts([])
@@ -751,6 +796,11 @@ export default function TherapyLab_TokenGenerator() {
 
       if (v && a) {
         setAccount({ dues: Math.max(0, Number(a?.dues || 0)), advance: Math.max(0, Number(a?.advance || 0)) })
+      }
+
+      // Mark referral as completed if processing from a referral
+      if (fromReferralId) {
+        try { await hospitalApi.updateReferralStatus(fromReferralId, 'completed') } catch { }
       }
 
       const data: TherapyLabTokenSlipData = {

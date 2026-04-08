@@ -1,7 +1,7 @@
 import { Schema, model, models } from 'mongoose'
 
 const ReferralSchema = new Schema({
-  type: { type: String, enum: ['lab', 'pharmacy', 'diagnostic'], required: true, index: true },
+  type: { type: String, enum: ['lab', 'pharmacy', 'diagnostic', 'therapy', 'counselling'], required: true, index: true },
   status: { type: String, enum: ['pending','completed','cancelled'], default: 'pending', index: true },
   patientId: { type: Schema.Types.ObjectId, ref: 'Lab_Patient', required: true, index: true },
   encounterId: { type: Schema.Types.ObjectId, ref: 'Hospital_Encounter', required: true, index: true },
@@ -16,7 +16,7 @@ ReferralSchema.index({ doctorId: 1, createdAt: -1 })
 
 export type HospitalReferralDoc = {
   _id: string
-  type: 'lab'|'pharmacy'|'diagnostic'
+  type: 'lab'|'pharmacy'|'diagnostic'|'therapy'|'counselling'
   status: 'pending'|'completed'|'cancelled'
   patientId: string
   encounterId: string

@@ -48,19 +48,14 @@ export default function Diagnostic_Login() {
     try { localStorage.removeItem('diagnostic.token') } catch { }
 
     try {
-      const res: any = await hospitalApi.loginHospitalUser(username.trim(), password);
+      const res: any = await hospitalApi.loginHospitalUser(username.trim(), password, 'diagnostic');
 
       const u = res?.user
       const token = res?.token
       const permissions = (u?.permissions && typeof u.permissions === 'object') ? u.permissions : undefined
 
-      const canDiagnostic = (() => {
-        if (String(u?.role || '') === 'Admin') return true
-        const arr = (permissions as any)?.diagnostic
-        return Array.isArray(arr) && arr.length > 0
-      })()
-
-      if (!canDiagnostic) {
+      const arr = (permissions as any)?.diagnostic
+      if (!Array.isArray(arr) || arr.length === 0) {
         setError('Not permitted')
         return
       }
@@ -81,7 +76,9 @@ export default function Diagnostic_Login() {
 
       navigate("/diagnostic");
     } catch (err: any) {
-      setError("Invalid credentials");
+      const msg = String((err as any)?.message || 'Invalid credentials')
+      const clean = /<\/?(html|head|body)/i.test(msg) ? 'Login service not available. Please try again or contact admin.' : msg
+      setError(clean)
     }
   };
 

@@ -393,6 +393,8 @@ export async function createOpd(req: Request, res: Response){
       tokenId: String((tok as any)._id),
       dateIso,
       fee: finalFee,
+      amountReceived: amountReceivedNow,
+      paymentStatus: (data as any).paymentStatus || 'paid',
       doctorId: data.doctorId,
       departmentId: data.departmentId,
       patientId: String((patient as any)?._id || ''),

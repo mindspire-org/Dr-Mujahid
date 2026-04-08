@@ -11,6 +11,7 @@ const JournalSchema = new Schema({
   txId: { type: String, index: true, unique: true, sparse: true },
   dateIso: { type: String, required: true },
   createdBy: { type: Schema.Types.ObjectId, ref: 'Hospital_User', index: true },
+  createdByUsername: { type: String },
   refType: { type: String },
   refId: { type: String },
   memo: { type: String },

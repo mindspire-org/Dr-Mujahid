@@ -7,6 +7,7 @@ import { InventoryItem } from '../models/InventoryItem'
 import { ApiError } from '../../../common/errors/ApiError'
 import mongoose from 'mongoose'
 import { AuditLog } from '../models/AuditLog'
+import { FinanceJournal } from '../../hospital/models/FinanceJournal'
 
 export async function list(req: Request, res: Response){
   const parsed = returnQuerySchema.safeParse(req.query)
@@ -109,6 +110,10 @@ export async function create(req: Request, res: Response){
     // Persist Return document using computed amounts to ensure accuracy
     const items = computedReturnLines.reduce((s, l) => s + (l.qty || 0), 0)
     const total = computedReturnLines.reduce((s, l) => s + (l.amount || 0), 0)
+    const accountCode = String((data as any).accountCode || sale.accountCode || '').trim().toUpperCase()
+    const bodyCreatedBy = String((data as any).createdBy || '').trim()
+    const jwtUsername = String((req as any).user?.username || (req as any).user?.name || '').trim()
+    const createdByUsername = bodyCreatedBy || jwtUsername
     const doc = await Return.create({
       type: 'Customer',
       datetime: data.datetime,
@@ -117,9 +122,44 @@ export async function create(req: Request, res: Response){
       items,
       total: Number(total.toFixed(2)),
       lines: computedReturnLines,
+      accountCode: accountCode || undefined,
+      createdByUsername: createdByUsername || undefined,
     })
+
+    // Finance journal: reverse the original sale — debit PHARMACY_REVENUE, credit accountCode
+    // Mirrors hospital reverseOpdTokenAsReturn pattern
+    if (accountCode && total > 0) {
+      try {
+        const oidRe = /^[a-f0-9]{24}$/i
+        const actorId = String((req as any).user?.sub || (req as any).user?.id || '').trim()
+        await FinanceJournal.create({
+          dateIso: new Date().toISOString().slice(0, 10),
+          createdBy: oidRe.test(actorId) ? actorId : undefined,
+          createdByUsername: createdByUsername || undefined,
+          refType: 'pharmacy_return',
+          refId: String((doc as any)._id),
+          memo: `Pharmacy Return ${sale.billNo}${sale.customer ? ` — ${sale.customer}` : ''}${createdByUsername ? ` by ${createdByUsername}` : ''}`.trim(),
+          lines: [
+            { account: 'PHARMACY_REVENUE', debit: Number(total.toFixed(2)) },
+            {
+              account: accountCode,
+              credit: Number(total.toFixed(2)),
+              tags: {
+                createdBy: createdByUsername || undefined,
+                refType: 'pharmacy_return',
+                patientName: String(sale.customer || doc.party || '').trim() || undefined,
+                mrn: String((sale as any).mrn || '').trim() || undefined,
+              },
+            },
+          ],
+        })
+      } catch (e) {
+        console.warn('Finance journal failed for pharmacy return', e)
+      }
+    }
+
     try {
-      const actor = (req as any).user?.name || (req as any).user?.email || 'system'
+      const actor = createdByUsername || (req as any).user?.name || (req as any).user?.email || 'system'
       await AuditLog.create({
         actor,
         action: 'Customer Return',

@@ -13,6 +13,7 @@ import {
   Ticket,
   Wallet,
   Bell,
+  GitMerge,
 } from 'lucide-react'
 import PortalSwitcher from '../PortalSwitcher'
 
@@ -28,6 +29,7 @@ export const counsellingSidebarNavTop: NavItem[] = [
   { to: '/counselling/credit-patients', label: 'Credit Patients', icon: Users },
   { to: '/counselling/manage-petty-cash', label: 'Manage Petty Cash', icon: Wallet },
   { to: '/counselling/manage-bank-balance', label: 'Manage Bank Balance', icon: Wallet },
+  { to: '/counselling/referrals', label: 'Referrals', icon: GitMerge },
   { to: '/counselling/notifications', label: 'Notifications', icon: Bell },
 ]
 

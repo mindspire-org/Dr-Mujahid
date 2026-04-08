@@ -525,6 +525,19 @@ export const pharmacyApi = {
     return api(`/pharmacy/customers/${id}/payments${s ? `?${s}` : ''}`)
   },
 
+  // Credit Customers (dues/advance remaining OR unpaid sales)
+  listCreditCustomers: (params?: { q?: string; page?: number; limit?: number }) => {
+    const qs = new URLSearchParams()
+    if (params?.q) qs.set('q', params.q)
+    if (params?.page != null) qs.set('page', String(params.page))
+    if (params?.limit != null) qs.set('limit', String(params.limit))
+    const s = qs.toString()
+    return api(`/pharmacy/credit-customers${s ? `?${s}` : ''}`)
+  },
+  payCreditCustomer: (customerId: string, data: { amount: number; currentDues?: number; paymentMethod: 'Cash' | 'Card'; receivedToAccountCode: string; accountNumberIban?: string; receptionistName?: string; note?: string; createdBy?: string }) =>
+    api(`/pharmacy/customers/${encodeURIComponent(customerId)}/pay`, { method: 'POST', body: JSON.stringify(data) }),
+  getPharmacyAccount: (key: string) => api(`/pharmacy/accounts/${encodeURIComponent(key)}`),
+
   // Expenses
   listExpenses: (params?: { from?: string; to?: string; minAmount?: number; search?: string; type?: string; page?: number; limit?: number; }) => {
     const qs = new URLSearchParams()
@@ -598,7 +611,7 @@ export const pharmacyApi = {
   searchMedicines: async (q?: string, limit?: number) => {
     const qs = new URLSearchParams()
     if (q) qs.set('search', q)
-    qs.set('limit', String(limit || 20))
+    qs.set('limit', String(limit || 10000))
     const res: any = await api(`/pharmacy/inventory${qs.toString() ? `?${qs}` : ''}`)
     const items: any[] = res?.items ?? res ?? []
     return { suggestions: items.map((it: any) => ({ id: String(it._id || it.key || it.name || ''), name: String(it.name || '') })) }
@@ -796,6 +809,21 @@ export const pharmacyApi = {
     return api(`/pharmacy/returns${s ? `?${s}` : ''}`)
   },
   createReturn: (data: any) => api('/pharmacy/returns', { method: 'POST', body: JSON.stringify(data) }),
+
+  // Patient pharmacy history (by MRN)
+  listSalesByMrn: (mrn: string, limit = 200) => {
+    const qs = new URLSearchParams()
+    qs.set('mrn', mrn)
+    qs.set('limit', String(limit))
+    return api(`/pharmacy/sales?${qs}`)
+  },
+  listReturnsByMrnOrName: (billNo: string, limit = 50) => {
+    const qs = new URLSearchParams()
+    qs.set('type', 'Customer')
+    qs.set('reference', billNo)
+    qs.set('limit', String(limit))
+    return api(`/pharmacy/returns?${qs}`)
+  },
 
   // Audit Logs
   listAuditLogs: (params?: { search?: string; action?: string; from?: string; to?: string; page?: number; limit?: number }) => {
@@ -2656,9 +2684,9 @@ export const hospitalApi = {
   deletePrescription: (id: string) => api(`/hospital/opd/prescriptions/${id}`, { method: 'DELETE' }),
 
   // Referrals (OPD)
-  createReferral: (data: { type: 'lab' | 'pharmacy' | 'diagnostic'; encounterId: string; doctorId: string; prescriptionId?: string; tests?: string[]; notes?: string }) =>
+  createReferral: (data: { type: 'lab' | 'pharmacy' | 'diagnostic' | 'therapy' | 'counselling'; encounterId: string; doctorId: string; prescriptionId?: string; tests?: string[]; notes?: string }) =>
     api('/hospital/opd/referrals', { method: 'POST', body: JSON.stringify(data) }),
-  listReferrals: (params?: { type?: 'lab' | 'pharmacy' | 'diagnostic'; status?: 'pending' | 'completed' | 'cancelled'; doctorId?: string; from?: string; to?: string; page?: number; limit?: number }) => {
+  listReferrals: (params?: { type?: 'lab' | 'pharmacy' | 'diagnostic' | 'therapy' | 'counselling'; status?: 'pending' | 'completed' | 'cancelled'; doctorId?: string; from?: string; to?: string; page?: number; limit?: number }) => {
     const qs = new URLSearchParams()
     if (params?.type) qs.set('type', params.type)
     if (params?.status) qs.set('status', params.status)
@@ -2672,6 +2700,7 @@ export const hospitalApi = {
   },
   updateReferralStatus: (id: string, status: 'pending' | 'completed' | 'cancelled') =>
     api(`/hospital/opd/referrals/${id}/status`, { method: 'PATCH', body: JSON.stringify({ status }) }),
+  getReferral: (id: string) => api(`/hospital/opd/referrals/${id}`),
   deleteReferral: (id: string) => api(`/hospital/opd/referrals/${id}`, { method: 'DELETE' }),
 
   // Notifications (Doctor portal)

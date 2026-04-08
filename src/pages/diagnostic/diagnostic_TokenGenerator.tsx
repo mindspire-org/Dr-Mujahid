@@ -39,6 +39,7 @@ export default function Diagnostic_TokenGenerator() {
   const [fromReferralId, setFromReferralId] = useState<string>('')
   const [requestedTests, setRequestedTests] = useState<string[]>([])
   const [referringConsultant, setReferringConsultant] = useState('')
+  const autoTestsAppliedRef = useRef<boolean>(false)
 
   // Tests (from backend)
   type Test = { id: string; name: string; price: number }
@@ -111,7 +112,35 @@ export default function Diagnostic_TokenGenerator() {
           }
         }
       }
-      if (Array.isArray(st?.requestedTests)) setRequestedTests(st.requestedTests.map((x: any) => String(x)))
+      if (Array.isArray(st?.requestedTests) && st.requestedTests.length > 0) {
+        setRequestedTests(st.requestedTests.map((x: any) => String(x)))
+      } else if (st?.fromReferralId && !autoTestsAppliedRef.current) {
+        // Fetch the referral to get prescription tests
+        autoTestsAppliedRef.current = true
+        ;(async () => {
+          try {
+            const res: any = await hospitalApi.getReferral(String(st.fromReferralId))
+            const ref = res?.referral
+            // Try tests stored directly on referral first
+            const directTests: string[] = Array.isArray(ref?.tests) ? ref.tests.map((x: any) => String(x)).filter(Boolean) : []
+            if (directTests.length) { setRequestedTests(directTests); return }
+            // Fall back to prescription's diagnosticTests
+            const pres = ref?.prescriptionId
+            const diagTests: string[] = Array.isArray(pres?.diagnosticTests) ? pres.diagnosticTests.map((x: any) => String(x)).filter(Boolean) : []
+            if (diagTests.length) setRequestedTests(diagTests)
+          } catch { }
+        })()
+      } else if (st?.prescriptionId && !autoTestsAppliedRef.current) {
+        autoTestsAppliedRef.current = true
+        ;(async () => {
+          try {
+            const res: any = await hospitalApi.getPrescription(String(st.prescriptionId))
+            const pres = res?.prescription
+            const diagTests: string[] = Array.isArray(pres?.diagnosticTests) ? pres.diagnosticTests.map((x: any) => String(x)).filter(Boolean) : []
+            if (diagTests.length) setRequestedTests(diagTests)
+          } catch { }
+        })()
+      }
       if (st?.fromReferralId) setFromReferralId(String(st.fromReferralId))
       if (st?.referringConsultant) setReferringConsultant(String(st.referringConsultant))
     } catch { }
@@ -120,10 +149,15 @@ export default function Diagnostic_TokenGenerator() {
   // When tests list is loaded or requestedTests changes, preselect those tests
   useEffect(() => {
     if (!requestedTests.length || !tests.length) return
-    const set = new Set(requestedTests.map(s => String(s).trim().toLowerCase()))
-    const ids = tests.filter(t => set.has(String(t.name).trim().toLowerCase())).map(t => t.id)
+    const normalize = (s: string) => String(s).trim().toLowerCase()
+    const requested = requestedTests.map(normalize)
+    const ids = tests
+      .filter(t => {
+        const tName = normalize(t.name)
+        return requested.some(r => tName === r || tName.includes(r) || r.includes(tName))
+      })
+      .map(t => t.id)
     if (ids.length) {
-      // don't duplicate existing selections
       setSelected(prev => Array.from(new Set([...prev, ...ids])))
     }
   }, [requestedTests, tests])
@@ -165,6 +199,18 @@ export default function Diagnostic_TokenGenerator() {
   const [payPreviousDues, setPayPreviousDues] = useState(false)
   const [useAdvance, setUseAdvance] = useState(false)
   const [amountReceivedNow, setAmountReceivedNow] = useState('0')
+
+  // Payment (declare early so paymentStatus is available to effects below)
+  const [paymentStatus, setPaymentStatus] = useState<'paid' | 'unpaid'>('paid')
+
+  // Auto-fill amount received with net fee when payment status is paid
+  useEffect(() => {
+    if (paymentStatus === 'unpaid') {
+      setAmountReceivedNow('0')
+    } else {
+      setAmountReceivedNow(net > 0 ? String(net) : '0')
+    }
+  }, [net, paymentStatus])
 
   useEffect(() => {
     let cancelled = false
@@ -243,7 +289,6 @@ export default function Diagnostic_TokenGenerator() {
   }, [account?.dues, account?.advance, amountReceivedNow, useAdvance, payPreviousDues, net])
 
   // Payment (mirrors Hospital token generator)
-  const [paymentStatus, setPaymentStatus] = useState<'paid' | 'unpaid'>('paid')
   const [receivedToAccountCode, setReceivedToAccountCode] = useState('')
   const [payToAccounts, setPayToAccounts] = useState<Array<{ code: string; label: string }>>([])
   const [paymentMethod, setPaymentMethod] = useState<'Cash' | 'Card'>('Cash')
@@ -455,6 +500,7 @@ export default function Diagnostic_TokenGenerator() {
     setFromReferralId('')
     setRequestedTests([])
     autoMrnAppliedRef.current = false
+    autoTestsAppliedRef.current = false
     lastPhonePromptRef.current = null
     lastPromptKeyRef.current = null
     skipLookupKeyRef.current = null

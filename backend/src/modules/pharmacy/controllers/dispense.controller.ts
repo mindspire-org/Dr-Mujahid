@@ -4,7 +4,24 @@ import { dispenseCreateSchema, salesQuerySchema } from '../validators/dispense'
 import { InventoryItem } from '../models/InventoryItem'
 import { AuditLog } from '../models/AuditLog'
 import { Settings } from '../models/Settings'
+import { PharmacyAccount } from '../models/PharmacyAccount'
+import { FinanceJournal } from '../../hospital/models/FinanceJournal'
 import mongoose from 'mongoose'
+
+const clamp0 = (n: any) => Math.max(0, Number(n || 0))
+
+async function ensureAccount(customerId: string, snap?: { mrn?: string; fullName?: string; phone?: string }) {
+  const nowIso = new Date().toISOString()
+  const doc = await PharmacyAccount.findOneAndUpdate(
+    { customerId },
+    {
+      $setOnInsert: { customerId, dues: 0, advance: 0 },
+      $set: { mrn: snap?.mrn, fullName: snap?.fullName, phone: snap?.phone, updatedAtIso: nowIso },
+    },
+    { upsert: true, new: true }
+  ).lean()
+  return { dues: clamp0((doc as any)?.dues), advance: clamp0((doc as any)?.advance) }
+}
 
 function parseDateForRange(input?: string, endOfDay?: boolean) {
   if (!input) return undefined
@@ -79,6 +96,26 @@ export async function create(req: Request, res: Response){
     billNo,
     customerId: (data as any).customerId || undefined,
     customer: data.customer || 'Walk-in',
+    mrn: String((data as any).mrn || '').trim() || undefined,
+    phone: String((data as any).phone || '').trim() || undefined,
+    age: String((data as any).age || '').trim() || undefined,
+    gender: String((data as any).gender || '').trim() || undefined,
+    guardianRel: String((data as any).guardianRel || '').trim() || undefined,
+    guardianName: String((data as any).guardianName || '').trim() || undefined,
+    cnic: String((data as any).cnic || '').trim() || undefined,
+    address: String((data as any).address || '').trim() || undefined,
+    paymentStatus: (data as any).paymentStatus || 'paid',
+    accountCode: String((data as any).accountCode || '').trim() || undefined,
+    paymentMethodDetail: String((data as any).paymentMethodDetail || '').trim() || undefined,
+    amountReceivedNow: Number((data as any).amountReceivedNow || 0),
+    duesBefore: Number((data as any).duesBefore || 0),
+    advanceBefore: Number((data as any).advanceBefore || 0),
+    advanceApplied: Number((data as any).advanceApplied || 0),
+    duesPaid: Number((data as any).duesPaid || 0),
+    paidForToday: Number((data as any).paidForToday || 0),
+    advanceAdded: Number((data as any).advanceAdded || 0),
+    duesAfter: Number((data as any).duesAfter || 0),
+    advanceAfter: Number((data as any).advanceAfter || 0),
     payment: data.payment,
     discountPct: data.discountPct || 0,
     lineDiscountTotal: lineDiscount,
@@ -128,6 +165,95 @@ export async function create(req: Request, res: Response){
       detail: `Bill ${doc.billNo} — ${doc.customer} — Rs ${Number(doc.total||0).toFixed(2)}`,
     })
   } catch {}
+
+  // Update PharmacyAccount (dues/advance) — mirrors DiagnosticAccount update
+  const customerId = String((data as any).customerId || '').trim()
+  const mrn = String((data as any).mrn || '').trim()
+  const fullName = String(data.customer || '').trim()
+  const phone = String((data as any).phone || '').trim()
+  const duesAfterVal = clamp0((data as any).duesAfter)
+  const advanceAfterVal = clamp0((data as any).advanceAfter)
+  // Use mrn as key if no customerId — always update if we have any identifier
+  const accountKey = customerId || mrn || phone || (fullName && fullName !== 'Walk-in' ? fullName : '')
+  if (accountKey) {
+    try {
+      await PharmacyAccount.findOneAndUpdate(
+        { customerId: accountKey },
+        {
+          $setOnInsert: { customerId: accountKey },
+          $set: {
+            mrn: mrn || undefined,
+            fullName: (fullName && fullName !== 'Walk-in') ? fullName : undefined,
+            phone: phone || undefined,
+            dues: duesAfterVal,
+            advance: advanceAfterVal,
+            updatedAtIso: new Date().toISOString(),
+          },
+        },
+        { upsert: true }
+      )
+    } catch (e) {
+      console.warn('PharmacyAccount update failed:', e)
+    }
+  }
+
+  // Finance journal — mirrors diagnostic order journal
+  // Split: amountReceivedNow → debit petty cash, remaining dues → debit AR
+  try {
+    const paymentStatus = String((data as any).paymentStatus || 'paid')
+    const accountCode = String((data as any).accountCode || '').trim().toUpperCase()
+    const paymentMethodDetail = String((data as any).paymentMethodDetail || '').toUpperCase()
+    const paidMethod = paymentMethodDetail === 'CARD' ? 'Bank' : 'Cash'
+    const cashAccount = accountCode || (paidMethod === 'Bank' ? 'BANK' : 'CASH')
+    const totalAmt = Number(doc.total || 0)
+    const amountReceived = paymentStatus === 'unpaid' ? 0 : clamp0((data as any).amountReceivedNow)
+    const duesAfterAmt = clamp0((data as any).duesAfter)
+    const createdByStr = String((data as any)?.createdBy || '').trim()
+    const oidRe = /^[a-f0-9]{24}$/i
+    const journalCreatedBy = oidRe.test(createdByStr) ? createdByStr : undefined
+    const memo = `Pharmacy Sale ${doc.billNo}${fullName ? ` — ${fullName}` : ''}${createdByStr && !oidRe.test(createdByStr) ? ` (${createdByStr})` : ''}`.trim()
+
+    if (totalAmt > 0) {
+      const lines: Array<{ account: string; debit?: number; credit?: number }> = []
+
+      // Credit revenue first (so it appears as the primary counterparty in petty cash view)
+      lines.push({ account: 'PHARMACY_REVENUE', credit: totalAmt })
+      // Cash received → debit petty/bank account
+      if (amountReceived > 0 && cashAccount) {
+        lines.push({
+          account: cashAccount,
+          debit: amountReceived,
+          tags: {
+            createdBy: createdByStr || undefined,
+            refType: 'pharmacy_sale',
+            patientName: String((data as any).customer || '').trim() || undefined,
+            mrn: String((data as any).mrn || '').trim() || undefined,
+          },
+        })
+      }
+      // Remaining unpaid → debit AR
+      if (duesAfterAmt > 0) {
+        lines.push({ account: 'AR', debit: duesAfterAmt })
+      }
+      // If fully unpaid (no amount received) → debit AR for full amount
+      if (amountReceived === 0 && duesAfterAmt === 0) {
+        lines.push({ account: 'AR', debit: totalAmt })
+      }
+
+      await FinanceJournal.create({
+        dateIso: new Date().toISOString().slice(0, 10),
+        createdBy: journalCreatedBy,
+        createdByUsername: createdByStr && !oidRe.test(createdByStr) ? createdByStr : undefined,
+        refType: 'pharmacy_sale',
+        refId: String((doc as any)._id),
+        memo,
+        lines,
+      })
+    }
+  } catch (e) {
+    console.warn('Finance journal failed for pharmacy sale', e)
+  }
+
   res.status(201).json(doc)
 }
 
@@ -141,6 +267,8 @@ export async function list(req: Request, res: Response){
   if (payment && payment !== 'Any') filter.payment = payment
   if (medicine) filter['lines.name'] = new RegExp(medicine, 'i')
   if (user) filter.createdBy = new RegExp(user, 'i')
+  const mrnParam = String((req.query as any).mrn || '').trim()
+  if (mrnParam) filter.mrn = new RegExp(`^${mrnParam.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i')
   if (from || to){
     filter.datetime = {}
     const start = parseDateForRange(from, false)

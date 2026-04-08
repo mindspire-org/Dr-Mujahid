@@ -1,8 +1,26 @@
 import { useEffect, useMemo, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useLocation } from 'react-router-dom'
 import { hospitalApi } from '../../utils/api'
 
-export default function Pharmacy_Referrals() {
+function formatCounsellingNotes(notes: any): string {
+  if (!notes) return ''
+  if (typeof notes === 'string') {
+    if (notes === '[object Object]') return ''
+    return notes.trim()
+  }
+  if (typeof notes !== 'object') return String(notes)
+  const parts: string[] = []
+  if (notes.lcc) parts.push(`LCC: ${notes.lcc}${notes.lccMonth ? ` (${notes.lccMonth})` : ''}`)
+  const pkg = notes.package
+  if (pkg) {
+    if (pkg.d4) parts.push(`D4${pkg.d4Month ? ` (${pkg.d4Month})` : ''}`)
+    if (pkg.r4) parts.push(`R4${pkg.r4Month ? ` (${pkg.r4Month})` : ''}`)
+  }
+  if (notes.note && String(notes.note).trim()) parts.push(String(notes.note).trim())
+  return parts.join(' • ')
+}
+
+export default function Counselling_Referrals() {
   const [list, setList] = useState<any[]>([])
   const [status, setStatus] = useState<'pending' | 'completed' | 'cancelled' | 'all'>('all')
   const [q, setQ] = useState('')
@@ -11,15 +29,18 @@ export default function Pharmacy_Referrals() {
   const [total, setTotal] = useState(0)
   const [from, setFrom] = useState('')
   const [to, setTo] = useState('')
+  const [processing, setProcessing] = useState<string>('')
   const [cancelDialog, setCancelDialog] = useState<{ id: string; name: string } | null>(null)
   const [cancelling, setCancelling] = useState(false)
   const navigate = useNavigate()
+  const { pathname } = useLocation()
+  const isReception = pathname.startsWith('/reception')
 
   useEffect(() => { load() }, [status, page, limit, from, to])
 
   async function load() {
     try {
-      const res: any = await hospitalApi.listReferrals({ type: 'pharmacy', status: status === 'all' ? undefined : status, from: from || undefined, to: to || undefined, page, limit })
+      const res: any = await hospitalApi.listReferrals({ type: 'counselling', status: status === 'all' ? undefined : status, from: from || undefined, to: to || undefined, page, limit })
       setList(res?.referrals || [])
       setTotal(Number(res?.total || 0))
     } catch { setList([]); setTotal(0) }
@@ -36,6 +57,41 @@ export default function Pharmacy_Referrals() {
     finally { setCancelling(false) }
   }
 
+  async function processReferral(r: any) {
+    setProcessing(r._id)
+    try {
+      const p = r?.encounterId?.patientId || {}
+      const d = r?.doctorId || r?.encounterId?.doctorId || {}
+      const resolvedPackages: string[] = Array.isArray(r?.tests) ? r.tests.filter(Boolean) : []
+      const patient = {
+        mrn: p.mrn || '',
+        fullName: p.fullName || '',
+        phone: p.phoneNormalized || p.phone || '',
+        gender: p.gender || '',
+        address: p.address || '',
+        fatherName: p.fatherName || '',
+        guardianRelation: p.guardianRel || '',
+        cnic: p.cnicNormalized || p.cnic || '',
+        age: p.age || '',
+      }
+      navigate(isReception ? '/reception/counselling/token-generator' : '/counselling/token-generator', {
+        state: {
+          fromReferralId: r._id,
+          prescriptionId: r?.prescriptionId || undefined,
+          encounterId: r?.encounterId?._id || r?.encounterId,
+          patient,
+          referringConsultant: d?.name ? `Dr. ${d.name}` : '',
+          requestedPackages: resolvedPackages,
+          notes: r?.notes || '',
+        },
+      })
+    } catch (e: any) {
+      alert(e?.message || 'Failed to load referral details')
+    } finally {
+      setProcessing('')
+    }
+  }
+
   const filtered = useMemo(() => {
     const s = q.trim().toLowerCase()
     return (list || []).filter((r: any) => !s || `${r.encounterId?.patientId?.fullName || ''} ${r.encounterId?.patientId?.mrn || ''} ${r.doctorId?.name || ''}`.toLowerCase().includes(s))
@@ -45,7 +101,7 @@ export default function Pharmacy_Referrals() {
     <>
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-2 flex-wrap">
-        <div className="text-xl font-semibold text-slate-800">Pharmacy Referrals</div>
+        <div className="text-xl font-semibold text-slate-800">Counselling Referrals</div>
         <div className="flex items-center gap-2 flex-wrap">
           <input type="date" value={from} onChange={e => { setPage(1); setFrom(e.target.value) }} className="rounded-md border border-slate-300 px-3 py-2 text-sm" />
           <span className="text-slate-500 text-sm">to</span>
@@ -81,9 +137,16 @@ export default function Pharmacy_Referrals() {
                 <span>•</span>
                 <span>By: Dr. {r.doctorId?.name || '-'}</span>
               </div>
-              {r.notes && <div className="mt-1 text-xs text-slate-700"><span className="font-semibold">Notes:</span> {r.notes}</div>}
+              {(() => { const n = formatCounsellingNotes(r.notes); return n ? <div className="mt-1 text-xs text-slate-700"><span className="font-semibold">Notes:</span> {n}</div> : null })()}
               <div className="mt-2 flex flex-wrap items-center gap-2">
-                {r.status !== 'completed' && <button className="rounded-md border border-sky-300 bg-sky-50 px-3 py-1 text-sm text-sky-700 disabled:opacity-50" disabled={!r.prescriptionId} onClick={() => { try { localStorage.setItem('pharmacy.pos.pendingReferralId', String(r._id)) } catch {} navigate(`/pharmacy/prescriptions/${r.prescriptionId}`) }}>Open Intake</button>}
+                <button
+                  className="rounded-md border border-blue-300 bg-blue-50 px-3 py-1 text-sm text-blue-700 disabled:opacity-50"
+                  hidden={r.status === 'completed'}
+                  disabled={processing === r._id}
+                  onClick={() => processReferral(r)}
+                >
+                  {processing === r._id ? 'Loading...' : 'Process'}
+                </button>
                 {r.status !== 'completed' && <button className="rounded-md border border-orange-300 bg-orange-50 px-3 py-1 text-sm text-orange-700" onClick={() => setCancelDialog({ id: r._id, name: r.encounterId?.patientId?.fullName || 'this referral' })}>Cancel</button>}
               </div>
             </div>

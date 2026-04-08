@@ -3,7 +3,7 @@ import { Plus, Grid, List, Trash2 } from 'lucide-react'
 import Pharmacy_POSCart from '../../components/pharmacy/pharmacy_POSCart'
 import Pharmacy_ProcessPaymentDialog from '../../components/pharmacy/pharmacy_ProcessPaymentDialog'
 import Pharmacy_POSReceiptDialog from '../../components/pharmacy/pharmacy_POSReceiptDialog'
-import { pharmacyApi } from '../../utils/api'
+import { pharmacyApi, hospitalApi } from '../../utils/api'
 
 type Product = {
   id: string
@@ -35,7 +35,9 @@ export default function Pharmacy_POS() {
   const [cart, setCart] = useState<CartLine[]>([])
   const [payOpen, setPayOpen] = useState(false)
   const [receiptOpen, setReceiptOpen] = useState(false)
-  const [payment, setPayment] = useState<{ method: 'cash' | 'credit'; customer?: string; customerId?: string } | null>(null)
+  const [payment, setPayment] = useState<{ method: 'cash'; customer?: string; mrn?: string; customerId?: string; accountCode?: string; paymentMethod?: string; amountReceivedNow?: number; payPreviousDues?: boolean; useAdvance?: boolean; duesBefore?: number; advanceBefore?: number; advanceApplied?: number; duesPaid?: number; paidForToday?: number; advanceAdded?: number; duesAfter?: number; advanceAfter?: number; paymentStatus?: 'paid' | 'unpaid' } | null>(null)
+  const [pendingPatient, setPendingPatient] = useState<{ patientName?: string; mrn?: string; phone?: string; age?: string; gender?: string; guardianRel?: string; guardianName?: string; cnic?: string; address?: string } | null>(null)
+  const [pendingReferralId, setPendingReferralId] = useState<string>('')
   const [products, setProducts] = useState<Product[]>([])
   const [productIndex, setProductIndex] = useState<Record<string, Product>>({})
   const [busy, setBusy] = useState(false)
@@ -392,9 +394,10 @@ export default function Pharmacy_POS() {
   }
 
   const openPayment = () => { try { searchInputRef.current?.blur() } catch {}; setPayOpen(true) }
-  const confirmPayment = async (data: { method: 'cash' | 'credit'; customer?: string; customerId?: string }) => {
+  const confirmPayment = async (data: { method: 'cash'; customer?: string; mrn?: string; phone?: string; age?: string; gender?: string; guardianRel?: string; guardianName?: string; cnic?: string; address?: string; customerId?: string; accountCode?: string; paymentMethod?: string; amountReceivedNow?: number; payPreviousDues?: boolean; useAdvance?: boolean; duesBefore?: number; advanceBefore?: number; advanceApplied?: number; duesPaid?: number; paidForToday?: number; advanceAdded?: number; duesAfter?: number; advanceAfter?: number; paymentStatus?: 'paid' | 'unpaid' }) => {
     setPayment(data)
     setPayOpen(false)
+    setPendingPatient(null)
     try {
       setBusy(true)
       await refreshCartStocks()
@@ -419,7 +422,27 @@ export default function Pharmacy_POS() {
       const payload = {
         customer: data.customer,
         customerId: data.customerId,
-        payment: data.method === 'cash' ? 'Cash' : 'Credit',
+        mrn: data.mrn,
+        phone: (data as any).phone,
+        age: (data as any).age,
+        gender: (data as any).gender,
+        guardianRel: (data as any).guardianRel,
+        guardianName: (data as any).guardianName,
+        cnic: (data as any).cnic,
+        address: (data as any).address,
+        payment: 'Cash',
+        paymentStatus: data.paymentStatus,
+        accountCode: data.accountCode,
+        paymentMethodDetail: data.paymentMethod,
+        amountReceivedNow: data.amountReceivedNow,
+        duesBefore: data.duesBefore,
+        advanceBefore: data.advanceBefore,
+        advanceApplied: data.advanceApplied,
+        duesPaid: data.duesPaid,
+        paidForToday: data.paidForToday,
+        advanceAdded: data.advanceAdded,
+        duesAfter: data.duesAfter,
+        advanceAfter: data.advanceAfter,
         discountPct: Number(billDiscountPct||0),
         lineDiscountTotal: cart.reduce((s,l)=> {
           const sub = Number(l.unitPrice||0) * Number(l.qty||0)
@@ -429,11 +452,16 @@ export default function Pharmacy_POS() {
         lines,
         createdBy: currentUser || undefined,
       }
-      const created = await pharmacyApi.createSale(payload)
+const created = await pharmacyApi.createSale(payload)
       setReceiptNo(created.billNo)
       setReceiptItems(itemsForReceipt)
       setReceiptOpen(true)
       setCart([])
+      // Mark referral as completed if this sale came from a referral
+      if (pendingReferralId) {
+        try { await hospitalApi.updateReferralStatus(pendingReferralId, 'completed') } catch {}
+        setPendingReferralId('')
+      }
       try { window.dispatchEvent(new CustomEvent('pharmacy:sale', { detail: created })) } catch {}
       // Refresh inventory so stock reflects the sale
       try {
@@ -556,6 +584,19 @@ export default function Pharmacy_POS() {
       const lines = JSON.parse(raw) as Array<{ name: string; productId?: string; qty: number }>
       const ev = new CustomEvent('pharmacy:pos:add', { detail: { lines } })
       window.dispatchEvent(ev)
+    } catch {}
+    // Read pending patient info from prescription
+    try {
+      const raw = localStorage.getItem('pharmacy.pos.pendingPatient')
+      if (!raw) return
+      localStorage.removeItem('pharmacy.pos.pendingPatient')
+      const p = JSON.parse(raw)
+      if (p && (p.patientName || p.mrn)) setPendingPatient(p)
+    } catch {}
+    // Read pending referral id from referrals page
+    try {
+      const rid = localStorage.getItem('pharmacy.pos.pendingReferralId')
+      if (rid) { localStorage.removeItem('pharmacy.pos.pendingReferralId'); setPendingReferralId(rid) }
     } catch {}
   }, [])
 
@@ -886,7 +927,7 @@ export default function Pharmacy_POS() {
           </div>
         </div>
 
-        <Pharmacy_ProcessPaymentDialog open={payOpen} onClose={()=>setPayOpen(false)} onConfirm={confirmPayment} />
+        <Pharmacy_ProcessPaymentDialog open={payOpen} onClose={()=>setPayOpen(false)} onConfirm={confirmPayment} totals={{ ...totals, taxRate: Number(sys.taxRate || 0), currency: sys.currency || 'PKR' }} initialPatient={pendingPatient || undefined} />
         <Pharmacy_POSReceiptDialog
           open={receiptOpen}
           onClose={()=>{ setReceiptOpen(false); setCart([]) }}
@@ -902,6 +943,21 @@ export default function Pharmacy_POS() {
           taxPct={Number(sys.taxRate||0)}
           currency={sys.currency}
           customer={payment?.customer}
+          accountCode={payment?.accountCode}
+          paymentMethod={payment?.paymentMethod}
+          amountReceivedNow={payment?.amountReceivedNow}
+          createdAt={new Date().toISOString()}
+          payPreviousDues={payment?.payPreviousDues}
+          useAdvance={payment?.useAdvance}
+          duesBefore={payment?.duesBefore}
+          advanceBefore={payment?.advanceBefore}
+          advanceApplied={payment?.advanceApplied}
+          duesPaid={payment?.duesPaid}
+          paidForToday={payment?.paidForToday}
+          advanceAdded={payment?.advanceAdded}
+          duesAfter={payment?.duesAfter}
+          advanceAfter={payment?.advanceAfter}
+          paymentStatus={payment?.paymentStatus}
           autoPrint
         />
 

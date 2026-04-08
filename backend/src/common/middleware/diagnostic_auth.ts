@@ -29,7 +29,7 @@ export function diagnosticAuth(req: Request, res: Response, next: NextFunction) 
       const canDiag = Array.isArray(diagPerm) && diagPerm.length > 0
       const receptionPerm = permissions ? (permissions as any).reception : null
       const canReception = Array.isArray(receptionPerm) && receptionPerm.length > 0
-      if (!canDiag && !canReception && role !== 'Admin' && role !== 'Reception') return res.status(401).json({ message: 'Invalid token' })
+      if (!canDiag && !canReception) return res.status(401).json({ message: 'Invalid token' })
       ;(req as any).user = payload
       next()
       return

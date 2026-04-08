@@ -311,6 +311,15 @@ export default function Hospital_TokenGenerator() {
     })
   }, [paymentStatus])
 
+  // Auto-fill amount received with net fee when payment status is paid
+  useEffect(() => {
+    if (paymentStatus === 'unpaid') {
+      setAmountReceivedNow('0')
+    } else {
+      setAmountReceivedNow(finalFee > 0 ? String(finalFee) : '0')
+    }
+  }, [finalFee, paymentStatus])
+
   const reset = () => {
     let keepPayTo = ''
     try { 

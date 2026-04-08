@@ -68,6 +68,14 @@ export const createOrder = async (req: Request, res: Response) => {
       )
     }
 
+    // Auto-complete the referral if this order was created from one
+    if (data.fromReferralId) {
+      try {
+        const { HospitalReferral } = await import('../../hospital/models/Referral')
+        await HospitalReferral.findByIdAndUpdate(String(data.fromReferralId), { $set: { status: 'completed' } })
+      } catch { /* non-fatal */ }
+    }
+
     res.status(201).json({ order, tokenNo })
   } catch (e: any) {
     res.status(500).json({ message: e.message })

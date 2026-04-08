@@ -32,6 +32,7 @@ export const receptionSidebarGroups: Group[] = [
       { to: '/reception/diagnostic/sample-tracking', label: 'Diagnostic Sample Tracking', icon: ListChecks },
       { to: '/reception/diagnostic/appointments', label: 'Diagnostic Appointments', icon: CalendarDays },
       { to: '/reception/diagnostic/credit-patients', label: 'Diagnostic Credit Patients', icon: Wallet },
+      { to: '/reception/diagnostic/referrals', label: 'Diagnostic Referrals', icon: FileText },
     ],
   },
   {
@@ -42,6 +43,7 @@ export const receptionSidebarGroups: Group[] = [
       { to: '/reception/therapy/token-history', label: 'Token History', icon: History },
       { to: '/reception/therapy/appointments', label: 'Appointments', icon: CalendarDays },
       { to: '/reception/therapy/credit-patients', label: 'Credit Patients', icon: Users },
+      { to: '/reception/therapy/referrals', label: 'Referrals', icon: FileText },
     ],
   },
   {
@@ -52,6 +54,7 @@ export const receptionSidebarGroups: Group[] = [
       { to: '/reception/counselling/token-history', label: 'Token History', icon: History },
       { to: '/reception/counselling/appointments', label: 'Appointments', icon: CalendarDays },
       { to: '/reception/counselling/credit-patients', label: 'Credit Patients', icon: Users },
+      { to: '/reception/counselling/referrals', label: 'Referrals', icon: FileText },
     ],
   },
 ]

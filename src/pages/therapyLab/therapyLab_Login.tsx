@@ -88,7 +88,7 @@ export default function TherapyLab_Login() {
         return Array.isArray(arr) && arr.length > 0
       })()
 
-      if (!u || (!canTherapyLab && (u?.role !== 'Admin' && u?.role !== 'Staff' && u?.role !== 'Therapy & Lab Reports Entry'))) {
+      if (!u || (!canTherapyLab && u?.role !== 'Admin')) {
         setError('User role not permitted')
         return
       }
