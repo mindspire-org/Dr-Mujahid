@@ -283,6 +283,7 @@ export default function App() {
         <Route path="packages" element={<TherapyLab_Packages />} />
         <Route path="appointments" element={<TherapyLab_Appointments />} />
         <Route path="referrals" element={<TherapyLab_Referrals />} />
+        <Route path="lab-reports-entry" element={<Hospital_LabReportsEntry />} />
         <Route path="manage-petty-cash" element={<Hospital_PettyCashBalance />} />
         <Route path="manage-bank-balance" element={<Hospital_ManageBankBalance />} />
         <Route path="notifications" element={<Hospital_Notifications />} />

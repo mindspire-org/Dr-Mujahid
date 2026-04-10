@@ -49,7 +49,8 @@ export default function Hospital_TodayTokens() {
   const [detailsRow, setDetailsRow] = useState<TokenRow | null>(null)
 
   const [payToAccounts, setPayToAccounts] = useState<Array<{ code: string; label: string }>>([])
-  const payToLoadedRef = useRef(false)
+  const defaultAccountCodeRef = useRef<string>('')
+  const [patientDues, setPatientDues] = useState<Record<string, number>>({})
   const [returnOpen, setReturnOpen] = useState(false)
   const [returnRow, setReturnRow] = useState<TokenRow | null>(null)
   const [returnReason, setReturnReason] = useState('')
@@ -80,7 +81,6 @@ export default function Hospital_TodayTokens() {
     paymentMethod: 'Cash' as 'Cash' | 'Card' | 'Insurance',
     accountNumberIban: '',
     receivedToAccountCode: '',
-    discountType: 'PKR' as 'PKR' | '%',
   })
 
   const [account, setAccount] = useState<{ dues: number; advance: number } | null>(null)
@@ -212,59 +212,79 @@ export default function Hospital_TodayTokens() {
   }, [])
 
   useEffect(() => {
-    if (payToLoadedRef.current) return
-    payToLoadedRef.current = true
     let mounted = true
-      ; (async () => {
-        try {
-          const [mineRes, bankRes, pettyRes] = await Promise.all([
-            hospitalApi.myPettyCash(),
-            hospitalApi.listBankAccounts(),
-            hospitalApi.listPettyCashAccounts(),
-          ]) as any
+    ;(async () => {
+      try {
+        const [mineRes, bankRes, pettyRes] = await Promise.all([
+          hospitalApi.myPettyCash(),
+          hospitalApi.listBankAccounts(),
+          hospitalApi.listPettyCashAccounts(),
+        ]) as any
 
-          const opts: Array<{ code: string; label: string }> = []
-          const seen = new Set<string>()
-          const add = (code?: string, label?: string) => {
-            const c = String(code || '').trim().toUpperCase()
-            if (!c) return
-            if (seen.has(c)) return
-            seen.add(c)
-            opts.push({ code: c, label: String(label || c) })
-          }
-
-          const myCode = String(mineRes?.account?.code || '').trim().toUpperCase()
-          if (myCode) {
-            add(myCode, `${mineRes?.account?.name || 'My Petty Cash'} (${myCode})`)
-          }
-
-          const petty: any[] = pettyRes?.accounts || []
-          for (const p of petty) {
-            const code = String(p?.code || '').trim().toUpperCase()
-            if (!code) continue
-            const rs = String(p?.responsibleStaff || '').trim()
-            if (rs) continue
-            if (String(p?.status || 'Active') !== 'Active') continue
-            add(code, `${String(p?.name || code).trim()} (${code})`)
-          }
-
-          const banks: any[] = bankRes?.accounts || []
-          for (const b of banks) {
-            const an = String(b?.accountNumber || '')
-            const last4 = an ? an.slice(-4) : ''
-            const code = String(b?.financeAccountCode || (last4 ? `BANK_${last4}` : '')).trim().toUpperCase()
-            if (!code) continue
-            const bankLabel = `${String(b?.bankName || '').trim()} - ${String(b?.accountTitle || '').trim()}${last4 ? ` (${last4})` : ''}`.trim()
-            add(code, bankLabel ? `${bankLabel} (${code})` : code)
-          }
-
-          if (mounted) {
-            setPayToAccounts(opts)
-          }
-        } catch {
-          if (mounted) setPayToAccounts([])
+        const opts: Array<{ code: string; label: string }> = []
+        const seen = new Set<string>()
+        const add = (code?: string, label?: string) => {
+          const c = String(code || '').trim().toUpperCase()
+          if (!c) return
+          if (seen.has(c)) return
+          seen.add(c)
+          opts.push({ code: c, label: String(label || c) })
         }
-      })()
+
+        const myCode = String(mineRes?.account?.code || '').trim().toUpperCase()
+        if (myCode) {
+          add(myCode, `${mineRes?.account?.name || 'My Petty Cash'} (${myCode})`)
+        }
+
+        const petty: any[] = pettyRes?.accounts || []
+        for (const p of petty) {
+          const code = String(p?.code || '').trim().toUpperCase()
+          if (!code) continue
+          const rs = String(p?.responsibleStaff || '').trim()
+          if (rs) continue
+          if (String(p?.status || 'Active') !== 'Active') continue
+          add(code, `${String(p?.name || code).trim()} (${code})`)
+        }
+
+        const banks: any[] = bankRes?.accounts || []
+        for (const b of banks) {
+          const an = String(b?.accountNumber || '')
+          const last4 = an ? an.slice(-4) : ''
+          const code = String(b?.financeAccountCode || (last4 ? `BANK_${last4}` : '')).trim().toUpperCase()
+          if (!code) continue
+          const bankLabel = `${String(b?.bankName || '').trim()} - ${String(b?.accountTitle || '').trim()}${last4 ? ` (${last4})` : ''}`.trim()
+          add(code, bankLabel ? `${bankLabel} (${code})` : code)
+        }
+
+        if (mounted) {
+          setPayToAccounts(opts)
+
+          // Compute default account (same priority as Token Generator)
+          let defaultCode = ''
+          if (myCode) {
+            defaultCode = myCode
+          } else {
+            let currentUsername = ''
+            try {
+              const session = JSON.parse(localStorage.getItem('hospital.session') || '{}')
+              currentUsername = String(session?.username || '').trim().toLowerCase()
+            } catch {}
+            const myBank = banks.find((b: any) => {
+              const rs = String(b?.responsibleStaff || '').trim().toLowerCase()
+              return rs && rs === currentUsername
+            })
+            if (myBank) {
+              const an = String(myBank?.accountNumber || '')
+              const last4 = an ? an.slice(-4) : ''
+              defaultCode = String(myBank?.financeAccountCode || (last4 ? `BANK_${last4}` : '')).trim().toUpperCase()
+            }
+          }
+          defaultAccountCodeRef.current = defaultCode
+        }
+      } catch {
+        if (mounted) setPayToAccounts([])
+      }
+    })()
     return () => { mounted = false }
   }, [])
 
@@ -304,7 +324,23 @@ export default function Hospital_TodayTokens() {
       status: t.status,
       raw: t,
     }))
-    setRows(items.filter(r => r.status !== 'cancelled'))
+    const active = items.filter(r => r.status !== 'cancelled')
+    setRows(active)
+
+    // Fetch latest dues for each unique patient
+    const uniquePatientIds = [...new Set(active.map(r => {
+      const pid = r.raw?.patientId?._id || r.raw?.patientId
+      return pid ? String(pid) : null
+    }).filter(Boolean))] as string[]
+
+    const duesMap: Record<string, number> = {}
+    await Promise.allSettled(uniquePatientIds.map(async pid => {
+      try {
+        const accRes: any = await hospitalApi.getAccount(pid)
+        duesMap[pid] = Math.max(0, Number(accRes?.account?.dues || 0))
+      } catch { duesMap[pid] = 0 }
+    }))
+    setPatientDues(duesMap)
   }
 
   const filtered = useMemo(() => {
@@ -338,7 +374,12 @@ export default function Hospital_TodayTokens() {
 
   const totalPatients = rows.length
   const totalTokens = rows.length
-  const totalRevenue = rows.reduce((s, r) => s + (r.status === 'returned' ? 0 : r.fee), 0)
+  const totalRevenue = rows.reduce((s, r) => {
+    if (r.status === 'returned') return s
+    if (r.paymentStatus === 'unpaid') return s
+    const received = (Number(r.paidForToday ?? 0) + Number(r.advanceApplied ?? 0)) || Number(r.amountReceived ?? r.fee)
+    return s + received
+  }, 0)
   const returnedPatients = rows.filter(r => r.status === 'returned').length
 
   const start = (page - 1) * rowsPerPage
@@ -395,7 +436,7 @@ export default function Hospital_TodayTokens() {
       discountType,
       paymentStatus: (paymentStatus === 'unpaid' ? 'unpaid' : 'paid'),
       receptionistName,
-      receivedToAccountCode,
+      receivedToAccountCode: receivedToAccountCode || defaultAccountCodeRef.current,
       paymentMethod,
       accountNumberIban,
     })
@@ -597,6 +638,7 @@ export default function Hospital_TodayTokens() {
               <Th>Department</Th>
               <Th>Fee</Th>
               <Th>Payment Status</Th>
+              <Th>Dues</Th>
               <Th>Discount</Th>
               <Th>Print</Th>
               <Th>Actions</Th>
@@ -626,10 +668,20 @@ export default function Hospital_TodayTokens() {
                   </div>
                 </Td>
                 <Td>
+                  {(() => {
+                    const pid = r.raw?.patientId?._id || r.raw?.patientId
+                    const dues = pid ? (patientDues[String(pid)] ?? null) : null
+                    if (dues === null) return <span className="text-slate-400 text-xs">-</span>
+                    return dues > 0
+                      ? <span className="font-semibold text-red-600">Rs. {dues.toLocaleString()}</span>
+                      : <span className="text-emerald-600 text-xs">None</span>
+                  })()}
+                </Td>
+                <Td>
                   {r.discountType === '%' ? (() => {
-                    const originalAmount = r.fee / (1 - r.discount / 100);
-                    const discountAmount = Math.round(originalAmount * (r.discount / 100));
-                    return `${r.discount}% (PKR ${discountAmount.toLocaleString()})`;
+                    const originalAmount = r.fee / (1 - (r.discount ?? 0) / 100);
+                    const discountAmount = Math.round(originalAmount * ((r.discount ?? 0) / 100));
+                    return `${r.discount ?? 0}% (PKR ${discountAmount.toLocaleString()})`;
                   })() : `Rs. ${Number(r.discount ?? 0).toLocaleString()}`}
                 </Td>
                 <Td><button onClick={() => printSlip(r)} className="text-sky-600 hover:underline">Print Slip</button></Td>

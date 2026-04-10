@@ -62,6 +62,7 @@ export default function Hospital_TokenHistory() {
   const [payToAccounts, setPayToAccounts] = useState<Array<{ code: string; label: string }>>([])
 
   const payToLoadedRef = useRef(false)
+  const [patientDues, setPatientDues] = useState<Record<string, number>>({})
 
   useEffect(() => { loadFilters() }, [])
   useEffect(() => { load() }, [from, to, department, doctor])
@@ -175,6 +176,22 @@ export default function Hospital_TokenHistory() {
     }))
     setRows(items.filter(r => r.status !== 'cancelled'))
     setPage(1)
+
+    // Fetch latest dues for each unique patient
+    const active = items.filter(r => r.status !== 'cancelled')
+    const uniquePatientIds = [...new Set(active.map(r => {
+      const pid = r.raw?.patientId?._id || r.raw?.patientId
+      return pid ? String(pid) : null
+    }).filter(Boolean))] as string[]
+
+    const duesMap: Record<string, number> = {}
+    await Promise.allSettled(uniquePatientIds.map(async pid => {
+      try {
+        const accRes: any = await hospitalApi.getAccount(pid)
+        duesMap[pid] = Math.max(0, Number(accRes?.account?.dues || 0))
+      } catch { duesMap[pid] = 0 }
+    }))
+    setPatientDues(duesMap)
   }
 
   const scoped = useMemo(() => {
@@ -226,7 +243,12 @@ export default function Hospital_TokenHistory() {
   }, [query, scoped])
 
   const totalTokens = scoped.length
-  const totalRevenue = scoped.reduce((s, r) => s + (r.status === 'returned' ? 0 : r.fee), 0)
+  const totalRevenue = scoped.reduce((s, r) => {
+    if (r.status === 'returned') return s
+    if (r.paymentStatus === 'unpaid') return s
+    const received = (Number(r.paidForToday ?? 0) + Number(r.advanceApplied ?? 0)) || Number(r.amountReceived ?? r.fee)
+    return s + received
+  }, 0)
   const returnedPatients = scoped.filter(r => r.status === 'returned').length
 
   function printSlip(r: TokenRow) {
@@ -330,6 +352,7 @@ export default function Hospital_TokenHistory() {
               <Th>Department</Th>
               <Th>Fee</Th>
               <Th>Payment Status</Th>
+              <Th>Dues</Th>
               <Th>Discount</Th>
               <Th>Actions</Th>
             </tr>
@@ -356,6 +379,16 @@ export default function Hospital_TokenHistory() {
                       {String(r.paymentStatus || 'paid').toUpperCase()}
                     </span>
                   </div>
+                </Td>
+                <Td>
+                  {(() => {
+                    const pid = r.raw?.patientId?._id || r.raw?.patientId
+                    const dues = pid ? (patientDues[String(pid)] ?? null) : null
+                    if (dues === null) return <span className="text-slate-400 text-xs">-</span>
+                    return dues > 0
+                      ? <span className="font-semibold text-red-600">Rs. {dues.toLocaleString()}</span>
+                      : <span className="text-emerald-600 text-xs">None</span>
+                  })()}
                 </Td>
                 <Td>
                   {r.discountType === '%' ? (() => {

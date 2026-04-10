@@ -13,6 +13,9 @@ type Token = {
   age?: string
   phone?: string
   encounterId?: string
+  status?: string
+  doctor?: string
+  department?: string
 }
 
 type PrevHistoryTaking = {
@@ -802,6 +805,9 @@ export default function Hospital_HistoryTaking() {
         age: t.patientId?.age != null ? String(t.patientId.age) : (t.patientId?.patientAge != null ? String(t.patientId.patientAge) : undefined),
         phone: t.patientId?.phoneNormalized != null ? String(t.patientId.phoneNormalized) : (t.patientId?.phone != null ? String(t.patientId.phone) : (t.phone != null ? String(t.phone) : undefined)),
         encounterId: t.encounterId != null ? String(t.encounterId) : undefined,
+        status: String(t.status || ''),
+        doctor: String(t.doctorId?.name || t.doctor || ''),
+        department: String(t.departmentId?.name || t.department || ''),
       }))
       setTokens(items)
     } catch {
@@ -817,7 +823,11 @@ export default function Hospital_HistoryTaking() {
       const key = t.id
       if (!key) continue
       if (savedSet.has(String(key))) continue
-      const label = `${t.tokenNo} - ${t.patientName} • ${t.mrNo}`
+      if (t.status === 'returned') continue
+      const doctorPart = t.doctor ? `Dr. ${t.doctor}` : ''
+      const deptPart = t.department || ''
+      const extra = [doctorPart, deptPart].filter(Boolean).join(' • ')
+      const label = `${t.tokenNo} - ${t.patientName} • ${t.mrNo}${extra ? ` | ${extra}` : ''}`
       if (!map.has(key)) map.set(key, { key, label })
     }
     return Array.from(map.values())

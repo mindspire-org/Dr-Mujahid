@@ -9,7 +9,6 @@ import { Dispense } from './modules/pharmacy/models/Dispense'
 import { AestheticUser } from './modules/aesthetic/models/User'
 import { LabUser } from './modules/lab/models/User'
 import { DiagnosticUser } from './modules/diagnostic/models/User'
-import { HospitalUser } from './modules/hospital/models/User'
 import { HospitalRole } from './modules/hospital/models/Role'
 import { HospitalAccessNode } from './modules/hospital/models/AccessNode'
 import { startBackupScheduler } from './modules/admin/backup.scheduler'
@@ -67,23 +66,6 @@ async function main(){
     await DiagnosticUser.create({ username: 'diag', role: 'admin', passwordHash })
   }
 
-  const hospitalAdmin = await HospitalUser.findOne({ username: 'admin' }).lean()
-  if (!hospitalAdmin) {
-    const passwordHash = await bcrypt.hash('123', 10)
-    await HospitalUser.create({ username: 'admin', role: 'Admin', passwordHash, active: true })
-  }
-
-  const hospitalFinance = await HospitalUser.findOne({ username: 'finan' }).lean()
-  if (!hospitalFinance) {
-    const passwordHash = await bcrypt.hash('123', 10)
-    await HospitalUser.create({ username: 'finan', role: 'Finance', passwordHash, active: true })
-  }
-
-  const hospitalReception = await HospitalUser.findOne({ username: 'recep' }).lean()
-  if (!hospitalReception) {
-    const passwordHash = await bcrypt.hash('123', 10)
-    await HospitalUser.create({ username: 'recep', role: 'Reception', passwordHash, active: true })
-  }
 
   try {
     const defaults: Array<{ name: string; portals: Record<string, string[]> }> = [

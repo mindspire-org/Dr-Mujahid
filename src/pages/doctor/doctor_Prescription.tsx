@@ -5811,18 +5811,16 @@ export default function Doctor_Prescription() {
               </div>
             </div>
           )}
-          {activeTab === 'diagnostics' && (
-            <div>
-              <PrescriptionDiagnosticOrders
-                ref={diagRef}
-                doctorId={doc?.id}
-                initialTestsText={(form as any).diagDisplay?.testsText}
-                initialNotes={(form as any).diagDisplay?.notes}
-                initialDiscount={(form as any).diagDisplay?.discount}
-                suggestionsNotes={sugDiagNotes}
-              />
-            </div>
-          )}
+          <div style={{ display: activeTab === 'diagnostics' ? undefined : 'none' }}>
+            <PrescriptionDiagnosticOrders
+              ref={diagRef}
+              doctorId={doc?.id}
+              initialTestsText={(form as any).diagDisplay?.testsText}
+              initialNotes={(form as any).diagDisplay?.notes}
+              initialDiscount={(form as any).diagDisplay?.discount}
+              suggestionsNotes={sugDiagNotes}
+            />
+          </div>
           {activeTab === 'labReportsEntry' && (
             <div className="space-y-4">
               <div className="space-y-4 rounded-xl border border-slate-200 bg-white p-5">

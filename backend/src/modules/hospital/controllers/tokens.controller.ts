@@ -590,6 +590,9 @@ export async function updateStatus(req: Request, res: Response){
     const rr = String((req.body as any).returnReason || '').trim()
     if (rr) set.returnReason = rr
   }
+  // Fetch token BEFORE update so we can read dues/advance snapshot
+  const tokBefore = await HospitalToken.findById(id).lean()
+  if (!tokBefore) return res.status(404).json({ error: 'Token not found' })
   const tok = await HospitalToken.findByIdAndUpdate(id, { $set: set }, { new: true })
   if (!tok) return res.status(404).json({ error: 'Token not found' })
   // Finance: reverse accruals if token is returned or cancelled
@@ -602,6 +605,41 @@ export async function updateStatus(req: Request, res: Response){
         await reverseJournalByRef('opd_token', String(id), `Auto reversal for token ${status}`)
       }
     } catch (e) { console.warn('Finance reversal failed', e) }
+
+    // Reverse HospitalAccount dues/advance: restore patient account to state before this token
+    try {
+      const patientId = String((tokBefore as any).patientId || '')
+      if (patientId) {
+        // duesBefore/advanceBefore are the balances BEFORE this token was created
+        // We restore the account to those values, but only if the current account
+        // still reflects this token's effect (i.e. current dues == duesAfter of this token)
+        const duesBefore = clamp0((tokBefore as any).duesBefore)
+        const advanceBefore = clamp0((tokBefore as any).advanceBefore)
+        const duesAfter = clamp0((tokBefore as any).duesAfter)
+        const advanceAfter = clamp0((tokBefore as any).advanceAfter)
+        const duesPaid = clamp0((tokBefore as any).duesPaid)
+        const advanceApplied = clamp0((tokBefore as any).advanceApplied)
+
+        // Net effect this token had on dues and advance
+        // dues delta = duesAfter - duesBefore (positive means dues increased)
+        // advance delta = advanceAfter - advanceBefore
+        const duesDelta = duesAfter - duesBefore
+        const advanceDelta = advanceAfter - advanceBefore
+
+        // Reverse: subtract the delta from current account balances
+        const acct: any = await HospitalAccount.findOne({ patientId }).lean()
+        if (acct) {
+          const currentDues = clamp0(acct.dues)
+          const currentAdvance = clamp0(acct.advance)
+          const newDues = Math.max(0, currentDues - duesDelta)
+          const newAdvance = Math.max(0, currentAdvance - advanceDelta)
+          await HospitalAccount.findOneAndUpdate(
+            { patientId },
+            { $set: { dues: newDues, advance: newAdvance, updatedAtIso: new Date().toISOString() } }
+          )
+        }
+      }
+    } catch (e) { console.warn('Account dues reversal failed', e) }
     // Corporate: create reversal lines for OPD corporate transactions
     try {
       const existing: any[] = await CorporateTransaction.find({ refType: 'opd_token', refId: String(id), status: { $ne: 'reversed' } }).lean()

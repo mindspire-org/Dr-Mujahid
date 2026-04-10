@@ -107,9 +107,9 @@ export default function Hospital_Dashboard() {
     return st !== 'returned' && st !== 'cancelled'
   }), [tokens])
   const opdRevenue = useMemo(() => tokensPaid.reduce((s, t) => {
-    // Newer tokens store `fee` as the payable amount (discount already applied).
-    // Prefer explicit net/payable when available.
-    return s + money(t.net ?? t.payable ?? t.fee)
+    if (String(t?.paymentStatus || '').toLowerCase() === 'unpaid') return s
+    const received = (money(t.paidForToday) + money(t.advanceApplied)) || money(t.amountReceived) || money(t.net ?? t.payable ?? t.fee)
+    return s + received
   }, 0), [tokensPaid])
   const expensesTotal = useMemo(() => expenses.reduce((s, e) => s + money(e.amount), 0), [expenses])
   const doctorPayouts = useMemo(() => (doctorEarnRows || []).filter((r: any) => {
