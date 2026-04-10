@@ -26,6 +26,7 @@
     "cross-env": "^10.1.0",
     "electron": "^39.2.4",
     "electron-builder": "^26.0.12",
+    "eslint": "^10.2.0",
     "jimp": "^0.22.10",
     "png-to-ico": "^2.1.8",
     "postcss": "^8.5.6",
